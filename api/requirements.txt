@@ -1,0 +1,4 @@
+# Core dependencies - uses same venv as upstream-stashface
+python-dotenv>=1.0.0
+requests>=2.28.0
+tqdm>=4.65.0

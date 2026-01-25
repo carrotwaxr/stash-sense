@@ -1,0 +1,35 @@
+# Environment and secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Model weights (large files, download separately)
+*.h5
+*.pt
+*.onnx
+
+# Cache directories
+data/image_cache/
+api/.deepface/
+
+# Build artifacts
+*.voy
+data/faces.json
+data/performers.json
+
+# Upstream reference (cloned separately)
+upstream-stashface/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
