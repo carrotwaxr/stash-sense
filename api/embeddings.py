@@ -31,7 +31,7 @@ class FaceEmbedding:
 class FaceEmbeddingGenerator:
     """Generate face embeddings using FaceNet512 and ArcFace models."""
 
-    def __init__(self, detector_backend: str = "yolov8"):
+    def __init__(self, detector_backend: str = "opencv"):
         """
         Initialize the embedding generator.
 

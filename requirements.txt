@@ -1,0 +1,24 @@
+# Core
+python-dotenv>=1.0.0
+requests>=2.28.0
+tqdm>=4.65.0
+
+# ML - PyTorch with CUDA 12.8 (for Blackwell GPUs)
+--extra-index-url https://download.pytorch.org/whl/nightly/cu128
+torch
+torchvision
+
+# Face recognition
+deepface>=0.0.93
+voyager>=2.0.0
+
+# API (for sidecar)
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# Image processing
+pillow>=10.0.0
+numpy<2
+
+# Utilities
+pydantic>=2.0.0
