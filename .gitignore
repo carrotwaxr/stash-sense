@@ -22,8 +22,7 @@ api/.deepface/
 data/faces.json
 data/performers.json
 
-# Upstream reference (cloned separately)
-upstream-stashface/
+# Reference: original stashface is at ~/code/stashface-reference/
 
 # IDE
 .idea/
