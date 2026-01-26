@@ -46,13 +46,13 @@ class PerformerProgress:
     images_available: int = 0
     last_synced: str = ""  # ISO format timestamp
 
-    def is_complete(self) -> bool:
+    def is_complete(self, threshold: int = COMPLETENESS_THRESHOLD) -> bool:
         """Check if performer has enough faces for reliable recognition."""
-        return self.faces_indexed >= COMPLETENESS_THRESHOLD
+        return self.faces_indexed >= threshold
 
-    def needs_recheck(self, current_images_available: int) -> bool:
+    def needs_recheck(self, current_images_available: int, threshold: int = COMPLETENESS_THRESHOLD) -> bool:
         """Check if we should try to get more faces for this performer."""
-        if self.is_complete():
+        if self.is_complete(threshold):
             return False
         # Re-check if StashDB has more images than we processed
         return current_images_available > self.images_processed
@@ -426,7 +426,7 @@ class DatabaseBuilder:
         print(f"  Rate limit delay: {self.stashdb.rate_limit_delay}s")
         print(f"  Max images per performer: {self.builder_config.max_images_per_performer}")
         print(f"  Auto-save interval: every {self.AUTO_SAVE_INTERVAL} performers")
-        print(f"  Completeness threshold: {COMPLETENESS_THRESHOLD} faces")
+        print(f"  Completeness threshold: {self.builder_config.completeness_threshold} faces")
         if self.resume:
             print(f"  Resume mode: ON (skipping {len(self.performer_progress)} already processed)")
 
@@ -467,11 +467,11 @@ class DatabaseBuilder:
 
             if progress is not None:
                 # Already seen this performer
-                if progress.is_complete():
+                if progress.is_complete(self.builder_config.completeness_threshold):
                     # Complete - skip entirely
                     self.stats["performers_skipped"] += 1
                     continue
-                elif not progress.needs_recheck(images_available):
+                elif not progress.needs_recheck(images_available, self.builder_config.completeness_threshold):
                     # Incomplete but no new images available - skip
                     self.stats["performers_skipped"] += 1
                     continue
@@ -498,15 +498,16 @@ class DatabaseBuilder:
         else:
             print(f"\n✅ Build complete!")
 
-        complete_count = sum(1 for p in self.performer_progress.values() if p.is_complete())
+        complete_count = sum(1 for p in self.performer_progress.values()
+                             if p.is_complete(self.builder_config.completeness_threshold))
         incomplete_count = len(self.performer_progress) - complete_count
 
         print(f"  Performers processed: {self.stats['performers_processed']}")
         print(f"  Performers skipped (complete): {self.stats['performers_skipped']}")
         print(f"  Performers with faces: {self.stats['performers_with_faces']}")
         print(f"  Total faces indexed: {self.stats['faces_indexed']}")
-        print(f"  Complete performers (>={COMPLETENESS_THRESHOLD} faces): {complete_count}")
-        print(f"  Incomplete performers (<{COMPLETENESS_THRESHOLD} faces): {incomplete_count}")
+        print(f"  Complete performers (>={self.builder_config.completeness_threshold} faces): {complete_count}")
+        print(f"  Incomplete performers (<{self.builder_config.completeness_threshold} faces): {incomplete_count}")
         print(f"  Images failed: {self.stats['images_failed']}")
 
         return self.stats
@@ -712,6 +713,8 @@ Environment variables:
                         help="Database version string (default: YYYY.MM.DD)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from previous build (skip already processed performers)")
+    parser.add_argument("--completeness-threshold", type=int, default=5,
+                        help="Minimum faces for a performer to be 'complete' (default: 5)")
     parser.add_argument("--sync-updates-only", action="store_true",
                         help="Only process performers updated since last sync (for incremental updates)")
     args = parser.parse_args()
@@ -730,6 +733,7 @@ Environment variables:
         max_performers=args.max_performers,
         max_images_per_performer=args.max_images,
         version=args.version,
+        completeness_threshold=args.completeness_threshold,
     )
 
     # Initialize clients

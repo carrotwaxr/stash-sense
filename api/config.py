@@ -42,6 +42,7 @@ class BuilderConfig:
     max_images_per_performer: int = 10
     max_performers: int = None  # None = no limit
     batch_size: int = 100
+    completeness_threshold: int = 5
 
     # Quality filters
     min_face_confidence: float = 0.8  # RetinaFace detection confidence threshold
