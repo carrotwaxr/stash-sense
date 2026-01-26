@@ -39,18 +39,29 @@ class StashDBClient:
             time.sleep(self.rate_limit_delay - elapsed)
         self._last_request_time = time.time()
 
-    def _query(self, query: str, variables: dict = None) -> dict:
-        """Execute a GraphQL query."""
-        self._rate_limit()
+    def _query(self, query: str, variables: dict = None, max_retries: int = 5) -> dict:
+        """Execute a GraphQL query with retry on rate limit."""
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
-        response = requests.post(self.url, json=payload, headers=self.headers)
-        response.raise_for_status()
-        result = response.json()
-        if "errors" in result:
-            raise Exception(f"GraphQL errors: {result['errors']}")
-        return result["data"]
+
+        for attempt in range(max_retries):
+            self._rate_limit()
+            response = requests.post(self.url, json=payload, headers=self.headers)
+
+            if response.status_code == 429:
+                wait_time = 2 ** attempt * 10  # 10s, 20s, 40s, 80s, 160s
+                print(f"  Rate limited (429), waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
+                time.sleep(wait_time)
+                continue
+
+            response.raise_for_status()
+            result = response.json()
+            if "errors" in result:
+                raise Exception(f"GraphQL errors: {result['errors']}")
+            return result["data"]
+
+        raise Exception(f"Max retries ({max_retries}) exceeded due to rate limiting")
 
     def get_performer(self, stashdb_id: str) -> Optional[StashDBPerformer]:
         """Get a single performer by ID with their images."""
@@ -100,6 +111,7 @@ class StashDBClient:
         page: int = 1,
         per_page: int = 25,
         sort: str = "CREATED_AT",
+        direction: str = "ASC",  # Ascending = oldest first, stable for pagination
     ) -> tuple[int, list[StashDBPerformer]]:
         """
         Query performers with pagination.
@@ -126,6 +138,7 @@ class StashDBClient:
                 "page": page,
                 "per_page": per_page,
                 "sort": sort,
+                "direction": direction,
             }
         }
 
@@ -171,16 +184,29 @@ class StashDBClient:
                 break
             page += 1
 
-    def download_image(self, url: str) -> Optional[bytes]:
-        """Download an image from StashDB."""
-        try:
-            self._rate_limit()
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            return response.content
-        except Exception as e:
-            print(f"Failed to download image {url}: {e}")
-            return None
+    def download_image(self, url: str, max_retries: int = 3) -> Optional[bytes]:
+        """Download an image from StashDB with retry on rate limit."""
+        for attempt in range(max_retries):
+            try:
+                self._rate_limit()
+                response = requests.get(url, timeout=30)
+
+                if response.status_code == 429:
+                    wait_time = 2 ** attempt * 5  # 5s, 10s, 20s
+                    print(f"  Image download rate limited, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+
+                response.raise_for_status()
+                return response.content
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    print(f"  Image download failed (attempt {attempt + 1}), retrying: {e}")
+                    time.sleep(2 ** attempt)
+                    continue
+                print(f"Failed to download image {url}: {e}")
+                return None
+        return None
 
 
 if __name__ == "__main__":
