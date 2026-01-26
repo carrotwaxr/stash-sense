@@ -450,42 +450,85 @@ class DatabaseBuilder:
 
         return self.stats
 
-    def _process_performer(self, performer: StashDBPerformer, stashbox_name: str, progress: Optional[PerformerProgress] = None):
-        """Process a single performer."""
+    def _process_performer(
+        self,
+        performer: StashDBPerformer,
+        stashbox_name: str,
+        existing_progress: Optional[PerformerProgress] = None,
+    ):
+        """
+        Process a single performer.
+
+        Args:
+            performer: Performer data from StashDB
+            stashbox_name: Short name for the stash-box (e.g., "stashdb.org")
+            existing_progress: Previous progress if this is a re-check, None if new
+        """
         self.stats["performers_processed"] += 1
+        images_available = len(performer.image_urls)
 
         # Skip performers with no images
         if not performer.image_urls:
+            # Still track that we checked them
+            self.performer_progress[performer.id] = PerformerProgress(
+                faces_indexed=0,
+                images_processed=0,
+                images_available=0,
+                last_synced=datetime.now(timezone.utc).isoformat(),
+            )
             return
 
         # Create universal ID
         universal_id = f"{stashbox_name}:{performer.id}"
 
-        # Create record
-        record = PerformerRecord(
-            universal_id=universal_id,
-            stashdb_id=performer.id,
-            name=performer.name,
-            country=performer.country,
-            image_url=performer.image_urls[0] if performer.image_urls else None,
-        )
+        # Get or create record
+        if universal_id in self.performers:
+            record = self.performers[universal_id]
+        else:
+            record = PerformerRecord(
+                universal_id=universal_id,
+                stashdb_id=performer.id,
+                name=performer.name,
+                country=performer.country,
+                image_url=performer.image_urls[0] if performer.image_urls else None,
+            )
 
-        # Process images (up to max)
-        images_processed = 0
-        for url in performer.image_urls:
-            if images_processed >= self.builder_config.max_images_per_performer:
+        # Determine which images to process
+        if existing_progress is not None:
+            # Re-check: only process images beyond what we already processed
+            images_to_process = performer.image_urls[existing_progress.images_processed:]
+            start_count = existing_progress.images_processed
+        else:
+            # New performer: process up to max
+            images_to_process = performer.image_urls[:self.builder_config.max_images_per_performer]
+            start_count = 0
+
+        # Process images
+        images_processed_this_run = 0
+        for url in images_to_process:
+            if start_count + images_processed_this_run >= self.builder_config.max_images_per_performer:
                 break
 
             self.stats["images_processed"] += 1
             image_data = self._download_image(url)
             if image_data:
-                if self._process_image(image_data, record):
-                    images_processed += 1
+                self._process_image(image_data, record)
+            images_processed_this_run += 1
 
-        # Only store performer if we indexed at least one face
+        # Update progress tracking
+        total_images_processed = start_count + images_processed_this_run
+        self.performer_progress[performer.id] = PerformerProgress(
+            faces_indexed=record.face_count,
+            images_processed=total_images_processed,
+            images_available=images_available,
+            last_synced=datetime.now(timezone.utc).isoformat(),
+        )
+
+        # Store performer if we have at least one face
         if record.face_count > 0:
             self.performers[universal_id] = record
-            self.stats["performers_with_faces"] += 1
+            if existing_progress is None or existing_progress.faces_indexed == 0:
+                self.stats["performers_with_faces"] += 1
 
     def save(self):
         """Save the database to files."""
