@@ -352,7 +352,11 @@ class DatabaseBuilder:
     def _save_progress(self):
         """Save progress to allow resuming."""
         progress = {
-            "processed_ids": list(self.processed_ids),
+            "schema_version": PROGRESS_SCHEMA_VERSION,
+            "performers": {
+                pid: prog.to_dict()
+                for pid, prog in self.performer_progress.items()
+            },
             "stats": self.stats,
             "last_save": datetime.now(timezone.utc).isoformat(),
         }
