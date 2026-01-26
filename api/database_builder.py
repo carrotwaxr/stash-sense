@@ -76,6 +76,38 @@ class PerformerProgress:
 
 
 @dataclass
+class BatchTimings:
+    """Track time spent in each phase during a batch."""
+    fetch_performer_ms: list[float] = field(default_factory=list)
+    fetch_images_ms: list[float] = field(default_factory=list)
+    process_face_ms: list[float] = field(default_factory=list)
+
+    def reset(self):
+        self.fetch_performer_ms.clear()
+        self.fetch_images_ms.clear()
+        self.process_face_ms.clear()
+
+    def summary(self) -> str:
+        def avg(lst):
+            return sum(lst) / len(lst) if lst else 0
+
+        def fmt(ms):
+            if ms >= 1000:
+                return f"{ms/1000:.2f}s"
+            return f"{ms:.0f}ms"
+
+        parts = []
+        if self.fetch_performer_ms:
+            parts.append(f"Fetch metadata: {fmt(avg(self.fetch_performer_ms))}")
+        if self.fetch_images_ms:
+            parts.append(f"Fetch images: {fmt(avg(self.fetch_images_ms))}")
+        if self.process_face_ms:
+            parts.append(f"Process face: {fmt(avg(self.process_face_ms))}")
+
+        return " | ".join(parts) if parts else "No timing data"
+
+
+@dataclass
 class PerformerRecord:
     """Performer record for the shareable database."""
     universal_id: str  # e.g., "stashdb.org:50459d16-..."
@@ -125,6 +157,8 @@ class DatabaseBuilder:
             "images_failed": 0,
             "no_face_detected": 0,
         }
+
+        self.batch_timings = BatchTimings()
 
         # Initialize or load indices
         if resume and self._has_existing_data():
@@ -335,7 +369,10 @@ class DatabaseBuilder:
 
         Returns: True if a face was successfully indexed
         """
-        # Download directly (no caching)
+        import time
+
+        # Download directly (no caching) - with timing
+        t0 = time.perf_counter()
         try:
             image_data = self.stashdb.download_image(url)
             if not image_data:
@@ -345,9 +382,12 @@ class DatabaseBuilder:
             print(f"  Failed to download image for {record.name}: {e}")
             self.stats["images_failed"] += 1
             return False
+        self.batch_timings.fetch_images_ms.append((time.perf_counter() - t0) * 1000)
 
-        # Process the image
+        # Process the image - with timing
+        t0 = time.perf_counter()
         result = self._process_image(image_data, record)
+        self.batch_timings.process_face_ms.append((time.perf_counter() - t0) * 1000)
 
         # Image data goes out of scope and is garbage collected
         # No disk storage needed
@@ -410,7 +450,13 @@ class DatabaseBuilder:
 
         performers_since_save = 0
 
-        for performer in tqdm(performers_to_process, total=total, desc="Processing"):
+        for performer in tqdm(
+            performers_to_process,
+            total=total,
+            desc="Processing",
+            smoothing=0.05,  # Use longer history for stable estimates
+            mininterval=1.0,  # Update at most once per second
+        ):
             # Check for interrupt
             if self._interrupted:
                 break
@@ -437,9 +483,13 @@ class DatabaseBuilder:
 
             # Auto-save periodically
             if performers_since_save >= self.AUTO_SAVE_INTERVAL:
-                tqdm.write(f"  Auto-saving progress ({len(self.performer_progress)} performers, {len(self.faces)} faces)...")
-                self.save()
+                # Print batch performance summary
+                tqdm.write(f"\n  Batch complete: {self.batch_timings.summary()}")
+                tqdm.write(f"  Saving progress ({len(self.performer_progress)} performers, {len(self.faces)} faces)...")
+
+                self.save(quiet=True)
                 self._save_progress()
+                self.batch_timings.reset()
                 performers_since_save = 0
 
         # Print summary
@@ -539,27 +589,32 @@ class DatabaseBuilder:
             if existing_progress is None or existing_progress.faces_indexed == 0:
                 self.stats["performers_with_faces"] += 1
 
-    def save(self):
+    def save(self, quiet: bool = False):
         """Save the database to files."""
-        print("\nSaving database...")
+        if not quiet:
+            print("\nSaving database...")
 
         # Save Voyager indices
-        print(f"  Saving FaceNet index to {self.db_config.facenet_index_path}")
+        if not quiet:
+            print(f"  Saving FaceNet index to {self.db_config.facenet_index_path}")
         with open(self.db_config.facenet_index_path, "wb") as f:
             self.facenet_index.save(f)
 
-        print(f"  Saving ArcFace index to {self.db_config.arcface_index_path}")
+        if not quiet:
+            print(f"  Saving ArcFace index to {self.db_config.arcface_index_path}")
         with open(self.db_config.arcface_index_path, "wb") as f:
             self.arcface_index.save(f)
 
         # Save faces.json (index -> universal_id mapping)
-        print(f"  Saving faces mapping to {self.db_config.faces_json_path}")
+        if not quiet:
+            print(f"  Saving faces mapping to {self.db_config.faces_json_path}")
         with open(self.db_config.faces_json_path, "w") as f:
             json.dump(self.faces, f)
 
         # Save performers.json (universal_id -> metadata)
         # Format per design doc
-        print(f"  Saving performers to {self.db_config.performers_json_path}")
+        if not quiet:
+            print(f"  Saving performers to {self.db_config.performers_json_path}")
         performers_data = {
             uid: {
                 "name": record.name,
@@ -578,7 +633,8 @@ class DatabaseBuilder:
         # Generate and save manifest
         self._save_manifest()
 
-        print("Database saved successfully!")
+        if not quiet:
+            print("Database saved successfully!")
 
     def _save_manifest(self):
         """Generate and save the manifest file."""
