@@ -112,7 +112,7 @@ class DatabaseBuilder:
         # Data storage
         self.performers: dict[str, PerformerRecord] = {}  # universal_id -> record
         self.faces: list[str] = []  # index -> universal_id mapping
-        self.processed_ids: set[str] = set()  # StashDB IDs already processed
+        self.performer_progress: dict[str, PerformerProgress] = {}  # stashdb_id -> progress
         self.current_face_index = 0
 
         # Stats
@@ -198,18 +198,79 @@ class DatabaseBuilder:
                 image_url=data.get("image_url"),
                 face_count=data.get("face_count", 0),
             )
-            self.processed_ids.add(stashdb_id)
 
         # Load progress file if exists
         if self.progress_file.exists():
             with open(self.progress_file) as f:
                 progress = json.load(f)
-                # Add any additional processed IDs from progress file
-                self.processed_ids.update(progress.get("processed_ids", []))
+
+            schema_version = progress.get("schema_version", 1)
+
+            if schema_version == 1:
+                # Migrate from old format
+                self.performer_progress = self._migrate_progress_v1_to_v2(progress)
                 self.stats = progress.get("stats", self.stats)
+            else:
+                # Load v2 format
+                self.performer_progress = {
+                    pid: PerformerProgress.from_dict(data)
+                    for pid, data in progress.get("performers", {}).items()
+                }
+                self.stats = progress.get("stats", self.stats)
+        else:
+            # No progress file - infer from performers.json
+            now = datetime.now(timezone.utc).isoformat()
+            for universal_id, record in self.performers.items():
+                self.performer_progress[record.stashdb_id] = PerformerProgress(
+                    faces_indexed=record.face_count,
+                    images_processed=self.builder_config.max_images_per_performer,
+                    images_available=self.builder_config.max_images_per_performer,
+                    last_synced=now,
+                )
 
         print(f"  Loaded {len(self.performers)} performers, {len(self.faces)} faces")
-        print(f"  {len(self.processed_ids)} performers already processed (will be skipped)")
+        print(f"  {len(self.performer_progress)} performers already processed (will be skipped)")
+
+    def _migrate_progress_v1_to_v2(self, old_progress: dict) -> dict[str, PerformerProgress]:
+        """
+        Migrate from v1 progress (processed_ids list) to v2 (per-performer tracking).
+
+        Uses face_count from performers.json to infer progress.
+        """
+        print("  Migrating progress from v1 to v2 schema...")
+        migrated = {}
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Get face counts from performers.json (already loaded in self.performers)
+        for universal_id, record in self.performers.items():
+            # Extract stashdb_id from universal_id (e.g., "stashdb.org:abc123" -> "abc123")
+            stashdb_id = record.stashdb_id
+
+            # We don't know how many images were available, but we know:
+            # - faces_indexed = record.face_count
+            # - images_processed >= faces_indexed (we processed at least that many)
+            # For migration, assume images_processed = max_images_per_performer (5)
+            # This is conservative - if they're incomplete, they'll get rechecked
+            migrated[stashdb_id] = PerformerProgress(
+                faces_indexed=record.face_count,
+                images_processed=self.builder_config.max_images_per_performer,
+                images_available=self.builder_config.max_images_per_performer,
+                last_synced=now,
+            )
+
+        # Also add any IDs from old processed_ids that aren't in performers
+        # (these are performers we tried but got no faces from)
+        for stashdb_id in old_progress.get("processed_ids", []):
+            if stashdb_id not in migrated:
+                migrated[stashdb_id] = PerformerProgress(
+                    faces_indexed=0,
+                    images_processed=self.builder_config.max_images_per_performer,
+                    images_available=self.builder_config.max_images_per_performer,
+                    last_synced=now,
+                )
+
+        print(f"  Migrated {len(migrated)} performer progress records")
+        return migrated
 
     def _get_image_cache_path(self, url: str) -> Path:
         """Get cache path for an image URL."""
