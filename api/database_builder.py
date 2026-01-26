@@ -660,6 +660,9 @@ Environment variables:
                         help="Only process performers updated since last sync (for incremental updates)")
     args = parser.parse_args()
 
+    if args.sync_updates_only:
+        print("Warning: --sync-updates-only is not yet fully implemented. Running normal build.")
+
     # Configure
     stashdb_config = StashDBConfig.from_env()
     if args.rate_limit:
