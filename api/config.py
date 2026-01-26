@@ -44,7 +44,7 @@ class BuilderConfig:
     batch_size: int = 100
 
     # Quality filters
-    min_face_confidence: float = 0.9
+    min_face_confidence: float = 0.8  # RetinaFace detection confidence threshold
     min_face_size: int = 50  # Minimum face width/height in pixels
 
     # Output
@@ -69,9 +69,6 @@ class DatabaseConfig:
     performers_json_path: Path = None
     manifest_json_path: Path = None
 
-    # Image cache
-    image_cache_dir: Path = None
-
     def __post_init__(self):
         self.data_dir = Path(self.data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -81,8 +78,6 @@ class DatabaseConfig:
         self.faces_json_path = self.faces_json_path or self.data_dir / "faces.json"
         self.performers_json_path = self.performers_json_path or self.data_dir / "performers.json"
         self.manifest_json_path = self.manifest_json_path or self.data_dir / "manifest.json"
-        self.image_cache_dir = self.image_cache_dir or self.data_dir / "image_cache"
-        self.image_cache_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Embedding dimensions

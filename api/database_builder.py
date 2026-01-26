@@ -7,7 +7,7 @@ Features:
 - Incremental builds: skip already-processed performers
 - Resume support: continue from where you left off after interruption
 - Auto-save: saves progress periodically to prevent data loss
-- Image caching: downloaded images are cached to disk
+- Memory-efficient: images downloaded, processed, then garbage collected (no disk caching)
 """
 import json
 import hashlib
@@ -272,28 +272,6 @@ class DatabaseBuilder:
         print(f"  Migrated {len(migrated)} performer progress records")
         return migrated
 
-    def _get_image_cache_path(self, url: str) -> Path:
-        """Get cache path for an image URL."""
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        return self.db_config.image_cache_dir / f"{url_hash}.jpg"
-
-    def _download_image(self, url: str) -> Optional[bytes]:
-        """Download image with caching."""
-        cache_path = self._get_image_cache_path(url)
-
-        # Check cache
-        if cache_path.exists():
-            return cache_path.read_bytes()
-
-        # Download from StashDB
-        data = self.stashdb.download_image(url)
-
-        # Cache if successful
-        if data:
-            cache_path.write_bytes(data)
-
-        return data
-
     def _process_image(self, image_data: bytes, record: PerformerRecord) -> bool:
         """
         Process an image and add face embedding to the index.
@@ -348,6 +326,33 @@ class DatabaseBuilder:
         self.stats["faces_indexed"] += 1
 
         return True
+
+    def _download_and_process_image(self, url: str, record: PerformerRecord) -> bool:
+        """
+        Download an image, process it for face embedding, and delete it.
+
+        This is the disk-efficient version that doesn't cache images.
+
+        Returns: True if a face was successfully indexed
+        """
+        # Download directly (no caching)
+        try:
+            image_data = self.stashdb.download_image(url)
+            if not image_data:
+                self.stats["images_failed"] += 1
+                return False
+        except Exception as e:
+            print(f"  Failed to download image for {record.name}: {e}")
+            self.stats["images_failed"] += 1
+            return False
+
+        # Process the image
+        result = self._process_image(image_data, record)
+
+        # Image data goes out of scope and is garbage collected
+        # No disk storage needed
+
+        return result
 
     def _save_progress(self):
         """Save progress to allow resuming."""
@@ -510,9 +515,7 @@ class DatabaseBuilder:
                 break
 
             self.stats["images_processed"] += 1
-            image_data = self._download_image(url)
-            if image_data:
-                self._process_image(image_data, record)
+            self._download_and_process_image(url, record)
             images_processed_this_run += 1
 
         # Update progress tracking
