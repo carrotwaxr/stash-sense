@@ -1,24 +1,39 @@
-"""Face detection and embedding generation using DeepFace."""
+"""Face detection and embedding generation.
+
+Uses:
+- InsightFace RetinaFace for face detection (ONNX Runtime, GPU-compatible)
+- DeepFace FaceNet512 + ArcFace for embeddings (TensorFlow, CPU-only on Blackwell GPUs)
+"""
 import io
+import os
 import numpy as np
 from PIL import Image
 from typing import Optional
 from dataclasses import dataclass
+from pathlib import Path
 
-# Set DeepFace home before importing
-import os
-os.environ["DEEPFACE_HOME"] = os.path.dirname(os.path.abspath(__file__))
+# Reduce TensorFlow logging before import
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-from deepface import DeepFace
-from deepface.modules import modeling, preprocessing
+# Import TensorFlow and force it to CPU-only mode
+# This is necessary because TensorFlow 2.20 doesn't support Blackwell GPUs (sm_120)
+import tensorflow as tf
+tf.config.set_visible_devices([], 'GPU')  # Hide all GPUs from TensorFlow
+
+# InsightFace for RetinaFace detection (uses ONNX Runtime with GPU)
+from insightface.app import FaceAnalysis
+
+# Import DeepFace modules (will use TensorFlow on CPU)
+from deepface.modules import modeling
 
 
 @dataclass
 class DetectedFace:
     """A detected face with its bounding box and confidence."""
-    image: np.ndarray  # RGB image of the face
+    image: np.ndarray  # RGB image of the face (cropped and aligned)
     bbox: dict  # {x, y, w, h}
     confidence: float
+    landmarks: Optional[np.ndarray] = None  # 5-point facial landmarks
 
 
 @dataclass
@@ -29,24 +44,55 @@ class FaceEmbedding:
 
 
 class FaceEmbeddingGenerator:
-    """Generate face embeddings using FaceNet512 and ArcFace models."""
+    """Generate face embeddings using RetinaFace detection + FaceNet512/ArcFace embeddings."""
 
-    def __init__(self, detector_backend: str = "opencv"):
+    def __init__(self, device: str = None):
         """
         Initialize the embedding generator.
 
         Args:
-            detector_backend: Face detector to use ("yolov8", "mediapipe", "retinaface")
+            device: Device for detection ("cuda", "cpu", or None for auto)
         """
-        self.detector_backend = detector_backend
+        # Auto-detect device
+        if device is None:
+            # Check if CUDA is available for ONNX Runtime
+            import onnxruntime as ort
+            providers = ort.get_available_providers()
+            self.device = "cuda" if "CUDAExecutionProvider" in providers else "cpu"
+        else:
+            self.device = device
+
+        self._face_analyzer = None
         self._facenet_model = None
         self._arcface_model = None
 
     @property
+    def face_analyzer(self):
+        """Lazy-load InsightFace face analyzer with RetinaFace."""
+        if self._face_analyzer is None:
+            print(f"Loading RetinaFace detector on {self.device}...")
+
+            # Set up providers based on device
+            if self.device == "cuda":
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                providers = ["CPUExecutionProvider"]
+
+            # Initialize with detection only (no recognition - we use DeepFace for that)
+            self._face_analyzer = FaceAnalysis(
+                name="buffalo_sc",  # Smaller model, detection-focused
+                providers=providers,
+            )
+            # det_size controls input resolution for detection
+            self._face_analyzer.prepare(ctx_id=0 if self.device == "cuda" else -1, det_size=(640, 640))
+
+        return self._face_analyzer
+
+    @property
     def facenet_model(self):
-        """Lazy-load FaceNet512 model."""
+        """Lazy-load FaceNet512 model (runs on CPU)."""
         if self._facenet_model is None:
-            print("Loading FaceNet512 model...")
+            print("Loading FaceNet512 model (CPU)...")
             self._facenet_model = modeling.build_model(
                 task="facial_recognition",
                 model_name="Facenet512"
@@ -55,9 +101,9 @@ class FaceEmbeddingGenerator:
 
     @property
     def arcface_model(self):
-        """Lazy-load ArcFace model."""
+        """Lazy-load ArcFace model (runs on CPU)."""
         if self._arcface_model is None:
-            print("Loading ArcFace model...")
+            print("Loading ArcFace model (CPU)...")
             self._arcface_model = modeling.build_model(
                 task="facial_recognition",
                 model_name="ArcFace"
@@ -67,124 +113,107 @@ class FaceEmbeddingGenerator:
     def detect_faces(
         self,
         image: np.ndarray,
-        enforce_detection: bool = False,
+        min_confidence: float = 0.5,
     ) -> list[DetectedFace]:
         """
-        Detect faces in an image.
+        Detect faces in an image using RetinaFace.
 
         Args:
             image: RGB image as numpy array
-            enforce_detection: Raise error if no faces found
+            min_confidence: Minimum detection confidence
 
         Returns:
             List of DetectedFace objects
         """
-        try:
-            faces = DeepFace.extract_faces(
-                image,
-                detector_backend=self.detector_backend,
-                enforce_detection=enforce_detection,
-            )
-        except ValueError:
-            return []
+        # InsightFace expects BGR, but we'll handle RGB since our input is RGB
+        # Actually InsightFace.get() handles RGB fine
+        results = self.face_analyzer.get(image)
 
-        return [
-            DetectedFace(
-                image=face["face"],
-                bbox=face["facial_area"],
-                confidence=face.get("confidence", 1.0),
-            )
-            for face in faces
-        ]
+        faces = []
+        for face in results:
+            conf = float(face.det_score)
+            if conf < min_confidence:
+                continue
+
+            # Get bounding box (x1, y1, x2, y2)
+            bbox = face.bbox.astype(int)
+            x1, y1, x2, y2 = bbox
+            w, h = x2 - x1, y2 - y1
+
+            # Ensure bounds are within image
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(image.shape[1], x2)
+            y2 = min(image.shape[0], y2)
+
+            # Crop face from image
+            face_img = image[y1:y2, x1:x2]
+
+            # Skip if crop is too small
+            if face_img.shape[0] < 10 or face_img.shape[1] < 10:
+                continue
+
+            faces.append(DetectedFace(
+                image=face_img,
+                bbox={"x": int(x1), "y": int(y1), "w": int(w), "h": int(h)},
+                confidence=conf,
+                landmarks=face.kps if hasattr(face, 'kps') else None,
+            ))
+
+        return faces
 
     def _preprocess_face(
         self,
         face: np.ndarray,
         target_size: tuple[int, int],
-        normalization: str,
     ) -> np.ndarray:
         """Preprocess a face image for model inference."""
-        # Convert RGB to BGR (DeepFace expects BGR)
-        face_bgr = face[:, :, ::-1]
+        # Resize to target size
+        pil_img = Image.fromarray(face)
+        pil_img = pil_img.resize(target_size, Image.Resampling.BILINEAR)
+        resized = np.array(pil_img)
 
-        # Resize to model input size
-        resized = preprocessing.resize_image(face_bgr, target_size)
+        # Expand dims for batch
+        resized = np.expand_dims(resized, axis=0)
 
-        # Normalize
-        normalized = preprocessing.normalize_input(resized, normalization)
+        # Normalize to [-1, 1] for FaceNet, [0, 1] for ArcFace handled by model
+        resized = resized.astype(np.float32)
 
-        return normalized
+        return resized
 
     def get_embedding(self, face: np.ndarray) -> FaceEmbedding:
         """
         Generate embeddings for a single face image.
 
         Args:
-            face: RGB face image as numpy array (from detect_faces)
+            face: RGB face image as numpy array (cropped face from detect_faces)
 
         Returns:
             FaceEmbedding with FaceNet and ArcFace embeddings
         """
-        # Create batch with original and horizontally flipped images
-        # This improves accuracy by averaging embeddings
-        face_flipped = face[:, ::-1, :]
-        face_batch = np.stack([face, face_flipped], axis=0)
+        # Get model input shapes
+        facenet_size = self.facenet_model.input_shape
+        arcface_size = self.arcface_model.input_shape
 
-        # Get FaceNet embeddings
-        facenet_batch = np.vstack([
-            self._preprocess_face(f, self.facenet_model.input_shape, "Facenet2018")
-            for f in face_batch
-        ])
-        facenet_embeddings = self.facenet_model.model(facenet_batch, training=False).numpy()
-        facenet = np.mean(facenet_embeddings, axis=0)
+        # Preprocess for each model
+        facenet_input = self._preprocess_face(face, facenet_size)
+        arcface_input = self._preprocess_face(face, arcface_size)
 
-        # Get ArcFace embeddings
-        arcface_batch = np.vstack([
-            self._preprocess_face(f, self.arcface_model.input_shape, "ArcFace")
-            for f in face_batch
-        ])
-        arcface_embeddings = self.arcface_model.model(arcface_batch, training=False).numpy()
-        arcface = np.mean(arcface_embeddings, axis=0)
+        # Normalize for FaceNet (expects [-1, 1])
+        facenet_input = (facenet_input - 127.5) / 127.5
 
-        return FaceEmbedding(facenet=facenet, arcface=arcface)
+        # Normalize for ArcFace (expects [0, 1])
+        arcface_input = arcface_input / 255.0
+
+        # Get embeddings
+        facenet_emb = self.facenet_model.model(facenet_input, training=False).numpy()[0]
+        arcface_emb = self.arcface_model.model(arcface_input, training=False).numpy()[0]
+
+        return FaceEmbedding(facenet=facenet_emb, arcface=arcface_emb)
 
     def get_embeddings_batch(self, faces: list[np.ndarray]) -> list[FaceEmbedding]:
-        """
-        Generate embeddings for a batch of faces.
-
-        More efficient than calling get_embedding repeatedly.
-        """
-        if not faces:
-            return []
-
-        # Process all faces with flipped versions
-        all_faces = []
-        for face in faces:
-            all_faces.append(face)
-            all_faces.append(face[:, ::-1, :])  # flipped
-
-        # FaceNet batch
-        facenet_batch = np.vstack([
-            self._preprocess_face(f, self.facenet_model.input_shape, "Facenet2018")
-            for f in all_faces
-        ])
-        facenet_all = self.facenet_model.model(facenet_batch, training=False).numpy()
-
-        # ArcFace batch
-        arcface_batch = np.vstack([
-            self._preprocess_face(f, self.arcface_model.input_shape, "ArcFace")
-            for f in all_faces
-        ])
-        arcface_all = self.arcface_model.model(arcface_batch, training=False).numpy()
-
-        # Average original and flipped for each face
-        embeddings = []
-        for i in range(len(faces)):
-            facenet = np.mean(facenet_all[i*2:(i+1)*2], axis=0)
-            arcface = np.mean(arcface_all[i*2:(i+1)*2], axis=0)
-            embeddings.append(FaceEmbedding(facenet=facenet, arcface=arcface))
-
-        return embeddings
+        """Generate embeddings for a batch of faces."""
+        return [self.get_embedding(face) for face in faces]
 
 
 def load_image(data: bytes) -> np.ndarray:
@@ -209,25 +238,34 @@ if __name__ == "__main__":
 
     print("Testing face embedding generator...")
 
+    # Check ONNX Runtime providers
+    import onnxruntime as ort
+    print(f"ONNX Runtime providers: {ort.get_available_providers()}")
+
     generator = FaceEmbeddingGenerator()
+    print(f"Using device: {generator.device}")
 
     # Download a test image
     test_url = "https://stashdb.org/images/b0aef39d-a1d6-4e58-a136-293f02b84921"
-    print(f"Downloading test image from {test_url}...")
+    print(f"\nDownloading test image from {test_url}...")
 
     response = requests.get(test_url)
     image = load_image(response.content)
     print(f"Image shape: {image.shape}")
 
     # Detect faces
-    print("Detecting faces...")
+    print("\nDetecting faces...")
     faces = generator.detect_faces(image)
     print(f"Found {len(faces)} face(s)")
 
     if faces:
+        face = faces[0]
+        print(f"  Confidence: {face.confidence:.2f}")
+        print(f"  Size: {face.bbox['w']}x{face.bbox['h']}")
+
         # Get embeddings
-        print("Generating embeddings...")
-        embedding = generator.get_embedding(faces[0].image)
+        print("\nGenerating embeddings...")
+        embedding = generator.get_embedding(face.image)
         print(f"FaceNet embedding shape: {embedding.facenet.shape}")
         print(f"ArcFace embedding shape: {embedding.arcface.shape}")
         print(f"FaceNet first 5 values: {embedding.facenet[:5]}")

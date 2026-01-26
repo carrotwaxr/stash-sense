@@ -1,0 +1,25 @@
+# Docker requirements (PyTorch installed separately with CUDA)
+
+# TensorFlow (CPU-only for embeddings, GPU not needed)
+tensorflow-cpu>=2.15.0
+
+# Face recognition
+deepface>=0.0.93
+insightface>=0.7.0
+onnxruntime-gpu>=1.15.0
+voyager>=2.0.0
+
+# API
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+httpx>=0.25.0
+
+# Image processing
+pillow>=10.0.0
+numpy<2
+opencv-python-headless>=4.8.0
+
+# Utilities
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+tqdm>=4.65.0

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>StashSense</Name>
+  <Repository>ghcr.io/carrotwaxr/stash-sense:latest</Repository>
+  <Registry>https://github.com/carrotwaxr/stash-sense/pkgs/container/stash-sense</Registry>
+  <Branch>
+    <Tag>latest</Tag>
+    <TagDescription>Latest stable release</TagDescription>
+  </Branch>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/carrotwaxr/stash-sense/issues</Support>
+  <Project>https://github.com/carrotwaxr/stash-sense</Project>
+  <Overview>AI-powered performer identification for Stash using face recognition against StashDB. Requires NVIDIA GPU with nvidia-container-toolkit for best performance (CPU fallback available).</Overview>
+  <Category>MediaApp:Other</Category>
+  <Icon>https://raw.githubusercontent.com/carrotwaxr/stash-sense/main/docs/assets/icon.png</Icon>
+  <ExtraParams>--runtime=nvidia --gpus all</ExtraParams>
+  <Config Name="API Port" Target="5000" Default="5787" Mode="tcp" Description="Port for the Stash Sense API" Type="Port" Display="always" Required="true"/>
+  <Config Name="Stash URL" Target="STASH_URL" Default="http://stash:9999" Mode="" Description="URL to your Stash instance (e.g., http://192.168.1.100:9999)" Type="Variable" Display="always" Required="true"/>
+  <Config Name="Stash API Key" Target="STASH_API_KEY" Default="" Mode="" Description="Stash API key (Settings → Security → API Key)" Type="Variable" Display="always" Required="true"/>
+  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/stash-sense/data" Mode="ro" Description="Path to database files (face_facenet.voy, performers.json, etc.)" Type="Path" Display="always" Required="true"/>
+  <Config Name="Model Cache" Target="/root/.insightface" Default="/mnt/user/appdata/stash-sense/models" Mode="rw" Description="Model weights cache (speeds up container restarts)" Type="Path" Display="advanced" Required="false"/>
+  <Config Name="NVIDIA Devices" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="GPU selection: 'all' or specific GPU UUID" Type="Variable" Display="advanced" Required="false"/>
+</Container>

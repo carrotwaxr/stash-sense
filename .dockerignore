@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data and models (mounted as volumes)
+api/data/
+*.voy
+*.jpg
+*.png
+
+# Docs
+docs/
+*.md
+!requirements*.txt
+
+# Tests
+test_*.py
+validate_*.py
+
+# Local config
+.env
+*.local
+
+# OS
+.DS_Store
+Thumbs.db

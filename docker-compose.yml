@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  face-recognition:
+    build: .
+    image: stash-face-recognition:latest
+    container_name: stash-face-recognition
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount the database files
+      - ./api/data:/data:ro
+      # Mount model weights cache (optional, speeds up restarts)
+      - face-recognition-models:/root/.deepface
+      - face-recognition-insightface:/root/.insightface
+    environment:
+      - DATA_DIR=/data
+      - PYTHONUNBUFFERED=1
+    # GPU support - requires nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  face-recognition-models:
+  face-recognition-insightface:

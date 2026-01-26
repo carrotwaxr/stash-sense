@@ -1,0 +1,29 @@
+name: Stash Sense
+description: AI-powered performer identification using face recognition against StashDB database
+version: 0.1.0
+url: https://github.com/carrotwaxr/stash-sense
+
+ui:
+  javascript:
+    - stash-sense.js
+  css:
+    - stash-sense.css
+
+settings:
+  sidecarUrl:
+    displayName: Stash Sense API URL
+    description: URL of the Stash Sense sidecar container (e.g., http://localhost:5000)
+    type: STRING
+  minConfidence:
+    displayName: Minimum Confidence
+    description: Minimum confidence threshold for matches (0-100, higher is stricter)
+    type: STRING
+  maxResults:
+    displayName: Maximum Results
+    description: Maximum number of matches to show per detected face
+    type: STRING
+
+exec:
+  - python
+  - "{pluginDir}/stash_sense_backend.py"
+interface: raw

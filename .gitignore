@@ -13,16 +13,25 @@ venv/
 *.pt
 *.onnx
 
-# Cache directories
-data/image_cache/
-api/.deepface/
-
-# Build artifacts
+# Database files (large, distributed separately)
 *.voy
-data/faces.json
-data/performers.json
+faces.json
+performers.json
+manifest.json
+progress.json
 
-# Reference: original stashface is at ~/code/stashface-reference/
+# Data directories (contains cached images and built databases)
+data/
+api/data/
+
+# Test and validation outputs
+api/test_output/
+api/validation/
+api/profile_test/
+
+# InsightFace model cache
+.insightface/
+api/.deepface/
 
 # IDE
 .idea/

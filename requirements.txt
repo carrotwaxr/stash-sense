@@ -10,11 +10,14 @@ torchvision
 
 # Face recognition
 deepface>=0.0.93
+insightface>=0.7.0  # RetinaFace detection (GPU via ONNX Runtime)
+onnxruntime-gpu>=1.15.0  # GPU support for InsightFace
 voyager>=2.0.0
 
 # API (for sidecar)
 fastapi>=0.100.0
-uvicorn>=0.23.0
+uvicorn[standard]>=0.23.0
+httpx>=0.25.0
 
 # Image processing
 pillow>=10.0.0
