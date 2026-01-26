@@ -382,15 +382,12 @@ class DatabaseBuilder:
         print(f"  Max images per performer: {self.builder_config.max_images_per_performer}")
         print(f"  Auto-save interval: every {self.AUTO_SAVE_INTERVAL} performers")
         if self.resume:
-            print(f"  Resume mode: ON (skipping {len(self.processed_ids)} already processed)")
+            print(f"  Resume mode: ON (skipping {len(self.performer_progress)} already processed)")
 
         if performer_ids:
             # Process specific performers
             performers_to_process = []
             for pid in performer_ids:
-                if pid in self.processed_ids:
-                    self.stats["performers_skipped"] += 1
-                    continue
                 performer = self.stashdb.get_performer(pid)
                 if performer:
                     performers_to_process.append(performer)
@@ -412,18 +409,29 @@ class DatabaseBuilder:
             if self._interrupted:
                 break
 
-            # Skip already processed
-            if performer.id in self.processed_ids:
-                self.stats["performers_skipped"] += 1
-                continue
+            # Get current progress for this performer
+            progress = self.performer_progress.get(performer.id)
+            images_available = len(performer.image_urls)
 
-            self._process_performer(performer, stashbox_name)
-            self.processed_ids.add(performer.id)
+            if progress is not None:
+                # Already seen this performer
+                if progress.is_complete():
+                    # Complete - skip entirely
+                    self.stats["performers_skipped"] += 1
+                    continue
+                elif not progress.needs_recheck(images_available):
+                    # Incomplete but no new images available - skip
+                    self.stats["performers_skipped"] += 1
+                    continue
+                # else: incomplete and has new images - will reprocess below
+
+            # Process this performer (new or incomplete with new images)
+            self._process_performer(performer, stashbox_name, progress)
             performers_since_save += 1
 
             # Auto-save periodically
             if performers_since_save >= self.AUTO_SAVE_INTERVAL:
-                tqdm.write(f"  Auto-saving progress ({len(self.processed_ids)} performers, {len(self.faces)} faces)...")
+                tqdm.write(f"  Auto-saving progress ({len(self.performer_progress)} performers, {len(self.faces)} faces)...")
                 self.save()
                 self._save_progress()
                 performers_since_save = 0
@@ -442,7 +450,7 @@ class DatabaseBuilder:
 
         return self.stats
 
-    def _process_performer(self, performer: StashDBPerformer, stashbox_name: str):
+    def _process_performer(self, performer: StashDBPerformer, stashbox_name: str, progress: Optional[PerformerProgress] = None):
         """Process a single performer."""
         self.stats["performers_processed"] += 1
 
