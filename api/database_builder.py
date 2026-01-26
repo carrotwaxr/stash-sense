@@ -656,6 +656,8 @@ Environment variables:
                         help="Database version string (default: YYYY.MM.DD)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from previous build (skip already processed performers)")
+    parser.add_argument("--sync-updates-only", action="store_true",
+                        help="Only process performers updated since last sync (for incremental updates)")
     args = parser.parse_args()
 
     # Configure
