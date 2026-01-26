@@ -386,6 +386,7 @@ class DatabaseBuilder:
         print(f"  Rate limit delay: {self.stashdb.rate_limit_delay}s")
         print(f"  Max images per performer: {self.builder_config.max_images_per_performer}")
         print(f"  Auto-save interval: every {self.AUTO_SAVE_INTERVAL} performers")
+        print(f"  Completeness threshold: {COMPLETENESS_THRESHOLD} faces")
         if self.resume:
             print(f"  Resume mode: ON (skipping {len(self.performer_progress)} already processed)")
 
@@ -447,10 +448,15 @@ class DatabaseBuilder:
         else:
             print(f"\n✅ Build complete!")
 
+        complete_count = sum(1 for p in self.performer_progress.values() if p.is_complete())
+        incomplete_count = len(self.performer_progress) - complete_count
+
         print(f"  Performers processed: {self.stats['performers_processed']}")
-        print(f"  Performers skipped (already done): {self.stats['performers_skipped']}")
+        print(f"  Performers skipped (complete): {self.stats['performers_skipped']}")
         print(f"  Performers with faces: {self.stats['performers_with_faces']}")
         print(f"  Total faces indexed: {self.stats['faces_indexed']}")
+        print(f"  Complete performers (>={COMPLETENESS_THRESHOLD} faces): {complete_count}")
+        print(f"  Incomplete performers (<{COMPLETENESS_THRESHOLD} faces): {incomplete_count}")
         print(f"  Images failed: {self.stats['images_failed']}")
 
         return self.stats
