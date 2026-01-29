@@ -706,6 +706,68 @@ class PerformerDatabase:
                 return Performer(**dict(row))
         return None
 
+    def get_face_counts_by_source(self, performer_id: int) -> dict[str, int]:
+        """
+        Get face counts per source for a performer.
+
+        Returns:
+            Dict mapping source name to face count
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT source_endpoint, COUNT(*) as count
+                FROM faces
+                WHERE performer_id = ?
+                GROUP BY source_endpoint
+                """,
+                (performer_id,),
+            )
+            return {row["source_endpoint"]: row["count"] for row in cursor.fetchall()}
+
+    def source_limit_reached(self, performer_id: int, source: str, max_faces: int) -> bool:
+        """
+        Check if a source has reached its face limit for a performer.
+
+        Args:
+            performer_id: Performer's database ID
+            source: Source name to check
+            max_faces: Maximum faces allowed from this source
+
+        Returns:
+            True if limit reached, False otherwise
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT COUNT(*) as count
+                FROM faces
+                WHERE performer_id = ? AND source_endpoint = ?
+                """,
+                (performer_id, source),
+            )
+            count = cursor.fetchone()["count"]
+            return count >= max_faces
+
+    def total_limit_reached(self, performer_id: int, max_faces: int) -> bool:
+        """
+        Check if total face limit is reached for a performer.
+
+        Args:
+            performer_id: Performer's database ID
+            max_faces: Maximum total faces allowed
+
+        Returns:
+            True if limit reached, False otherwise
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) as count FROM faces WHERE performer_id = ?",
+                (performer_id,),
+            )
+            count = cursor.fetchone()["count"]
+            return count >= max_faces
+
     # ==================== Merged IDs ====================
 
     def add_merged_id(
