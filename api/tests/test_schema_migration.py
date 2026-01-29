@@ -62,11 +62,12 @@ class TestSchemaMigration:
             assert len(faces) == 2
             assert all(f.source_endpoint == "stashdb" for f in faces)
 
-            # Verify schema version was updated
+            # Verify schema version was updated to latest
+            from database import SCHEMA_VERSION
             conn = sqlite3.connect(db_path)
             version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
             conn.close()
-            assert version == 4
+            assert version == SCHEMA_VERSION
 
         finally:
             Path(db_path).unlink(missing_ok=True)

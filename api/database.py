@@ -23,7 +23,7 @@ from url_normalizer import URLNormalizer, NormalizedURL
 
 
 # Schema version for migrations
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 @dataclass
@@ -259,6 +259,16 @@ class PerformerDatabase:
                 UNIQUE (performer_id, location, description)
             );
             CREATE INDEX idx_piercings_performer ON piercings(performer_id);
+
+            -- Scrape progress per source (for resume capability)
+            CREATE TABLE IF NOT EXISTS scrape_progress (
+                source TEXT PRIMARY KEY,
+                last_processed_id TEXT,
+                last_processed_time TEXT DEFAULT (datetime('now')),
+                performers_processed INTEGER DEFAULT 0,
+                faces_added INTEGER DEFAULT 0,
+                errors INTEGER DEFAULT 0
+            );
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
@@ -321,6 +331,20 @@ class PerformerDatabase:
             conn.executescript("""
                 UPDATE faces SET source_endpoint = 'stashdb' WHERE source_endpoint IS NULL;
                 UPDATE schema_version SET version = 4;
+            """)
+
+        if from_version < 5:
+            # Add scrape_progress table for resume capability
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS scrape_progress (
+                    source TEXT PRIMARY KEY,
+                    last_processed_id TEXT,
+                    last_processed_time TEXT DEFAULT (datetime('now')),
+                    performers_processed INTEGER DEFAULT 0,
+                    faces_added INTEGER DEFAULT 0,
+                    errors INTEGER DEFAULT 0
+                );
+                UPDATE schema_version SET version = 5;
             """)
 
     @contextmanager
@@ -856,6 +880,79 @@ class PerformerDatabase:
                 (performer_id,)
             ).fetchall()
             return [{"location": row[0], "description": row[1]} for row in rows]
+
+    # ==================== Scrape Progress ====================
+
+    def save_scrape_progress(
+        self,
+        source: str,
+        last_processed_id: str,
+        performers_processed: int = 0,
+        faces_added: int = 0,
+        errors: int = 0,
+    ):
+        """Save scrape progress for resume capability."""
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO scrape_progress (source, last_processed_id, performers_processed, faces_added, errors)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(source) DO UPDATE SET
+                    last_processed_id = excluded.last_processed_id,
+                    last_processed_time = datetime('now'),
+                    performers_processed = excluded.performers_processed,
+                    faces_added = excluded.faces_added,
+                    errors = excluded.errors
+                """,
+                (source, last_processed_id, performers_processed, faces_added, errors),
+            )
+
+    def get_scrape_progress(self, source: str) -> Optional[dict]:
+        """Get scrape progress for a source."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT last_processed_id, last_processed_time, performers_processed, faces_added, errors
+                FROM scrape_progress
+                WHERE source = ?
+                """,
+                (source,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                "last_processed_id": row["last_processed_id"],
+                "last_processed_time": row["last_processed_time"],
+                "performers_processed": row["performers_processed"],
+                "faces_added": row["faces_added"],
+                "errors": row["errors"],
+            }
+
+    def get_all_scrape_progress(self) -> dict[str, dict]:
+        """Get scrape progress for all sources."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT source, last_processed_id, last_processed_time, performers_processed, faces_added, errors
+                FROM scrape_progress
+                """
+            )
+            result = {}
+            for row in cursor.fetchall():
+                result[row["source"]] = {
+                    "last_processed_id": row["last_processed_id"],
+                    "last_processed_time": row["last_processed_time"],
+                    "performers_processed": row["performers_processed"],
+                    "faces_added": row["faces_added"],
+                    "errors": row["errors"],
+                }
+            return result
+
+    def clear_scrape_progress(self, source: str):
+        """Clear progress for a source (for fresh start)."""
+        with self._connection() as conn:
+            conn.execute("DELETE FROM scrape_progress WHERE source = ?", (source,))
 
     # ==================== Statistics ====================
 
