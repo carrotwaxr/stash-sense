@@ -23,7 +23,7 @@ from url_normalizer import URLNormalizer, NormalizedURL
 
 
 # Schema version for migrations
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -313,6 +313,14 @@ class PerformerDatabase:
                 CREATE INDEX IF NOT EXISTS idx_performers_stashdb_updated ON performers(stashdb_updated_at);
 
                 UPDATE schema_version SET version = 3;
+            """)
+
+        if from_version < 4:
+            # Ensure all existing faces have source_endpoint set
+            # (existing faces are from StashDB)
+            conn.executescript("""
+                UPDATE faces SET source_endpoint = 'stashdb' WHERE source_endpoint IS NULL;
+                UPDATE schema_version SET version = 4;
             """)
 
     @contextmanager
