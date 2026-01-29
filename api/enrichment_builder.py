@@ -20,6 +20,7 @@ from enrichment_config import EnrichmentConfig
 from enrichment_coordinator import EnrichmentCoordinator
 from stashdb_client import StashDBClient
 from theporndb_client import ThePornDBClient
+from babepedia_client import BabepediaScraper
 
 # Configure logging
 logging.basicConfig(
@@ -64,6 +65,19 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
                 rate_limit_delay=60 / source_config.rate_limit,
             ))
             logger.info(f"Created ThePornDB scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "babepedia":
+            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+            scraper = BabepediaScraper(
+                flaresolverr_url=flaresolverr_url,
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            if not scraper.flaresolverr.is_available():
+                logger.warning(f"FlareSolverr not available at {flaresolverr_url}, skipping babepedia")
+                continue
+
+            scrapers.append(scraper)
+            logger.info(f"Created Babepedia scraper (rate: {source_config.rate_limit} req/min)")
 
     return scrapers
 
