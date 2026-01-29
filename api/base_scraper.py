@@ -29,6 +29,7 @@ class ScrapedPerformer:
 
     # Identity graph fields (stash-boxes)
     birth_date: Optional[str] = None
+    death_date: Optional[str] = None
     career_start_year: Optional[int] = None
     career_end_year: Optional[int] = None
     height_cm: Optional[int] = None

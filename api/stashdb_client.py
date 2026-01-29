@@ -184,6 +184,7 @@ class StashDBClient(BaseScraper):
             aliases=p.get("aliases") or [],
             external_urls=urls_by_site,
             birth_date=p.get("birth_date"),
+            death_date=p.get("death_date"),
             gender=p.get("gender"),
             height_cm=p.get("height"),  # StashDB returns as "height" in cm
             eye_color=p.get("eye_color"),
