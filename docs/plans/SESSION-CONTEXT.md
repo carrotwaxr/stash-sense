@@ -1,7 +1,7 @@
 # Stash Sense: Session Context
 
 **Purpose:** Quick orientation for Claude sessions working on this project.
-**Last Updated:** 2026-01-28
+**Last Updated:** 2026-01-29
 
 ---
 
@@ -9,56 +9,56 @@
 
 | What | Command |
 |------|---------|
-| Run face recognition API | `cd api && DATABASE_PATH=./data-snapshot-20260127-1653 uvicorn main:app --reload` |
-| Resume database build | `cd api && python database_builder.py --resume --output ./data --max-performers 1000000 --rate-limit 0.25` |
-| Test scraping sources | `cd api && python test_scrape_sources.py "Performer Name"` |
-| Test URL enrichment | `cd api && python test_url_enrichment.py <stashdb-uuid>` |
+| Run sidecar (live DB) | `cd api && DATA_DIR=./data STASH_URL=http://localhost:9999 STASH_API_KEY=xxx uvicorn main:app --reload` |
+| Run sidecar (backup) | `cd api && DATA_DIR=./data-backup-20260129-complete STASH_URL=http://localhost:9999 STASH_API_KEY=xxx uvicorn main:app --reload` |
+| Check metadata refresh | `cat api/data/*_refresh_progress.json \| python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Progress: {d[\"stats\"][\"processed\"]:,}/{d[\"stats\"][\"total\"]:,} ({d[\"stats\"][\"processed\"]/d[\"stats\"][\"total\"]*100:.1f}%)')"` |
+| Resume metadata refresh | `cd api && python metadata_refresh.py --database ./data/performers.db --resume` |
 | Current database stats | `cat api/data/manifest.json` |
-| Stash plugin | `plugin/` directory |
+| Stash plugin | `plugin/` directory (symlink to Stash plugins folder) |
 
 ## Current State
 
-- **Database Build:** ~93% complete (~96k faces embedded, nearly done!)
-- **SQLite Migration:** ✅ Complete - now using `performers.db` (schema v3)
-- **New Fields:** `scene_count`, `stashdb_updated_at` for incremental sync
-- **Working:** Face recognition API, Stash plugin, database builder
-- **Snapshot Available:** `api/data-snapshot-20260127-1653/` - usable for testing
+- **Database Build:** ✅ COMPLETE - 58K performers, 103K faces
+- **SQLite Migration:** ✅ Complete - `performers.db` (schema v3)
+- **Metadata Refresh:** 🔄 Running (~2% done, ~5 hrs remaining)
+- **Recommendations System:** ✅ Complete - duplicate performers & duplicate scene files analyzers
+- **Plugin:** ✅ Complete - Face recognition + recommendations dashboard
+- **Backup Available:** `api/data-backup-20260129-complete/` - frozen copy of complete database
 
 ---
 
 ## What This Project Does
 
-**Stash Sense** is a face recognition sidecar for Stash that identifies performers in scenes.
+**Stash Sense** is an AI-powered sidecar for Stash with two main features:
 
-**Core Flow:**
-1. User clicks "Identify Performers" on a scene in Stash
-2. Plugin sends scene sprite sheet to our FastAPI sidecar
-3. Sidecar detects faces, generates embeddings, queries pre-built database
-4. Returns matches with StashDB IDs - user can link performers
+### 1. Face Recognition
+- Identifies performers in scenes using face embeddings
+- Pre-built database of StashDB performers (~58K with faces)
+- Click "Identify Performers" on scene → get matches with StashDB IDs
 
-**Key Insight:** We distribute a pre-built embedding database (~1GB), not model weights. Users download the database, run the sidecar, and get instant performer identification without training anything.
+### 2. Recommendations Engine
+- Analyzes Stash library for curation opportunities
+- **Duplicate Performers:** Finds performers that may be duplicates (same name, shared scenes, StashDB IDs)
+- **Duplicate Scene Files:** Finds scenes with multiple files, suggests which to keep/delete
 
-**Future Scope:** The architecture supports additional AI capabilities (scene tagging, visual similarity, OCR) but this document focuses on performer recognition - the current priority. See [project-status-and-vision.md](2026-01-26-project-status-and-vision.md) for the broader vision.
-
-## Architecture
-
+**Architecture:**
 ```
-User's Stash                          Face Recognition Sidecar
+User's Stash                          Stash Sense Sidecar
 ┌─────────────┐                      ┌─────────────────────────┐
-│ Plugin UI   │ ──POST /identify──►  │ FastAPI                 │
-│ (JavaScript)│                      │ ├─ RetinaFace (detect)  │
-│             │ ◄──JSON matches────  │ ├─ FaceNet512 (embed)   │
-└─────────────┘                      │ └─ Voyager (search)     │
+│ Plugin UI   │ ──via Python proxy─► │ FastAPI                 │
+│ (JavaScript)│                      │ ├─ /identify (faces)    │
+│             │ ◄──JSON responses──  │ ├─ /recommendations     │
+└─────────────┘                      │ └─ /health              │
                                      │                         │
-                                     │ /data volume:           │
+                                     │ DATA_DIR volume:        │
                                      │ ├─ face_*.voy (indices) │
-                                     │ ├─ performers.db (SQLite)│
-                                     │ ├─ faces.json (idx map) │
+                                     │ ├─ performers.db        │
+                                     │ ├─ stash_sense.db       │
                                      │ └─ manifest.json        │
                                      └─────────────────────────┘
 ```
 
-**Detailed design:** [face-recognition-system-design.md](2026-01-24-face-recognition-system-design.md)
+**Key Insight:** Plugin JS cannot directly call sidecar due to CSP. All API calls route through `stash_sense_backend.py` which proxies to the sidecar.
 
 ---
 
@@ -70,10 +70,16 @@ User's Stash                          Face Recognition Sidecar
 - FastAPI sidecar with /identify endpoints
 - Stash plugin with "Identify Performers" UI
 
-### Phase 2: Full StashDB Database 🔨 NEARLY COMPLETE
-- Building complete StashDB database (~103k performers)
-- Currently ~93% complete (~96k faces), finishing up
-- SQLite migration complete (schema v3 with identity fields)
+### Phase 2: Full StashDB Database ✅ COMPLETE
+- 58K performers with 103K faces embedded
+- SQLite migration complete (schema v3)
+- Metadata refresh tool for URL/alias updates
+
+### Phase 2.5: Recommendations System ✅ COMPLETE
+- Recommendations database (stash_sense.db)
+- Duplicate performer analyzer
+- Duplicate scene files analyzer
+- Plugin dashboard UI with resolve/dismiss actions
 
 ### Phase 3: Multi-Stash-Box Support ⏳ NEXT
 - Add ThePornDB, PMVStash, JAVStash, FansDB
@@ -82,49 +88,49 @@ User's Stash                          Face Recognition Sidecar
 - **Docs:** [performer-identity-graph.md](2026-01-27-performer-identity-graph.md), [concurrent-scraping-architecture.md](2026-01-26-concurrent-scraping-architecture.md)
 
 ### Phase 4: Embedding Enrichment
-- Reference site scraping (Babepedia, IAFD, FreeOnes, etc.)
+- Reference site scraping (Babepedia, IAFD, FreeOnes)
 - Increase embeddings per performer (current avg: 1.04 → goal: 5-10)
 - **Docs:** [reference-site-enrichment.md](2026-01-26-reference-site-enrichment.md), [data-sources-catalog.md](2026-01-27-data-sources-catalog.md)
 
-### Phase 5: Testing & Tooling
+### Phase 5: Testing & Polish
 - Accuracy validation across sources
-- Curation UI for uncertain matches
-- Database management tooling
+- Additional recommendation analyzers
+- Performance optimization
 
 ### Phase 6: Release & Distribution
 - Package database for GitHub Releases
-- Unraid Docker template
-- GPU passthrough documentation
-- User-facing documentation
+- Docker image / Unraid template
+- User documentation
 
 ---
 
 ## What Can Be Worked On Now
 
-### While Database Build Runs (Use 65% Snapshot)
+### Plugin/Sidecar Improvements
+
+| Task | Description |
+|------|-------------|
+| **Face recognition UX** | Improve the identify modal, add "link performer" action |
+| **More analyzers** | Missing performers, untagged scenes, similar scenes |
+| **Bulk actions** | Process multiple recommendations at once |
+| **Settings UI** | Better plugin configuration page |
+| **Error handling** | Improve error messages and recovery |
+
+### Multi-Source Support (Phase 3)
 
 | Task | Description | Docs |
 |------|-------------|------|
-| **ThePornDB client** | Build API client, test cross-linking via `extras.links.StashDB` | [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) |
-| **Stash-box unified client** | Refactor for PMVStash/JAVStash/FansDB (same GraphQL schema) | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
-| **URL normalization library** | ✅ Basic impl in `url_normalizer.py` - parse IAFD, Twitter, IMDb URLs into canonical IDs | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
-| **Reference site scrapers** | Babepedia, IAFD, FreeOnes - patterns documented | [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) |
-| **Identity graph schema** | ✅ Foundation in `database.py` - has aliases, URLs, merged_ids tables | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
-| **Accuracy testing** | Validate recognition against 65% snapshot | [face-recognition-system-design.md](2026-01-24-face-recognition-system-design.md) |
+| **ThePornDB client** | Already have `theporndb_client.py` - test and integrate | [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) |
+| **Stash-box unified client** | PMVStash/JAVStash/FansDB (same GraphQL schema) | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
+| **Identity graph** | Cross-database performer linking | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
 
-### Blocked Until Full Database
+### Reference Site Enrichment (Phase 4)
 
-| Task | Why Blocked |
+| Task | Description |
 |------|-------------|
-| Final accuracy benchmarks | Need complete performer coverage |
-| Database packaging | Need final checksums and version |
-| Multi-source merge testing | Need full StashDB as baseline |
-
-## What NOT To Work On Yet
-
-- Scene tagging (CLIP/YOLO) - future phase, not current priority
-- Recommendations - out of scope for now
-- Public release prep - scraping and testing come first
+| **Babepedia scraper** | HTML scraping, needs FlareSolverr |
+| **IAFD scraper** | Structured data, good for aliases |
+| **FreeOnes scraper** | Extensive metadata |
 
 ---
 
@@ -134,67 +140,74 @@ User's Stash                          Face Recognition Sidecar
 
 | File | Purpose |
 |------|---------|
-| `main.py` | FastAPI app, `/identify`, `/identify/scene`, `/health` endpoints |
-| `database_builder.py` | Builds embedding database from StashDB |
-| `database.py` | SQLite database layer (schema v3) |
-| `stashdb_client.py` | GraphQL client for StashDB API |
-| `theporndb_client.py` | REST client for ThePornDB API |
-| `recognizer.py` | Queries Voyager indices for face matches |
-| `embeddings.py` | RetinaFace detection, FaceNet/ArcFace embedding generation |
-| `config.py` | Configuration dataclasses |
-| `data/` | Live database files (don't commit) |
-| `data-snapshot-*/` | Point-in-time database copies for testing |
+| `main.py` | FastAPI app - face recognition + recommendations |
+| `recommendations_router.py` | `/recommendations` endpoints |
+| `recommendations_db.py` | SQLite database for recommendations |
+| `recommendations_analyzers.py` | Analyzer implementations |
+| `database_builder.py` | Builds face embedding database |
+| `metadata_refresh.py` | Updates performer metadata from StashDB |
+| `database.py` | SQLite layer for performer metadata |
+| `stashdb_client.py` | GraphQL client for StashDB |
+| `theporndb_client.py` | REST client for ThePornDB |
+| `recognizer.py` | Voyager index queries |
+| `embeddings.py` | Face detection and embedding |
+| `data/` | Live database (don't commit) |
+| `data-backup-*/` | Point-in-time backups |
 
 ### Stash Plugin (`plugin/`)
 
 | File | Purpose |
 |------|---------|
-| `face-recognition.js` | UI integration, "Identify Performers" button |
-| `face-recognition.yml` | Plugin manifest and settings |
-| `face_recognition_backend.py` | Python backend for CSP bypass |
-| `face-recognition.css` | Modal styling |
+| `stash-sense.yml` | Plugin manifest and settings |
+| `stash-sense-core.js` | Shared utilities, settings, API client |
+| `stash-sense-recommendations.js` | Recommendations dashboard UI |
+| `stash-sense.js` | Face recognition UI (identify modal) |
+| `stash-sense.css` | All plugin styles |
+| `stash_sense_backend.py` | Python proxy for CSP bypass |
 
 ### Documentation (`docs/plans/`)
 
 | Document | When To Read |
 |----------|--------------|
-| [face-recognition-system-design.md](2026-01-24-face-recognition-system-design.md) | API design, data formats, pipeline details |
-| [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) | Cross-database linking, **URL-first resolution strategy** |
-| [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) | All data sources, rate limits, URL patterns |
-| [concurrent-scraping-architecture.md](2026-01-26-concurrent-scraping-architecture.md) | Multi-source scraping design |
-| [reference-site-enrichment.md](2026-01-26-reference-site-enrichment.md) | Reference site scraping, **smart enrichment strategies** |
-| [project-status-and-vision.md](2026-01-26-project-status-and-vision.md) | Full vision, **accuracy enhancement strategies** |
+| `SESSION-CONTEXT.md` | Start of every session (this file) |
+| [face-recognition-system-design.md](2026-01-24-face-recognition-system-design.md) | Face recognition details |
+| [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) | Multi-source linking strategy |
+| [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) | All data sources with rate limits |
 
 ---
 
 ## Important Context
 
-### Technical Decisions
+### Two Databases
 
-| Decision | Rationale |
-|----------|-----------|
-| **CPU for embeddings (dev)** | Current dev GPU (RTX 5060 Ti/Blackwell) lacks TensorFlow support. Production will support GPU embeddings where available. Hardware flexibility is a goal. |
-| **Dual embedding models** | FaceNet512 + ArcFace ensemble improves accuracy over single model |
-| **Voyager for indices** | Fast cosine similarity search, compact E4M3 storage |
-| **SQLite for metadata** | Migrated from JSON to SQLite (`performers.db`). Schema v3 includes identity fields (aliases, URLs, tattoos, piercings) and sync fields (`scene_count`, `stashdb_updated_at`). |
+| Database | Purpose | Location |
+|----------|---------|----------|
+| `performers.db` | Face recognition metadata (read-only at runtime) | `DATA_DIR/performers.db` |
+| `stash_sense.db` | Recommendations (read-write) | `DATA_DIR/stash_sense.db` |
+
+### CSP Bypass Pattern
+
+Browser JS cannot call sidecar directly due to Content Security Policy. Pattern:
+1. JS calls `runPluginOperation(mode, args)` → Stash GraphQL
+2. Stash executes `stash_sense_backend.py` with args
+3. Python makes HTTP request to sidecar
+4. Response flows back through GraphQL
+
+### Environment Variables
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `DATA_DIR` | Path to database files | `./data` |
+| `STASH_URL` | Stash GraphQL endpoint | `http://localhost:9999` |
+| `STASH_API_KEY` | Stash API key | `eyJ...` |
 
 ### Rate Limits
 
 | Source | Safe Rate | Notes |
 |--------|-----------|-------|
-| StashDB | 240/min | Running 24h+ stable |
-| ThePornDB | 240/min | REST API, not GraphQL |
-| PMVStash | 300/min | Same schema as StashDB |
-| JAVStash | 300/min | ~1 image per performer (limitation) |
-| Reference sites | 30-60/min | HTML scraping, be respectful |
-
-### Gotchas
-
-- **~50% of StashDB performers have no detectable faces** - Missing images or faces not detected
-- **StashDB avg 1.04 faces/performer** - Need reference sites to improve accuracy
-- **ThePornDB only ~3.3% have explicit StashDB links** - Most need face/name matching
-- **JAVStash single image per performer** - Major accuracy limitation, need supplemental sources
-- **FlareSolverr needed for some sites** - Babepedia, IAFD, Indexxx require it for bulk scraping
+| StashDB | 240/min | 0.25s between requests |
+| ThePornDB | 240/min | REST API |
+| Reference sites | 30-60/min | Be respectful |
 
 ---
 
@@ -203,10 +216,13 @@ User's Stash                          Face Recognition Sidecar
 ### Quick Status Check
 
 ```bash
-# Database build progress (if running)
-ps aux | grep database_builder
+# Check if sidecar is running
+curl -s http://localhost:5000/health | python -c "import json,sys; d=json.load(sys.stdin); print(f'Status: {d[\"status\"]}, Performers: {d[\"performer_count\"]:,}')"
 
-# Current database stats
+# Metadata refresh progress (if running)
+cat api/data/*_refresh_progress.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Processed: {d[\"stats\"][\"processed\"]:,}/{d[\"stats\"][\"total\"]:,}')"
+
+# Database stats
 cat api/data/manifest.json | python -c "import json,sys; d=json.load(sys.stdin); print(f'Performers: {d[\"performer_count\"]:,}, Faces: {d[\"face_count\"]:,}')"
 
 # Git status
@@ -215,26 +231,9 @@ git status --short
 
 ### Before Writing Code
 
-1. **Read this document** for current state and priorities
+1. **Read this document** for current state
 2. **Check the roadmap** - what phase are we in?
-3. **Check "What To Work On"** - is the task blocked or actionable?
-4. **Read relevant detailed doc** before implementing (links throughout)
-
-### Key Commands
-
-```bash
-# Run API sidecar (against snapshot for testing)
-cd api && DATABASE_PATH=./data-snapshot-20260127-1653 uvicorn main:app --reload
-
-# Resume database build
-cd api && python database_builder.py --resume --output ./data --max-performers 1000000 --rate-limit 0.25
-
-# Test a scraper
-cd api && python test_scrape_sources.py "Angela White"
-
-# Test URL enrichment
-cd api && python test_url_enrichment.py <stashdb-uuid>
-```
+3. **Read relevant detailed docs** before implementing
 
 ---
 
