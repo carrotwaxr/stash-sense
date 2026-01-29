@@ -1,0 +1,108 @@
+# Multi-source enrichment configuration
+# See: docs/plans/2026-01-29-multi-source-enrichment-design.md
+
+global:
+  max_faces_per_performer: 20
+  default_rate_limit: 60
+
+  quality_filters:
+    min_face_size: 80
+    min_image_size: 400
+    min_detection_confidence: 0.8
+    max_face_angle: 45.0
+    prefer_single_face: true
+
+stash_boxes:
+  stashdb:
+    enabled: true
+    url: "https://stashdb.org/graphql"
+    rate_limit: 240
+    max_faces: 5
+    priority: 1
+    trust_level: high
+
+  theporndb:
+    enabled: true
+    url: "https://api.theporndb.net"
+    rate_limit: 240
+    max_faces: 5
+    priority: 2
+    trust_level: high
+
+  pmvstash:
+    enabled: false  # Enable after testing
+    url: "https://pmvstash.org/graphql"
+    rate_limit: 300
+    max_faces: 3
+    priority: 3
+    trust_level: high
+
+  javstash:
+    enabled: false  # Enable after testing
+    url: "https://javstash.org/graphql"
+    rate_limit: 300
+    max_faces: 3
+    priority: 4
+    trust_level: high
+
+  fansdb:
+    enabled: false  # Enable after testing
+    url: "https://fansdb.cc/graphql"
+    rate_limit: 240
+    max_faces: 3
+    priority: 5
+    trust_level: high
+
+reference_sites:
+  babepedia:
+    enabled: false  # Enable after testing
+    trust_level: high
+    rate_limit: 60
+    max_faces: 5
+    gender_filter: female
+    needs_flaresolverr: true
+
+  iafd:
+    enabled: false
+    trust_level: high
+    rate_limit: 120
+    max_faces: 3
+    needs_flaresolverr: true
+
+  freeones:
+    enabled: false
+    trust_level: medium
+    rate_limit: 30
+    max_faces: 5
+    gender_filter: female
+    needs_flaresolverr: false
+
+  boobpedia:
+    enabled: false
+    trust_level: medium
+    rate_limit: 60
+    max_faces: 3
+    gender_filter: female
+    needs_flaresolverr: false
+
+  pornpics:
+    enabled: false
+    trust_level: low
+    rate_limit: 60
+    max_faces: 5
+    needs_flaresolverr: false
+
+  elitebabes:
+    enabled: false
+    trust_level: low
+    rate_limit: 60
+    max_faces: 5
+    gender_filter: female
+    needs_flaresolverr: false
+
+  javdatabase:
+    enabled: false
+    trust_level: medium
+    rate_limit: 60
+    max_faces: 3
+    needs_flaresolverr: false
