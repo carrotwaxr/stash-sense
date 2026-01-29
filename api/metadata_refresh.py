@@ -207,7 +207,7 @@ class MetadataRefresher:
                         performer.career_start_year,
                         performer.career_end_year,
                         performer.scene_count,
-                        performer.updated,
+                        performer.updated_at,
                         internal_id,
                     ))
                     conn.commit()
@@ -216,8 +216,8 @@ class MetadataRefresher:
                         updated = True
 
             # Add URLs
-            if performer.urls:
-                for site_name, urls in performer.urls.items():
+            if performer.external_urls:
+                for site_name, urls in performer.external_urls.items():
                     for url in urls:
                         if self.db.add_url(internal_id, url, 'stashdb'):
                             self.stats.urls_added += 1
