@@ -4,6 +4,8 @@ import time
 from typing import Iterator, Optional
 from dataclasses import dataclass, field
 
+from base_scraper import BaseScraper, ScrapedPerformer
+
 
 @dataclass
 class StashDBPerformer:
@@ -40,8 +42,11 @@ class StashDBPerformer:
     scene_count: Optional[int] = None  # Number of scenes (for prioritization)
     updated: Optional[str] = None  # StashDB update timestamp (ISO format)
 
-class StashDBClient:
+class StashDBClient(BaseScraper):
     """Client for the StashDB GraphQL API."""
+
+    source_name = "stashdb"
+    source_type = "stash_box"
 
     def __init__(self, url: str, api_key: str, rate_limit_delay: float = 0.5):
         """
@@ -52,13 +57,12 @@ class StashDBClient:
             api_key: API key for authentication
             rate_limit_delay: Delay between requests to avoid rate limiting
         """
+        super().__init__(rate_limit_delay=rate_limit_delay)
         self.url = url
         self.headers = {
             "ApiKey": api_key,
             "Content-Type": "application/json",
         }
-        self.rate_limit_delay = rate_limit_delay
-        self._last_request_time = 0
 
     def _rate_limit(self):
         """Apply rate limiting between requests."""
@@ -68,14 +72,22 @@ class StashDBClient:
         self._last_request_time = time.time()
 
     def _query(self, query: str, variables: dict = None, max_retries: int = 5) -> dict:
-        """Execute a GraphQL query with retry on rate limit."""
+        """Execute a GraphQL query with retry on rate limit and connection errors."""
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
 
+        last_error = None
         for attempt in range(max_retries):
             self._rate_limit()
-            response = requests.post(self.url, json=payload, headers=self.headers)
+            try:
+                response = requests.post(self.url, json=payload, headers=self.headers, timeout=30)
+            except requests.exceptions.RequestException as e:
+                wait_time = 2 ** attempt * 5  # 5s, 10s, 20s, 40s, 80s
+                print(f"  Request error: {e}, waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
+                last_error = e
+                time.sleep(wait_time)
+                continue
 
             if response.status_code == 429:
                 wait_time = 2 ** attempt * 10  # 10s, 20s, 40s, 80s, 160s
@@ -89,9 +101,9 @@ class StashDBClient:
                 raise Exception(f"GraphQL errors: {result['errors']}")
             return result["data"]
 
-        raise Exception(f"Max retries ({max_retries}) exceeded due to rate limiting")
+        raise Exception(f"Max retries ({max_retries}) exceeded: {last_error}")
 
-    def get_performer(self, stashdb_id: str) -> Optional[StashDBPerformer]:
+    def get_performer(self, stashdb_id: str) -> Optional[ScrapedPerformer]:
         """Get a single performer by ID with all identity graph fields."""
         query = """
         query FindPerformer($id: ID!) {
@@ -140,8 +152,8 @@ class StashDBClient:
 
         return self._parse_performer(performer)
 
-    def _parse_performer(self, p: dict) -> StashDBPerformer:
-        """Parse a performer dict from GraphQL response into StashDBPerformer."""
+    def _parse_performer(self, p: dict) -> ScrapedPerformer:
+        """Parse a performer dict from GraphQL response into ScrapedPerformer."""
         # Group URLs by site name
         urls_by_site: dict[str, list[str]] = {}
         for url_entry in p.get("urls", []):
@@ -162,7 +174,7 @@ class StashDBClient:
             for t in p.get("piercings") or []
         ]
 
-        return StashDBPerformer(
+        return ScrapedPerformer(
             id=p["id"],
             name=p["name"],
             disambiguation=p.get("disambiguation"),
@@ -170,9 +182,8 @@ class StashDBClient:
             country=p.get("country"),
             ethnicity=p.get("ethnicity"),
             aliases=p.get("aliases") or [],
-            urls=urls_by_site,
+            external_urls=urls_by_site,
             birth_date=p.get("birth_date"),
-            death_date=p.get("death_date"),
             gender=p.get("gender"),
             height_cm=p.get("height"),  # StashDB returns as "height" in cm
             eye_color=p.get("eye_color"),
@@ -183,13 +194,14 @@ class StashDBClient:
             tattoos=tattoos,
             piercings=piercings,
             scene_count=p.get("scene_count"),
-            updated=p.get("updated"),
+            updated_at=p.get("updated"),
+            stash_ids={"stashdb": p["id"]},  # Include self reference
         )
 
     def get_performers_batch(
         self,
         stashdb_ids: list[str],
-    ) -> dict[str, StashDBPerformer]:
+    ) -> dict[str, ScrapedPerformer]:
         """
         Get multiple performers by their IDs.
 
@@ -207,9 +219,9 @@ class StashDBClient:
         self,
         page: int = 1,
         per_page: int = 25,
-        sort: str = "CREATED_AT",
-        direction: str = "ASC",  # Ascending = oldest first, stable for pagination
-    ) -> tuple[int, list[StashDBPerformer]]:
+        sort: str = "NAME",
+        direction: str = "ASC",  # NAME sort is stable (unique values), unlike CREATED_AT which has 50k+ duplicates
+    ) -> tuple[int, list[ScrapedPerformer]]:
         """
         Query performers with pagination.
 
@@ -278,7 +290,7 @@ class StashDBClient:
         self,
         per_page: int = 25,
         max_performers: int = None,
-    ) -> Iterator[StashDBPerformer]:
+    ) -> Iterator[ScrapedPerformer]:
         """
         Iterate through all performers in StashDB.
 
@@ -307,7 +319,7 @@ class StashDBClient:
         since: str,  # ISO format date string
         per_page: int = 25,
         max_performers: int = None,
-    ) -> Iterator[StashDBPerformer]:
+    ) -> Iterator[ScrapedPerformer]:
         """
         Iterate through performers updated since a given date.
 
