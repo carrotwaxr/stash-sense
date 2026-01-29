@@ -12,18 +12,54 @@
 | Run sidecar (live DB) | `cd api && DATA_DIR=./data STASH_URL=http://localhost:9999 STASH_API_KEY=xxx uvicorn main:app --reload` |
 | Run sidecar (backup) | `cd api && DATA_DIR=./data-backup-20260129-complete STASH_URL=http://localhost:9999 STASH_API_KEY=xxx uvicorn main:app --reload` |
 | Check metadata refresh | `cat api/data/*_refresh_progress.json \| python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Progress: {d[\"stats\"][\"processed\"]:,}/{d[\"stats\"][\"total\"]:,} ({d[\"stats\"][\"processed\"]/d[\"stats\"][\"total\"]*100:.1f}%)')"` |
-| Resume metadata refresh | `cd api && python metadata_refresh.py --database ./data/performers.db --resume` |
+| Resume metadata refresh | `cd api && python metadata_refresh.py --database ./data/performers.db --all --resume` |
+| Enrichment status | `cd api && python enrichment_builder.py --status` |
+| Run enrichment | `cd api && python enrichment_builder.py --sources stashdb` |
 | Current database stats | `cat api/data/manifest.json` |
 | Stash plugin | `plugin/` directory (symlink to Stash plugins folder) |
 
 ## Current State
 
-- **Database Build:** ✅ COMPLETE - 58K performers, 103K faces
-- **SQLite Migration:** ✅ Complete - `performers.db` (schema v3)
-- **Metadata Refresh:** 🔄 Running (~2% done, ~5 hrs remaining)
+- **Database Build:** ✅ COMPLETE - 75K performers, 70K faces (avg 1.16 faces/performer with faces)
+- **SQLite Migration:** ✅ Complete - `performers.db` (schema v5)
+- **Metadata Refresh:** 🔄 Running (updates URLs, aliases, identity graph fields)
+- **Multi-Source Enrichment:** ✅ Infrastructure complete (Tasks 1-10)
 - **Recommendations System:** ✅ Complete - duplicate performers & duplicate scene files analyzers
 - **Plugin:** ✅ Complete - Face recognition + recommendations dashboard
-- **Backup Available:** `api/data-backup-20260129-complete/` - frozen copy of complete database
+- **Backup Available:** `api/data/performers_backup_20260129_*.db` - pre-enrichment snapshot
+
+### Active Work (2026-01-29)
+
+**1. Missing Performers Recovery** ✅ COMPLETE
+- Found and added 3,223 performers missing from DB due to StashDB pagination bug
+- Fixed: `stashdb_client.py` now uses NAME sort (stable)
+- Database now has 75,251 performers
+
+**2. Multi-Source Enrichment Infrastructure** ✅ COMPLETE
+- `base_scraper.py` - Unified scraper interface with rate limiting
+- `enrichment_config.py` - YAML config + CLI overrides
+- `quality_filters.py` - Face quality validation (size, angle, confidence)
+- `write_queue.py` - Async queue for serialized DB writes
+- `enrichment_coordinator.py` - Runs scrapers concurrently
+- `enrichment_builder.py` - CLI to run enrichment
+- Schema v5 with per-source face tracking and scrape progress
+- 52 tests passing
+
+**3. Face Detection Tuning** ✅ COMPLETE
+- Tested 1080p and 480p scenes with comprehensive methodology
+- **Results:** 70% accuracy on 1080p (optimal scenes), 40% on 480p
+- **Key findings:**
+  - Performers with 3+ faces in DB match reliably
+  - Burst sampling tested and disproven (worse than even sampling)
+  - 30-40 frames is sweet spot for speed/accuracy
+  - Scene content (lighting, angles) matters more than resolution
+- **Reference:** [face-detection-tuning.md](face-detection-tuning.md) for full methodology and results
+
+**3. V2 Matching Logic** ✅ DONE
+- `recognize_image()` now uses V2 matching with adaptive health detection
+- Replaced sprite-based scene identification with ffmpeg full-resolution frames
+- Plugin backend updated to use new endpoint parameters
+- Added burst mode to frame extractor (but even sampling preferred)
 
 ---
 
@@ -81,16 +117,14 @@ User's Stash                          Stash Sense Sidecar
 - Duplicate scene files analyzer
 - Plugin dashboard UI with resolve/dismiss actions
 
-### Phase 3: Multi-Stash-Box Support ⏳ NEXT
-- Add ThePornDB, PMVStash, JAVStash, FansDB
-- Performer identity graph (cross-database linking)
-- Concurrent scraping architecture
-- **Docs:** [performer-identity-graph.md](2026-01-27-performer-identity-graph.md), [concurrent-scraping-architecture.md](2026-01-26-concurrent-scraping-architecture.md)
-
-### Phase 4: Embedding Enrichment
-- Reference site scraping (Babepedia, IAFD, FreeOnes)
-- Increase embeddings per performer (current avg: 1.04 → goal: 5-10)
-- **Docs:** [reference-site-enrichment.md](2026-01-26-reference-site-enrichment.md), [data-sources-catalog.md](2026-01-27-data-sources-catalog.md)
+### Phase 3: Multi-Source Enrichment 🔄 IN PROGRESS
+- ✅ Infrastructure complete (config, queue, coordinator, CLI)
+- ✅ StashDB adapter updated to unified interface
+- ⏳ Add ThePornDB, PMVStash, JAVStash, FansDB scrapers
+- ⏳ Face detection integration (download images, extract faces)
+- ⏳ Reference site scrapers (Babepedia, IAFD, FreeOnes)
+- **Goal:** Increase faces per performer from 1.16 to 5-10
+- **Docs:** [multi-source-enrichment-design.md](2026-01-29-multi-source-enrichment-design.md), [scraper-orchestration-implementation.md](2026-01-29-scraper-orchestration-implementation.md)
 
 ### Phase 5: Testing & Polish
 - Accuracy validation across sources
@@ -146,9 +180,16 @@ User's Stash                          Stash Sense Sidecar
 | `recommendations_analyzers.py` | Analyzer implementations |
 | `database_builder.py` | Builds face embedding database |
 | `metadata_refresh.py` | Updates performer metadata from StashDB |
-| `database.py` | SQLite layer for performer metadata |
-| `stashdb_client.py` | GraphQL client for StashDB |
+| `database.py` | SQLite layer for performer metadata (schema v5) |
+| `stashdb_client.py` | GraphQL client for StashDB (inherits BaseScraper) |
 | `theporndb_client.py` | REST client for ThePornDB |
+| `base_scraper.py` | Unified scraper interface with rate limiting |
+| `enrichment_config.py` | YAML config loader for multi-source |
+| `enrichment_coordinator.py` | Orchestrates concurrent scrapers |
+| `enrichment_builder.py` | CLI entry point for enrichment |
+| `quality_filters.py` | Face quality validation |
+| `write_queue.py` | Async queue for serialized writes |
+| `sources.yaml` | Source configuration (rate limits, face limits) |
 | `recognizer.py` | Voyager index queries |
 | `embeddings.py` | Face detection and embedding |
 | `data/` | Live database (don't commit) |
@@ -170,6 +211,7 @@ User's Stash                          Stash Sense Sidecar
 | Document | When To Read |
 |----------|--------------|
 | `SESSION-CONTEXT.md` | Start of every session (this file) |
+| [face-detection-tuning.md](face-detection-tuning.md) | Tuning face detection, clustering, resolution handling |
 | [face-recognition-system-design.md](2026-01-24-face-recognition-system-design.md) | Face recognition details |
 | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) | Multi-source linking strategy |
 | [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) | All data sources with rate limits |
