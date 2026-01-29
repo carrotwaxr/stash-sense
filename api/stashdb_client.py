@@ -2,15 +2,43 @@
 import requests
 import time
 from typing import Iterator, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
 
 @dataclass
 class StashDBPerformer:
-    """Performer data from StashDB."""
+    """Performer data from StashDB.
+
+    Extended to capture fields useful for building the performer identity graph.
+    See: docs/plans/2026-01-27-performer-identity-graph.md
+    """
     id: str
     name: str
     image_urls: list[str]
     country: Optional[str]
+
+    # Identity graph fields
+    aliases: list[str] = field(default_factory=list)
+    urls: dict[str, list[str]] = field(default_factory=dict)  # site_name -> [urls]
+    birth_date: Optional[str] = None  # Can be "YYYY", "YYYY-MM", or "YYYY-MM-DD"
+    death_date: Optional[str] = None
+    gender: Optional[str] = None  # MALE, FEMALE, TRANSGENDER_MALE, TRANSGENDER_FEMALE, INTERSEX, NON_BINARY
+    career_start_year: Optional[int] = None
+    career_end_year: Optional[int] = None
+    merged_ids: list[str] = field(default_factory=list)  # Previously merged StashDB entries
+
+    # Identity confidence fields (stable physical attributes)
+    disambiguation: Optional[str] = None  # Differentiates same-name performers
+    ethnicity: Optional[str] = None  # CAUCASIAN, BLACK, ASIAN, INDIAN, LATIN, MIDDLE_EASTERN, MIXED, OTHER
+    height_cm: Optional[int] = None  # Height in centimeters
+    eye_color: Optional[str] = None  # BLUE, BROWN, GREY, GREEN, HAZEL, RED
+    hair_color: Optional[str] = None  # BLONDE, BRUNETTE, BLACK, RED, AUBURN, GREY, BALD, VARIOUS, OTHER
+    tattoos: list[dict] = field(default_factory=list)  # [{"location": "...", "description": "..."}]
+    piercings: list[dict] = field(default_factory=list)  # [{"location": "...", "description": "..."}]
+
+    # Sync/prioritization fields
+    scene_count: Optional[int] = None  # Number of scenes (for prioritization)
+    updated: Optional[str] = None  # StashDB update timestamp (ISO format)
 
 class StashDBClient:
     """Client for the StashDB GraphQL API."""
@@ -64,15 +92,43 @@ class StashDBClient:
         raise Exception(f"Max retries ({max_retries}) exceeded due to rate limiting")
 
     def get_performer(self, stashdb_id: str) -> Optional[StashDBPerformer]:
-        """Get a single performer by ID with their images."""
+        """Get a single performer by ID with all identity graph fields."""
         query = """
         query FindPerformer($id: ID!) {
             findPerformer(id: $id) {
                 id
                 name
+                disambiguation
                 country
+                ethnicity
+                aliases
+                birth_date
+                death_date
+                gender
+                height
+                eye_color
+                hair_color
+                career_start_year
+                career_end_year
+                scene_count
+                updated
+                merged_ids
+                tattoos {
+                    location
+                    description
+                }
+                piercings {
+                    location
+                    description
+                }
                 images {
                     url
+                }
+                urls {
+                    url
+                    site {
+                        name
+                    }
                 }
             }
         }
@@ -82,11 +138,52 @@ class StashDBClient:
         if not performer:
             return None
 
+        return self._parse_performer(performer)
+
+    def _parse_performer(self, p: dict) -> StashDBPerformer:
+        """Parse a performer dict from GraphQL response into StashDBPerformer."""
+        # Group URLs by site name
+        urls_by_site: dict[str, list[str]] = {}
+        for url_entry in p.get("urls", []):
+            site_name = url_entry.get("site", {}).get("name", "Unknown")
+            url = url_entry.get("url")
+            if url:
+                if site_name not in urls_by_site:
+                    urls_by_site[site_name] = []
+                urls_by_site[site_name].append(url)
+
+        # Parse tattoos and piercings
+        tattoos = [
+            {"location": t.get("location"), "description": t.get("description")}
+            for t in p.get("tattoos") or []
+        ]
+        piercings = [
+            {"location": t.get("location"), "description": t.get("description")}
+            for t in p.get("piercings") or []
+        ]
+
         return StashDBPerformer(
-            id=performer["id"],
-            name=performer["name"],
-            image_urls=[img["url"] for img in performer.get("images", [])],
-            country=performer.get("country"),
+            id=p["id"],
+            name=p["name"],
+            disambiguation=p.get("disambiguation"),
+            image_urls=[img["url"] for img in p.get("images", [])],
+            country=p.get("country"),
+            ethnicity=p.get("ethnicity"),
+            aliases=p.get("aliases") or [],
+            urls=urls_by_site,
+            birth_date=p.get("birth_date"),
+            death_date=p.get("death_date"),
+            gender=p.get("gender"),
+            height_cm=p.get("height"),  # StashDB returns as "height" in cm
+            eye_color=p.get("eye_color"),
+            hair_color=p.get("hair_color"),
+            career_start_year=p.get("career_start_year"),
+            career_end_year=p.get("career_end_year"),
+            merged_ids=p.get("merged_ids") or [],
+            tattoos=tattoos,
+            piercings=piercings,
+            scene_count=p.get("scene_count"),
+            updated=p.get("updated"),
         )
 
     def get_performers_batch(
@@ -117,6 +214,8 @@ class StashDBClient:
         Query performers with pagination.
 
         Returns: (total_count, list of StashDBPerformer objects)
+
+        Fetches all identity graph fields for cross-source matching.
         """
         query = """
         query QueryPerformers($input: PerformerQueryInput!) {
@@ -125,9 +224,37 @@ class StashDBClient:
                 performers {
                     id
                     name
+                    disambiguation
                     country
+                    ethnicity
+                    aliases
+                    birth_date
+                    death_date
+                    gender
+                    height
+                    eye_color
+                    hair_color
+                    career_start_year
+                    career_end_year
+                    scene_count
+                    updated
+                    merged_ids
+                    tattoos {
+                        location
+                        description
+                    }
+                    piercings {
+                        location
+                        description
+                    }
                     images {
                         url
+                    }
+                    urls {
+                        url
+                        site {
+                            name
+                        }
                     }
                 }
             }
@@ -143,16 +270,7 @@ class StashDBClient:
         }
 
         result = self._query(query, variables)["queryPerformers"]
-
-        performers = [
-            StashDBPerformer(
-                id=p["id"],
-                name=p["name"],
-                image_urls=[img["url"] for img in p.get("images", [])],
-                country=p.get("country"),
-            )
-            for p in result["performers"]
-        ]
+        performers = [self._parse_performer(p) for p in result["performers"]]
 
         return result["count"], performers
 
@@ -261,12 +379,21 @@ if __name__ == "__main__":
     if performer:
         print(f"Performer: {performer.name}")
         print(f"  Images: {len(performer.image_urls)}")
-        for url in performer.image_urls[:3]:
-            print(f"    - {url}")
+        print(f"  Aliases: {performer.aliases}")
+        print(f"  Birth date: {performer.birth_date}")
+        print(f"  Gender: {performer.gender}")
+        print(f"  Country: {performer.country}")
+        print(f"  Career: {performer.career_start_year} - {performer.career_end_year}")
+        print(f"  Merged IDs: {performer.merged_ids}")
+        print(f"  URLs by site:")
+        for site, urls in performer.urls.items():
+            for url in urls:
+                print(f"    [{site}] {url}")
 
-    # Test pagination
+    # Test pagination with identity graph fields
     count, performers = client.query_performers(per_page=5)
     print(f"\nTotal performers in StashDB: {count}")
-    print("First 5:")
+    print("First 5 (with identity graph data):")
     for p in performers:
-        print(f"  - {p.name} ({len(p.image_urls)} images)")
+        url_count = sum(len(urls) for urls in p.urls.values())
+        print(f"  - {p.name}: {len(p.image_urls)} images, {len(p.aliases)} aliases, {url_count} URLs")

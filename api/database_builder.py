@@ -30,6 +30,7 @@ from config import (
     ARCFACE_DIM,
     get_stashbox_shortname,
 )
+from database import PerformerDatabase
 from stashdb_client import StashDBClient, StashDBPerformer
 from embeddings import FaceEmbeddingGenerator, load_image
 
@@ -141,9 +142,13 @@ class DatabaseBuilder:
         # Progress tracking file
         self.progress_file = self.db_config.data_dir / "progress.json"
 
-        # Data storage
-        self.performers: dict[str, PerformerRecord] = {}  # universal_id -> record
-        self.faces: list[str] = []  # index -> universal_id mapping
+        # SQLite database for metadata
+        self.db = PerformerDatabase(self.db_config.sqlite_db_path)
+
+        # Data storage (in-memory for faces, SQLite for performer metadata)
+        self.performers: dict[str, PerformerRecord] = {}  # universal_id -> record (for progress tracking)
+        self.performer_db_ids: dict[str, int] = {}  # stashdb_id -> SQLite performer.id (for face linking)
+        self.faces: list[str] = []  # index -> universal_id mapping (kept for recognizer)
         self.performer_progress: dict[str, PerformerProgress] = {}  # stashdb_id -> progress
         self.current_face_index = 0
 
@@ -262,8 +267,19 @@ class DatabaseBuilder:
                     last_synced=now,
                 )
 
+        # Build performer_db_ids mapping from SQLite
+        if self.db_config.sqlite_db_path.exists():
+            print(f"  Loading SQLite performer IDs from {self.db_config.sqlite_db_path}")
+            for uid, record in self.performers.items():
+                endpoint = "stashdb"  # Default; could be parsed from uid
+                db_performer = self.db.get_performer_by_stashbox_id(endpoint, record.stashdb_id)
+                if db_performer:
+                    self.performer_db_ids[record.stashdb_id] = db_performer.id
+
         print(f"  Loaded {len(self.performers)} performers, {len(self.faces)} faces")
         print(f"  {len(self.performer_progress)} performers already processed (will be skipped)")
+        if self.performer_db_ids:
+            print(f"  {len(self.performer_db_ids)} performers linked to SQLite")
 
     def _migrate_progress_v1_to_v2(self, old_progress: dict) -> dict[str, PerformerProgress]:
         """
@@ -543,7 +559,94 @@ class DatabaseBuilder:
         # Create universal ID
         universal_id = f"{stashbox_name}:{performer.id}"
 
-        # Get or create record
+        # Map stashbox_name to endpoint for database
+        endpoint_map = {
+            "stashdb.org": "stashdb",
+            "pmvstash.org": "pmvstash",
+            "javstash.org": "javstash",
+            "fansdb.cc": "fansdb",
+            "theporndb.net": "theporndb",
+        }
+        endpoint = endpoint_map.get(stashbox_name, stashbox_name)
+
+        # Get or create performer in SQLite
+        db_performer = self.db.get_performer_by_stashbox_id(endpoint, performer.id)
+        if db_performer:
+            # Update existing performer with fresh data
+            self.db.update_performer(
+                db_performer.id,
+                canonical_name=performer.name,
+                disambiguation=performer.disambiguation,
+                gender=performer.gender,
+                country=performer.country,
+                ethnicity=performer.ethnicity,
+                birth_date=performer.birth_date,
+                death_date=performer.death_date,
+                height_cm=performer.height_cm,
+                eye_color=performer.eye_color,
+                hair_color=performer.hair_color,
+                career_start_year=performer.career_start_year,
+                career_end_year=performer.career_end_year,
+                scene_count=performer.scene_count,
+                stashdb_updated_at=performer.updated,
+                image_url=performer.image_urls[0] if performer.image_urls else None,
+            )
+            db_performer_id = db_performer.id
+        else:
+            # Create new performer
+            db_performer_id = self.db.add_performer(
+                canonical_name=performer.name,
+                disambiguation=performer.disambiguation,
+                gender=performer.gender,
+                country=performer.country,
+                ethnicity=performer.ethnicity,
+                birth_date=performer.birth_date,
+                death_date=performer.death_date,
+                height_cm=performer.height_cm,
+                eye_color=performer.eye_color,
+                hair_color=performer.hair_color,
+                career_start_year=performer.career_start_year,
+                career_end_year=performer.career_end_year,
+                scene_count=performer.scene_count,
+                stashdb_updated_at=performer.updated,
+                face_count=0,
+                image_url=performer.image_urls[0] if performer.image_urls else None,
+            )
+            # Add stash-box ID
+            self.db.add_stashbox_id(db_performer_id, endpoint, performer.id)
+
+        # Track SQLite ID for face linking
+        self.performer_db_ids[performer.id] = db_performer_id
+
+        # Add aliases
+        self.db.add_aliases_batch(db_performer_id, performer.aliases or [], endpoint)
+
+        # Add URLs
+        self.db.add_urls_batch(db_performer_id, performer.urls or {}, endpoint)
+
+        # Add merged IDs
+        for merged_id in (performer.merged_ids or []):
+            self.db.add_merged_id(db_performer_id, merged_id, endpoint)
+
+        # Add tattoos
+        for tattoo in (performer.tattoos or []):
+            self.db.add_tattoo(
+                db_performer_id,
+                location=tattoo.get('location'),
+                description=tattoo.get('description'),
+                source_endpoint=endpoint,
+            )
+
+        # Add piercings
+        for piercing in (performer.piercings or []):
+            self.db.add_piercing(
+                db_performer_id,
+                location=piercing.get('location'),
+                description=piercing.get('description'),
+                source_endpoint=endpoint,
+            )
+
+        # Get or create in-memory record for face tracking
         if universal_id in self.performers:
             record = self.performers[universal_id]
         else:
@@ -587,6 +690,8 @@ class DatabaseBuilder:
         # Store performer if we have at least one face
         if record.face_count > 0:
             self.performers[universal_id] = record
+            # Update face count in SQLite
+            self.db.update_face_count(db_performer_id, record.face_count)
             if existing_progress is None or existing_progress.faces_indexed == 0:
                 self.stats["performers_with_faces"] += 1
 
@@ -607,13 +712,14 @@ class DatabaseBuilder:
             self.arcface_index.save(f)
 
         # Save faces.json (index -> universal_id mapping)
+        # Kept for recognizer compatibility
         if not quiet:
             print(f"  Saving faces mapping to {self.db_config.faces_json_path}")
         with open(self.db_config.faces_json_path, "w") as f:
             json.dump(self.faces, f)
 
         # Save performers.json (universal_id -> metadata)
-        # Format per design doc
+        # Kept for backwards compatibility, SQLite is primary
         if not quiet:
             print(f"  Saving performers to {self.db_config.performers_json_path}")
         performers_data = {
@@ -627,6 +733,11 @@ class DatabaseBuilder:
         }
         with open(self.db_config.performers_json_path, "w") as f:
             json.dump(performers_data, f, indent=2)
+
+        # Note: SQLite database (performers.db) is updated incrementally during build
+        if not quiet:
+            db_stats = self.db.get_stats()
+            print(f"  SQLite database: {db_stats['performer_count']} performers, {db_stats['total_urls']} URLs")
 
         # Save progress
         self._save_progress()
@@ -646,6 +757,7 @@ class DatabaseBuilder:
         for path in [
             self.db_config.facenet_index_path,
             self.db_config.arcface_index_path,
+            self.db_config.sqlite_db_path,
             self.db_config.performers_json_path,
             self.db_config.faces_json_path,
         ]:

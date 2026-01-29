@@ -35,6 +35,10 @@ def main():
         )
     elif mode == "database_info":
         result = database_info(sidecar_url)
+    elif mode.startswith("rec_"):
+        result = handle_recommendations(mode, args, sidecar_url)
+        if result is None:
+            result = {"error": f"Unknown recommendations mode: {mode}"}
     else:
         result = {"error": f"Unknown mode: {mode}"}
 
@@ -114,6 +118,202 @@ def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance):
         return {"error": "Request timed out - scene may be too long or sidecar is overloaded"}
     except requests.RequestException as e:
         return {"error": f"Request failed: {e}"}
+
+
+# ==================== Recommendations API Proxy ====================
+
+def sidecar_get(sidecar_url, endpoint, timeout=30):
+    """GET request to sidecar."""
+    try:
+        response = requests.get(f"{sidecar_url}{endpoint}", timeout=timeout)
+        if response.ok:
+            return response.json()
+        try:
+            error_detail = response.json().get("detail", response.text)
+        except Exception:
+            error_detail = response.text or f"HTTP {response.status_code}"
+        return {"error": error_detail}
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Request timed out"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+
+
+def sidecar_post(sidecar_url, endpoint, data=None, timeout=60):
+    """POST request to sidecar."""
+    try:
+        response = requests.post(
+            f"{sidecar_url}{endpoint}",
+            json=data,
+            timeout=timeout,
+        )
+        if response.ok:
+            return response.json()
+        try:
+            error_detail = response.json().get("detail", response.text)
+        except Exception:
+            error_detail = response.text or f"HTTP {response.status_code}"
+        return {"error": error_detail}
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Request timed out"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+
+
+def rec_counts(sidecar_url):
+    """Get recommendation counts."""
+    return sidecar_get(sidecar_url, "/recommendations/counts")
+
+
+def rec_list(sidecar_url, status=None, rec_type=None, limit=100, offset=0):
+    """List recommendations."""
+    params = []
+    if status:
+        params.append(f"status={status}")
+    if rec_type:
+        params.append(f"type={rec_type}")
+    params.append(f"limit={limit}")
+    params.append(f"offset={offset}")
+    query = "?" + "&".join(params) if params else ""
+    return sidecar_get(sidecar_url, f"/recommendations{query}")
+
+
+def rec_get(sidecar_url, rec_id):
+    """Get single recommendation."""
+    return sidecar_get(sidecar_url, f"/recommendations/{rec_id}")
+
+
+def rec_resolve(sidecar_url, rec_id, action, details=None):
+    """Resolve a recommendation."""
+    data = {"action": action}
+    if details:
+        data["details"] = details
+    return sidecar_post(sidecar_url, f"/recommendations/{rec_id}/resolve", data)
+
+
+def rec_dismiss(sidecar_url, rec_id, reason=None):
+    """Dismiss a recommendation."""
+    data = {"reason": reason} if reason else {}
+    return sidecar_post(sidecar_url, f"/recommendations/{rec_id}/dismiss", data)
+
+
+def rec_analysis_types(sidecar_url):
+    """Get analysis types."""
+    return sidecar_get(sidecar_url, "/recommendations/analysis/types")
+
+
+def rec_run_analysis(sidecar_url, analysis_type):
+    """Run an analysis."""
+    return sidecar_post(sidecar_url, f"/recommendations/analysis/{analysis_type}/run")
+
+
+def rec_analysis_runs(sidecar_url, analysis_type=None, limit=20):
+    """Get recent analysis runs."""
+    params = [f"limit={limit}"]
+    if analysis_type:
+        params.append(f"type={analysis_type}")
+    query = "?" + "&".join(params)
+    return sidecar_get(sidecar_url, f"/recommendations/analysis/runs{query}")
+
+
+def rec_stash_status(sidecar_url):
+    """Get Stash connection status."""
+    return sidecar_get(sidecar_url, "/recommendations/stash/status")
+
+
+def rec_merge_performers(sidecar_url, destination_id, source_ids):
+    """Execute performer merge."""
+    data = {
+        "destination_id": destination_id,
+        "source_ids": source_ids,
+    }
+    return sidecar_post(sidecar_url, "/recommendations/actions/merge-performers", data, timeout=120)
+
+
+def rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, all_file_ids):
+    """Delete scene files."""
+    data = {
+        "scene_id": scene_id,
+        "file_ids_to_delete": file_ids_to_delete,
+        "keep_file_id": keep_file_id,
+        "all_file_ids": all_file_ids,
+    }
+    return sidecar_post(sidecar_url, "/recommendations/actions/delete-scene-files", data, timeout=120)
+
+
+def handle_recommendations(mode, args, sidecar_url):
+    """Handle recommendations-related operations."""
+    if mode == "rec_counts":
+        return rec_counts(sidecar_url)
+
+    elif mode == "rec_list":
+        return rec_list(
+            sidecar_url,
+            status=args.get("status"),
+            rec_type=args.get("type"),
+            limit=int(args.get("limit", 100)),
+            offset=int(args.get("offset", 0)),
+        )
+
+    elif mode == "rec_get":
+        rec_id = args.get("rec_id")
+        if not rec_id:
+            return {"error": "No rec_id provided"}
+        return rec_get(sidecar_url, rec_id)
+
+    elif mode == "rec_resolve":
+        rec_id = args.get("rec_id")
+        action = args.get("action")
+        if not rec_id or not action:
+            return {"error": "rec_id and action required"}
+        return rec_resolve(sidecar_url, rec_id, action, args.get("details"))
+
+    elif mode == "rec_dismiss":
+        rec_id = args.get("rec_id")
+        if not rec_id:
+            return {"error": "No rec_id provided"}
+        return rec_dismiss(sidecar_url, rec_id, args.get("reason"))
+
+    elif mode == "rec_analysis_types":
+        return rec_analysis_types(sidecar_url)
+
+    elif mode == "rec_run_analysis":
+        analysis_type = args.get("analysis_type")
+        if not analysis_type:
+            return {"error": "No analysis_type provided"}
+        return rec_run_analysis(sidecar_url, analysis_type)
+
+    elif mode == "rec_analysis_runs":
+        return rec_analysis_runs(
+            sidecar_url,
+            analysis_type=args.get("analysis_type"),
+            limit=int(args.get("limit", 20)),
+        )
+
+    elif mode == "rec_stash_status":
+        return rec_stash_status(sidecar_url)
+
+    elif mode == "rec_merge_performers":
+        destination_id = args.get("destination_id")
+        source_ids = args.get("source_ids", [])
+        if not destination_id or not source_ids:
+            return {"error": "destination_id and source_ids required"}
+        return rec_merge_performers(sidecar_url, destination_id, source_ids)
+
+    elif mode == "rec_delete_files":
+        scene_id = args.get("scene_id")
+        file_ids_to_delete = args.get("file_ids_to_delete", [])
+        keep_file_id = args.get("keep_file_id")
+        all_file_ids = args.get("all_file_ids", [])
+        if not scene_id or not keep_file_id:
+            return {"error": "scene_id and keep_file_id required"}
+        return rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, all_file_ids)
+
+    return None
 
 
 if __name__ == "__main__":

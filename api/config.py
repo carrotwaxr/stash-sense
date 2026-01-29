@@ -65,7 +65,8 @@ class DatabaseConfig:
     facenet_index_path: Path = None
     arcface_index_path: Path = None
 
-    # Metadata files
+    # Metadata files (SQLite is primary, JSON kept for compatibility)
+    sqlite_db_path: Path = None
     faces_json_path: Path = None
     performers_json_path: Path = None
     manifest_json_path: Path = None
@@ -76,6 +77,7 @@ class DatabaseConfig:
 
         self.facenet_index_path = self.facenet_index_path or self.data_dir / "face_facenet.voy"
         self.arcface_index_path = self.arcface_index_path or self.data_dir / "face_arcface.voy"
+        self.sqlite_db_path = self.sqlite_db_path or self.data_dir / "performers.db"
         self.faces_json_path = self.faces_json_path or self.data_dir / "faces.json"
         self.performers_json_path = self.performers_json_path or self.data_dir / "performers.json"
         self.manifest_json_path = self.manifest_json_path or self.data_dir / "manifest.json"
@@ -93,6 +95,8 @@ STASHBOX_ENDPOINTS = {
     "https://stashdb.org/graphql": "stashdb.org",
     "https://pmvstash.org/graphql": "pmvstash.org",
     "https://fansdb.cc/graphql": "fansdb.cc",
+    "https://javstash.org/graphql": "javstash.org",
+    "https://theporndb.net/graphql": "theporndb.net",  # Uses REST API, not GraphQL
 }
 
 

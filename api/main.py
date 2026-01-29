@@ -1,15 +1,19 @@
-"""FastAPI sidecar for face recognition.
+"""FastAPI sidecar for Stash Sense.
 
-Provides REST API endpoints for identifying performers in images.
+Provides REST API endpoints for:
+- Face recognition (identify performers in images)
+- Recommendations engine (library analysis and curation)
 """
 import base64
 import json
 import os
 from collections import defaultdict
 
-# Environment variables for Stash connection
+# Environment variables
 STASH_URL = os.environ.get("STASH_URL", "").rstrip("/")
 STASH_API_KEY = os.environ.get("STASH_API_KEY", "")
+DATA_DIR = os.environ.get("DATA_DIR", "./data")
+
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
@@ -26,6 +30,7 @@ from config import DatabaseConfig
 from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
 from embeddings import load_image
 from sprite_parser import parse_vtt_file, extract_frames_from_sprite
+from recommendations_router import router as recommendations_router, init_recommendations
 
 
 # Pydantic models for API
@@ -95,12 +100,13 @@ db_manifest: dict = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load the recognizer on startup."""
+    """Load the recognizer and initialize recommendations on startup."""
     global recognizer, db_manifest
 
-    data_dir = Path(os.environ.get("DATA_DIR", "./data"))
-    print(f"Loading database from {data_dir}...")
+    data_dir = Path(DATA_DIR)
+    print(f"Loading face database from {data_dir}...")
 
+    # Load face recognition database
     try:
         db_config = DatabaseConfig(data_dir=data_dir)
 
@@ -110,11 +116,26 @@ async def lifespan(app: FastAPI):
                 db_manifest = json.load(f)
 
         recognizer = FaceRecognizer(db_config)
-        print("Database loaded successfully!")
+        print("Face database loaded successfully!")
     except Exception as e:
-        print(f"Warning: Failed to load database: {e}")
+        print(f"Warning: Failed to load face database: {e}")
         print("API will start but /identify will not work until database is available")
         recognizer = None
+
+    # Initialize recommendations database
+    rec_db_path = data_dir / "stash_sense.db"
+    print(f"Initializing recommendations database at {rec_db_path}...")
+    init_recommendations(
+        db_path=str(rec_db_path),
+        stash_url=STASH_URL,
+        stash_api_key=STASH_API_KEY,
+    )
+    print("Recommendations database initialized!")
+
+    if STASH_URL:
+        print(f"Stash connection configured: {STASH_URL}")
+    else:
+        print("Warning: STASH_URL not set - recommendations analysis will not work")
 
     yield
 
@@ -123,9 +144,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Stash Face Recognition API",
-    description="Identify performers in images using face recognition",
-    version="0.1.0",
+    title="Stash Sense API",
+    description="Face recognition and recommendations engine for Stash",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -137,6 +158,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include recommendations router
+app.include_router(recommendations_router)
 
 
 def distance_to_confidence(distance: float) -> float:

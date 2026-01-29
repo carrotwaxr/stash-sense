@@ -23,6 +23,12 @@ progress.json
 # Data directories (contains cached images and built databases)
 data/
 api/data/
+api/data-*/
+*.db
+
+# Progress and state files
+*_progress.json
+*_refresh_progress.json
 
 # Test and validation outputs
 api/test_output/

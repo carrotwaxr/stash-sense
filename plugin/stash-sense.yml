@@ -5,6 +5,8 @@ url: https://github.com/carrotwaxr/stash-sense
 
 ui:
   javascript:
+    - stash-sense-core.js
+    - stash-sense-recommendations.js
     - stash-sense.js
   css:
     - stash-sense.css
