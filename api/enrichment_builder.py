@@ -19,6 +19,7 @@ from database import PerformerDatabase
 from enrichment_config import EnrichmentConfig
 from enrichment_coordinator import EnrichmentCoordinator
 from stashdb_client import StashDBClient
+from theporndb_client import ThePornDBClient
 
 # Configure logging
 logging.basicConfig(
@@ -52,9 +53,17 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             ))
             logger.info(f"Created StashDB scraper (rate: {source_config.rate_limit} req/min)")
 
-        # Add other sources here as implemented
-        # elif source_name == "theporndb":
-        #     ...
+        elif source_name == "theporndb":
+            api_key = os.environ.get("THEPORNDB_API_KEY", "")
+            if not api_key:
+                logger.warning("THEPORNDB_API_KEY not set, skipping theporndb")
+                continue
+
+            scrapers.append(ThePornDBClient(
+                api_key=api_key,
+                rate_limit_delay=60 / source_config.rate_limit,
+            ))
+            logger.info(f"Created ThePornDB scraper (rate: {source_config.rate_limit} req/min)")
 
     return scrapers
 

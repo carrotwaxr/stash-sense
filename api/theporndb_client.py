@@ -5,38 +5,35 @@ ThePornDB has a different API than StashDB:
 - Has pre-cropped face thumbnails
 - ~10,000 performers with pagination support
 
-This client mirrors the StashDBClient interface for compatibility with database_builder.py.
+This client inherits from BaseScraper for use with enrichment_coordinator.py.
 """
 import requests
 import time
 from typing import Iterator, Optional
 from dataclasses import dataclass
 
+from base_scraper import BaseScraper, ScrapedPerformer
+
 
 @dataclass
 class ThePornDBPerformer:
-    """Performer data from ThePornDB.
-
-    Compatible with StashDBPerformer for use with database_builder.py.
-    """
+    """Performer data from ThePornDB (legacy - use ScrapedPerformer instead)."""
     id: str
     name: str
     image_urls: list[str]
     country: Optional[str]
-    # ThePornDB extras
-    face_url: Optional[str] = None  # Pre-cropped face image
-    stashdb_id: Optional[str] = None  # Cross-reference if available
+    face_url: Optional[str] = None
+    stashdb_id: Optional[str] = None
 
 
-# Alias for compatibility with database_builder.py
-StashDBPerformer = ThePornDBPerformer
-
-
-class ThePornDBClient:
+class ThePornDBClient(BaseScraper):
     """Client for ThePornDB REST API.
 
-    Mirrors the StashDBClient interface for compatibility with database_builder.py.
+    Inherits from BaseScraper for use with enrichment_coordinator.py.
     """
+
+    source_name = "theporndb"
+    source_type = "stash_box"
 
     BASE_URL = "https://api.theporndb.net"
 
@@ -48,10 +45,9 @@ class ThePornDBClient:
             api_key: API key for authentication
             rate_limit_delay: Delay between requests (default 0.25s = 240/min)
         """
-        self.url = f"{self.BASE_URL}/performers"  # For compatibility
+        super().__init__(rate_limit_delay=rate_limit_delay)
+        self.url = f"{self.BASE_URL}/performers"
         self.api_key = api_key
-        self.rate_limit_delay = rate_limit_delay
-        self._last_request_time = 0
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {api_key}",
@@ -84,49 +80,72 @@ class ThePornDBClient:
 
         raise Exception(f"Max retries ({max_retries}) exceeded due to rate limiting")
 
-    def _parse_performer(self, data: dict) -> ThePornDBPerformer:
+    def _parse_performer(self, data: dict) -> ScrapedPerformer:
         """Parse performer data from API response."""
         # Collect image URLs - prioritize posters, fall back to main image
         image_urls = []
 
+        # Add face URL first if available (pre-cropped, best for face recognition)
+        if data.get("face"):
+            image_urls.append(data["face"])
+
         # Add poster images (usually multiple)
         for poster in data.get("posters", []):
-            if poster.get("url"):
+            if poster.get("url") and poster["url"] not in image_urls:
                 image_urls.append(poster["url"])
 
         # Add main image if not already included
         if data.get("image") and data["image"] not in image_urls:
-            image_urls.insert(0, data["image"])
+            image_urls.append(data["image"])
 
-        # Extract country from extras
-        extras = data.get("extras", {})
-        country = None
-        if extras.get("nationality"):
-            country = extras["nationality"]
-        elif extras.get("birthplace_code"):
-            country = extras["birthplace_code"]
+        # Extract data from extras
+        extras = data.get("extras", {}) or {}
+        country = extras.get("nationality") or extras.get("birthplace_code")
+        gender = extras.get("gender", "").upper() or None
 
-        # Extract StashDB ID from links if available
-        stashdb_id = None
+        # Extract external URLs
+        external_urls = {}
         links = extras.get("links", {})
+        if isinstance(links, dict):
+            for site, url in links.items():
+                if url:
+                    external_urls[site] = [url] if isinstance(url, str) else url
+
+        # Extract StashDB ID for cross-reference
+        stash_ids = {"theporndb": str(data["id"])}
         if isinstance(links, dict) and links.get("StashDB"):
-            # Extract ID from URL like "https://stashdb.org/performers/uuid"
             stashdb_url = links["StashDB"]
             if "/performers/" in stashdb_url:
-                stashdb_id = stashdb_url.split("/performers/")[-1]
+                stash_ids["stashdb"] = stashdb_url.split("/performers/")[-1]
 
-        return ThePornDBPerformer(
-            id=data["id"],
+        # Parse aliases
+        aliases = []
+        if data.get("aliases"):
+            if isinstance(data["aliases"], list):
+                aliases = data["aliases"]
+            elif isinstance(data["aliases"], str):
+                aliases = [a.strip() for a in data["aliases"].split(",")]
+
+        return ScrapedPerformer(
+            id=str(data["id"]),
             name=data.get("name") or data.get("full_name", "Unknown"),
             image_urls=image_urls,
             country=country,
-            face_url=data.get("face"),  # Pre-cropped face thumbnail
-            stashdb_id=stashdb_id,
+            gender=gender,
+            aliases=aliases,
+            external_urls=external_urls,
+            stash_ids=stash_ids,
+            birth_date=extras.get("birthday"),
+            ethnicity=extras.get("ethnicity"),
+            height_cm=extras.get("height"),
+            eye_color=extras.get("eye_colour"),
+            hair_color=extras.get("hair_colour"),
         )
 
-    def get_performer(self, performer_id: str) -> Optional[ThePornDBPerformer]:
+    def get_performer(self, performer_id: str) -> Optional[ScrapedPerformer]:
         """Get a single performer by ID."""
         try:
+            self._rate_limit()
             result = self._request(f"performers/{performer_id}")
             data = result.get("data")
             if not data:
@@ -141,17 +160,13 @@ class ThePornDBClient:
         self,
         page: int = 1,
         per_page: int = 25,
-        sort: str = "CREATED_AT",  # Ignored - TPDB uses different sorting
-        direction: str = "ASC",  # Ignored
-    ) -> tuple[int, list[ThePornDBPerformer]]:
+    ) -> tuple[int, list[ScrapedPerformer]]:
         """
         Query performers with pagination.
 
-        Note: sort/direction params are for StashDB compatibility but ignored.
-        ThePornDB returns performers in their default order.
-
-        Returns: (total_count, list of ThePornDBPerformer objects)
+        Returns: (total_count, list of ScrapedPerformer objects)
         """
+        self._rate_limit()
         result = self._request("performers", params={
             "page": page,
             "per_page": per_page,
@@ -167,49 +182,20 @@ class ThePornDBClient:
 
         return total_count, performers
 
-    def iter_all_performers(
-        self,
-        per_page: int = 25,
-        max_performers: int = None,
-    ) -> Iterator[ThePornDBPerformer]:
-        """
-        Iterate through all performers in ThePornDB.
-
-        Args:
-            per_page: Number of performers per page (default 25)
-            max_performers: Maximum number to return (default: all ~10,000)
-        """
-        page = 1
-        count_fetched = 0
-
-        while True:
-            count, performers = self.query_performers(page=page, per_page=per_page)
-            if not performers:
-                break
-
-            for performer in performers:
-                yield performer
-                count_fetched += 1
-                if max_performers and count_fetched >= max_performers:
-                    return
-
-            if page * per_page >= count:
-                break
-            page += 1
+    # iter_all_performers is inherited from BaseScraper
 
     def iter_performers_with_faces(
         self,
         per_page: int = 25,
         max_performers: int = None,
-    ) -> Iterator[ThePornDBPerformer]:
+    ) -> Iterator[ScrapedPerformer]:
         """
-        Iterate through performers that have face thumbnails.
+        Iterate through performers that have images.
 
-        This is more efficient for face recognition since TPDB provides
-        pre-cropped face images.
+        ThePornDB provides pre-cropped face images for many performers.
         """
         for performer in self.iter_all_performers(per_page, max_performers):
-            if performer.face_url or performer.image_urls:
+            if performer.image_urls:
                 yield performer
 
     def download_image(self, url: str, max_retries: int = 3) -> Optional[bytes]:
@@ -236,21 +222,15 @@ class ThePornDBClient:
                 return None
         return None
 
-    def download_face(self, performer: ThePornDBPerformer) -> Optional[bytes]:
+    def download_face(self, performer: ScrapedPerformer) -> Optional[bytes]:
         """
-        Download the pre-cropped face image for a performer.
+        Download the first image for a performer.
 
-        Falls back to main image if no face URL available.
+        For ThePornDB, the first image_url is the pre-cropped face if available.
         """
-        if performer.face_url:
-            return self.download_image(performer.face_url)
-        elif performer.image_urls:
+        if performer.image_urls:
             return self.download_image(performer.image_urls[0])
         return None
-
-
-# Alias for compatibility - allows database_builder.py to use either client
-StashDBClient = ThePornDBClient
 
 
 if __name__ == "__main__":
@@ -274,12 +254,12 @@ if __name__ == "__main__":
     for p in performers:
         print(f"  - {p.name}")
         print(f"    Images: {len(p.image_urls)}")
-        print(f"    Face URL: {p.face_url is not None}")
-        print(f"    StashDB ID: {p.stashdb_id}")
+        print(f"    StashDB ID: {p.stash_ids.get('stashdb', 'N/A')}")
+        print(f"    Gender: {p.gender}")
         if p.image_urls:
             print(f"    First image: {p.image_urls[0][:60]}...")
 
     # Test iteration
     print("\nTesting iteration (first 10)...")
     for i, p in enumerate(client.iter_all_performers(max_performers=10)):
-        print(f"  {i+1}. {p.name} ({len(p.image_urls)} images)")
+        print(f"  {i+1}. {p.name} ({len(p.image_urls)} images, stashdb={p.stash_ids.get('stashdb', 'N/A')})")
