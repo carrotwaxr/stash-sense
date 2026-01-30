@@ -182,3 +182,61 @@ class TestBaseScraper:
 
         assert len(performers) == 3
         assert performers[0].id == "p1"
+
+
+class TestReferenceScraperMethods:
+    """Tests for reference site scraper methods."""
+
+    def test_base_scraper_has_source_type(self):
+        from base_scraper import BaseScraper
+
+        assert hasattr(BaseScraper, 'source_type')
+        assert BaseScraper.source_type == "stash_box"
+
+    def test_base_scraper_has_gender_filter(self):
+        from base_scraper import BaseScraper
+
+        assert hasattr(BaseScraper, 'gender_filter')
+        assert BaseScraper.gender_filter is None
+
+    def test_extract_slug_from_url_raises_not_implemented(self):
+        from base_scraper import BaseScraper, ScrapedPerformer
+
+        class MinimalScraper(BaseScraper):
+            source_name = "test"
+
+            def query_performers(self, page, per_page):
+                return (0, [])
+
+            def get_performer(self, performer_id):
+                return None
+
+            def download_image(self, url, max_retries=3):
+                return None
+
+        scraper = MinimalScraper()
+
+        import pytest
+        with pytest.raises(NotImplementedError):
+            scraper.extract_slug_from_url("http://example.com")
+
+    def test_name_to_slug_raises_not_implemented(self):
+        from base_scraper import BaseScraper
+
+        class MinimalScraper(BaseScraper):
+            source_name = "test"
+
+            def query_performers(self, page, per_page):
+                return (0, [])
+
+            def get_performer(self, performer_id):
+                return None
+
+            def download_image(self, url, max_retries=3):
+                return None
+
+        scraper = MinimalScraper()
+
+        import pytest
+        with pytest.raises(NotImplementedError):
+            scraper.name_to_slug("Test Name")

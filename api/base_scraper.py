@@ -69,8 +69,9 @@ class BaseScraper(ABC):
     - download_image(url) - download image bytes
     """
 
-    source_name: str  # e.g., "stashdb", "babepedia"
-    source_type: str  # "stash_box" or "reference_site"
+    source_name: str = ""  # Must be set by subclass
+    source_type: str = "stash_box"  # "stash_box" or "reference_site"
+    gender_filter: Optional[str] = None  # "FEMALE", "MALE", or None
 
     def __init__(self, rate_limit_delay: float = 0.5):
         """
@@ -137,6 +138,34 @@ class BaseScraper(ABC):
             Image bytes or None on failure
         """
         pass
+
+    def extract_slug_from_url(self, url: str) -> Optional[str]:
+        """
+        Extract performer slug/ID from a URL for this site.
+
+        Only needed for reference_site scrapers in URL lookup mode.
+
+        Args:
+            url: Full URL to the performer page
+
+        Returns:
+            Performer slug/ID or None if URL doesn't match this site
+        """
+        raise NotImplementedError("Reference site scrapers must implement extract_slug_from_url")
+
+    def name_to_slug(self, name: str) -> str:
+        """
+        Convert a performer name to the site's slug format.
+
+        Only needed for reference_site scrapers in name lookup mode.
+
+        Args:
+            name: Performer's canonical name
+
+        Returns:
+            Slug suitable for looking up on this site
+        """
+        raise NotImplementedError("Reference site scrapers must implement name_to_slug")
 
     def iter_all_performers(
         self,
