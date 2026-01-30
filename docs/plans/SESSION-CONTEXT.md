@@ -1,7 +1,7 @@
 # Stash Sense: Session Context
 
 **Purpose:** Quick orientation for Claude sessions working on this project.
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-01-30
 
 ---
 
@@ -43,7 +43,12 @@
 - `enrichment_coordinator.py` - Runs scrapers concurrently
 - `enrichment_builder.py` - CLI to run enrichment
 - Schema v5 with per-source face tracking and scrape progress
-- 52 tests passing
+- 93 tests passing
+
+**4. All Scrapers Implemented** ✅ COMPLETE
+- Stash-boxes: StashDB, ThePornDB, PMVStash, JAVStash, FansDB
+- Reference sites: Babepedia, IAFD, FreeOnes
+- See "Run Enrichment" section below for commands
 
 **3. Face Detection Tuning** ✅ COMPLETE
 - Tested 1080p and 480p scenes with comprehensive methodology
@@ -60,6 +65,30 @@
 - Replaced sprite-based scene identification with ffmpeg full-resolution frames
 - Plugin backend updated to use new endpoint parameters
 - Added burst mode to frame extractor (but even sampling preferred)
+
+**5. Frequency-Based Matching Mode** ✅ DONE
+- Added `matching_mode` parameter to `/identify/scene` endpoint
+- Two modes: `cluster` (original) and `frequency` (new, default)
+- Frequency mode counts performer appearances across all face matches
+- More robust when face clustering fails (common issue)
+- Both achieve 70% accuracy on test set, but complement each other
+- Test script: `api/test_matching_modes.py`
+- **Reference:** [face-detection-tuning.md](face-detection-tuning.md) for comparison results
+
+**6. Screenshot Processing Enhancement** ✅ DONE (2026-01-30)
+- Scene identification now includes Stash screenshot (cover image) for face detection
+- **Finding:** Stash serves thumbnails via `paths.screenshot` (e.g., 750x422 for 1080p video)
+- **Fix:** Screenshots smaller than 80% of video width are upscaled using Lanczos interpolation
+- Upscaling enables face detection on thumbnail screenshots (faces too small before)
+- Verbose timing logs added to `/identify/scene` endpoint for debugging
+
+**7. Face Enrichment Integration** ✅ COMPLETE (2026-01-29)
+- `FaceValidator` - Trust-level based validation (high/medium/low)
+- `IndexManager` - Voyager index loading/saving/querying
+- `FaceProcessor` - Image → face detection → embedding pipeline
+- `EnrichmentCoordinator` - Full integration with face processing
+- CLI: `--enable-faces` flag for enrichment_builder.py
+- 108 tests passing
 
 ---
 
@@ -120,9 +149,10 @@ User's Stash                          Stash Sense Sidecar
 ### Phase 3: Multi-Source Enrichment 🔄 IN PROGRESS
 - ✅ Infrastructure complete (config, queue, coordinator, CLI)
 - ✅ StashDB adapter updated to unified interface
-- ⏳ Add ThePornDB, PMVStash, JAVStash, FansDB scrapers
+- ✅ All stash-box scrapers: ThePornDB, PMVStash, JAVStash, FansDB
+- ✅ Reference site scrapers: Babepedia, IAFD, FreeOnes
 - ⏳ Face detection integration (download images, extract faces)
-- ⏳ Reference site scrapers (Babepedia, IAFD, FreeOnes)
+- ⏳ Run full enrichment pass (waiting for metadata refresh)
 - **Goal:** Increase faces per performer from 1.16 to 5-10
 - **Docs:** [multi-source-enrichment-design.md](2026-01-29-multi-source-enrichment-design.md), [scraper-orchestration-implementation.md](2026-01-29-scraper-orchestration-implementation.md)
 
@@ -150,21 +180,57 @@ User's Stash                          Stash Sense Sidecar
 | **Settings UI** | Better plugin configuration page |
 | **Error handling** | Improve error messages and recovery |
 
-### Multi-Source Support (Phase 3)
+### Run Enrichment (after metadata refresh completes)
 
-| Task | Description | Docs |
-|------|-------------|------|
-| **ThePornDB client** | Already have `theporndb_client.py` - test and integrate | [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) |
-| **Stash-box unified client** | PMVStash/JAVStash/FansDB (same GraphQL schema) | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
-| **Identity graph** | Cross-database performer linking | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) |
+All scrapers are implemented and tested. Run with:
 
-### Reference Site Enrichment (Phase 4)
+```bash
+cd api
+
+# Run with face processing (slower, requires GPU)
+python enrichment_builder.py --sources stashdb --enable-faces
+
+# Run with face limits
+python enrichment_builder.py --sources stashdb,babepedia --enable-faces --max-faces-total 12
+
+# Stash-boxes (have API keys in .env)
+python enrichment_builder.py --sources theporndb --enable-faces
+python enrichment_builder.py --sources pmvstash --enable-faces
+python enrichment_builder.py --sources javstash --enable-faces
+# python enrichment_builder.py --sources fansdb --enable-faces  # Need FANSDB_API_KEY
+
+# Reference sites (need FlareSolverr at FLARESOLVERR_URL)
+python enrichment_builder.py --sources babepedia --enable-faces
+python enrichment_builder.py --sources iafd --enable-faces
+python enrichment_builder.py --sources freeones --enable-faces
+
+# Multiple sources at once
+python enrichment_builder.py --sources theporndb,babepedia,freeones --enable-faces
+
+# Metadata-only (no face processing)
+python enrichment_builder.py --sources freeones
+
+# Dry run (no DB writes)
+python enrichment_builder.py --sources freeones --dry-run
+```
+
+| Source | Type | File | Status | Notes |
+|--------|------|------|--------|-------|
+| StashDB | stash_box | `stashdb_client.py` | ✅ Ready | ~100K performers |
+| ThePornDB | stash_box | `theporndb_client.py` | ✅ Ready | ~10K performers, StashDB cross-refs |
+| PMVStash | stash_box | `stashbox_clients.py` | ✅ Ready | ~6.5K performers |
+| JAVStash | stash_box | `stashbox_clients.py` | ✅ Ready | ~21.7K performers |
+| FansDB | stash_box | `stashbox_clients.py` | ⚠️ Not in Stash | Register at fansdb.cc |
+| Babepedia | reference_site | `babepedia_client.py` | ✅ Ready | FlareSolverr, female only |
+| IAFD | reference_site | `iafd_client.py` | ✅ Ready | FlareSolverr |
+| FreeOnes | reference_site | `freeones_client.py` | ✅ Ready | Gallery drilling |
+
+### Still Pending
 
 | Task | Description |
 |------|-------------|
-| **Babepedia scraper** | HTML scraping, needs FlareSolverr |
-| **IAFD scraper** | Structured data, good for aliases |
-| **FreeOnes scraper** | Extensive metadata |
+| **Identity graph** | Cross-database performer linking |
+| **Run full enrichment** | After metadata refresh completes |
 
 ---
 
@@ -190,6 +256,9 @@ User's Stash                          Stash Sense Sidecar
 | `quality_filters.py` | Face quality validation |
 | `write_queue.py` | Async queue for serialized writes |
 | `sources.yaml` | Source configuration (rate limits, face limits) |
+| `face_validator.py` | Trust-level based face validation |
+| `index_manager.py` | Voyager index loading/saving/querying |
+| `face_processor.py` | Image → face → embedding pipeline |
 | `recognizer.py` | Voyager index queries |
 | `embeddings.py` | Face detection and embedding |
 | `data/` | Live database (don't commit) |
@@ -242,6 +311,12 @@ Browser JS cannot call sidecar directly due to Content Security Policy. Pattern:
 | `DATA_DIR` | Path to database files | `./data` |
 | `STASH_URL` | Stash GraphQL endpoint | `http://localhost:9999` |
 | `STASH_API_KEY` | Stash API key | `eyJ...` |
+| `STASHDB_API_KEY` | StashDB API key | In `.env` ✅ |
+| `THEPORNDB_API_KEY` | ThePornDB API key | In `.env` ✅ |
+| `PMVSTASH_API_KEY` | PMVStash API key | In `.env` ✅ |
+| `JAVSTASH_API_KEY` | JAVStash API key | In `.env` ✅ |
+| `FANSDB_API_KEY` | FansDB API key | **Missing** |
+| `FLARESOLVERR_URL` | FlareSolverr URL | `http://10.0.0.4:8191` |
 
 ### Rate Limits
 
