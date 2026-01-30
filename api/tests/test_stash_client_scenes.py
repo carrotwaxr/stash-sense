@@ -111,3 +111,68 @@ class TestGetSceneStreamUrl:
             url = await client.get_scene_stream_url("123")
 
             assert url is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_scene_not_found(self):
+        from stash_client_unified import StashClientUnified
+
+        client = StashClientUnified("http://localhost:9999")
+
+        mock_response = {"findScene": None}
+
+        with patch.object(client, "_execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = mock_response
+
+            url = await client.get_scene_stream_url("999")
+
+            assert url is None
+
+
+class TestGetSceneById:
+    """Tests for get_scene_by_id method."""
+
+    @pytest.mark.asyncio
+    async def test_returns_scene_when_found(self):
+        from stash_client_unified import StashClientUnified
+
+        client = StashClientUnified("http://localhost:9999")
+
+        mock_response = {
+            "findScene": {
+                "id": "123",
+                "title": "Test Scene",
+                "date": "2024-01-15",
+                "updated_at": "2024-01-20T00:00:00Z",
+                "studio": {"id": "s1", "name": "Test Studio"},
+                "performers": [{"id": "p1", "name": "Performer One"}],
+                "files": [{"duration": 1800}],
+                "stash_ids": [
+                    {"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}
+                ],
+            }
+        }
+
+        with patch.object(client, "_execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = mock_response
+
+            scene = await client.get_scene_by_id("123")
+
+            assert scene is not None
+            assert scene["id"] == "123"
+            assert scene["title"] == "Test Scene"
+            assert scene["studio"]["name"] == "Test Studio"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(self):
+        from stash_client_unified import StashClientUnified
+
+        client = StashClientUnified("http://localhost:9999")
+
+        mock_response = {"findScene": None}
+
+        with patch.object(client, "_execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = mock_response
+
+            scene = await client.get_scene_by_id("999")
+
+            assert scene is None

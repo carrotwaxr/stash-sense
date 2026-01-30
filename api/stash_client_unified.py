@@ -487,7 +487,7 @@ class StashClientUnified:
         if updated_after:
             scene_filter["updated_at"] = {"value": updated_after, "modifier": "GREATER_THAN"}
 
-        data = await self._execute(query, variables={"filter": filter_input, "scene_filter": scene_filter})
+        data = await self._execute(query, {"filter": filter_input, "scene_filter": scene_filter})
         return data["findScenes"]["scenes"], data["findScenes"]["count"]
 
     async def get_scene_stream_url(self, scene_id: str) -> Optional[str]:
@@ -503,7 +503,7 @@ class StashClientUnified:
           }
         }
         """
-        data = await self._execute(query, variables={"id": scene_id})
+        data = await self._execute(query, {"id": scene_id})
         scene = data.get("findScene")
         if not scene or not scene.get("sceneStreams"):
             return None
@@ -539,5 +539,5 @@ class StashClientUnified:
           }
         }
         """
-        data = await self._execute(query, variables={"id": scene_id})
+        data = await self._execute(query, {"id": scene_id})
         return data.get("findScene")
