@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from recommendations_db import RecommendationsDB, Recommendation, AnalysisRun
 from stash_client_unified import StashClientUnified
-from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer
+from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -200,6 +200,7 @@ async def dismiss_recommendation(rec_id: int, request: DismissRequest = None):
 ANALYZERS = {
     "duplicate_performer": DuplicatePerformerAnalyzer,
     "duplicate_scene_files": DuplicateSceneFilesAnalyzer,
+    "duplicate_scenes": DuplicateScenesAnalyzer,
 }
 
 
