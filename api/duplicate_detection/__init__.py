@@ -6,6 +6,7 @@ from .models import (
     SceneMetadata,
     SignalBreakdown,
     DuplicateMatch,
+    StashID,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "SceneMetadata",
     "SignalBreakdown",
     "DuplicateMatch",
+    "StashID",
 ]
