@@ -159,7 +159,10 @@ class BabepediaScraper(BaseScraper):
         Note: Uses FlareSolverr for the initial page load to get cookies,
         then uses those cookies for image downloads.
         """
+        import logging
         import requests
+
+        logger = logging.getLogger(__name__)
 
         for attempt in range(max_retries):
             try:
@@ -178,16 +181,25 @@ class BabepediaScraper(BaseScraper):
                     return response.content
                 elif response.status_code == 403:
                     # Cloudflare blocked - would need to use FlareSolverr
-                    print(f"  Babepedia image blocked (403), may need FlareSolverr")
+                    logger.debug(f"[babepedia] Image blocked (403)")
+                    return None
+                elif response.status_code == 429:
+                    # Rate limited - backoff and retry
+                    wait_time = 30 * (attempt + 1)
+                    logger.warning(f"[babepedia] Rate limited (429), waiting {wait_time}s")
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                        continue
                     return None
                 else:
-                    print(f"  Babepedia image error: {response.status_code}")
+                    logger.debug(f"[babepedia] Image error: {response.status_code}")
+                    return None
 
             except Exception as e:
+                logger.warning(f"[babepedia] Download error (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(5 * (attempt + 1))
                     continue
-                print(f"Failed to download {url}: {e}")
                 return None
 
         return None

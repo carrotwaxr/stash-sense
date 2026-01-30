@@ -7,6 +7,7 @@ a single write queue for serialized database writes.
 import asyncio
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
@@ -98,6 +99,9 @@ class EnrichmentCoordinator:
         # Lock for index writes
         self._index_lock = threading.Lock()
 
+        # Shutdown flag for graceful termination
+        self._shutdown = threading.Event()
+
         # Track faces added since last save
         self._faces_since_save = 0
 
@@ -114,7 +118,11 @@ class EnrichmentCoordinator:
 
         logger.info("Initializing face processing components...")
 
-        self._index_manager = IndexManager(self.data_dir)
+        # Get DB's max face index to prevent conflicts after unclean shutdowns
+        db_max_index = self.database.get_max_face_index()
+        min_index = db_max_index + 1 if db_max_index is not None else None
+
+        self._index_manager = IndexManager(self.data_dir, min_index=min_index)
         self._generator = FaceEmbeddingGenerator()
         self._face_processor = FaceProcessor(
             generator=self._generator,
@@ -124,9 +132,21 @@ class EnrichmentCoordinator:
 
         logger.info(f"Loaded {self._index_manager.current_index} existing embeddings")
 
+    def request_shutdown(self):
+        """Request graceful shutdown of all scrapers."""
+        logger.info("Shutdown requested, stopping scrapers...")
+        self._shutdown.set()
+
     async def run(self):
         """Run all scrapers and process results."""
         self._loop = asyncio.get_event_loop()
+        self._start_time = time.time()
+
+        # Log startup info
+        scraper_names = [s.source_name for s in self.scrapers]
+        logger.info(f"=== Starting enrichment with {len(self.scrapers)} scrapers: {', '.join(scraper_names)} ===")
+        logger.info(f"Face limits: {self.max_faces_per_source}/source, {self.max_faces_total}/total")
+
         self._init_face_processing()
         await self.write_queue.start()
 
@@ -141,17 +161,21 @@ class EnrichmentCoordinator:
             await asyncio.gather(*tasks, return_exceptions=True)
 
             # Wait for write queue to drain
-            await self.write_queue.wait_until_empty()
+            if not self._shutdown.is_set():
+                await self.write_queue.wait_until_empty()
 
         finally:
             await self.write_queue.stop()
-            self._executor.shutdown(wait=True)
+            self._executor.shutdown(wait=False)  # Don't wait, scrapers check shutdown flag
 
             # Save indices on shutdown
             if self._index_manager:
                 self._index_manager.save()
 
-        logger.info(f"Enrichment complete: {self.stats.performers_processed} performers processed")
+        # Final summary
+        elapsed = time.time() - self._start_time
+        elapsed_str = f"{elapsed/60:.1f} min" if elapsed > 60 else f"{elapsed:.0f} sec"
+        logger.info(f"=== Enrichment complete in {elapsed_str} ===")
 
     def _run_scraper(self, scraper: BaseScraper):
         """Run a single scraper (called from thread pool)."""
@@ -163,38 +187,60 @@ class EnrichmentCoordinator:
     def _run_stashbox_scraper(self, scraper: BaseScraper):
         """Run a stash-box scraper that iterates its own performers."""
         source = scraper.source_name
-        logger.info(f"Starting stash-box scraper: {source}")
 
         # Get resume point
         progress = self.database.get_scrape_progress(source)
         last_id = progress['last_processed_id'] if progress else None
+        resume_info = f" (resuming from {last_id})" if last_id else ""
+
+        logger.info(f"[{source}] Starting stash-box scraper{resume_info}")
 
         processed = 0
         faces_added = 0
+        batch_start = time.time()
+        batch_faces = 0
 
         try:
             for performer in scraper.iter_performers_after(last_id):
+                # Check for shutdown
+                if self._shutdown.is_set():
+                    logger.info(f"[{source}] Shutdown requested, stopping...")
+                    break
+
                 # Process performer
                 faces_from_performer = self._process_performer(scraper, performer)
                 faces_added += faces_from_performer
+                batch_faces += faces_from_performer
                 processed += 1
 
-                # Save progress periodically
+                # Log each performer with result
+                face_info = f"+{faces_from_performer} faces" if faces_from_performer > 0 else "no faces"
+                logger.info(f"[{source}] #{processed}: {performer.name} ({face_info})")
+
+                # Save progress and show batch summary every 100
                 if processed % 100 == 0:
+                    elapsed = time.time() - batch_start
+                    rate = 100 / elapsed if elapsed > 0 else 0
                     self.database.save_scrape_progress(
                         source=source,
                         last_processed_id=performer.id,
                         performers_processed=processed,
                         faces_added=faces_added,
                     )
-                    logger.info(f"{source}: {processed} performers processed")
+                    logger.info(
+                        f"[{source}] === Batch complete: {processed} total, "
+                        f"{batch_faces} faces this batch, {rate:.1f} performers/min ==="
+                    )
+                    batch_start = time.time()
+                    batch_faces = 0
 
                 # Record stats
                 self.stats.record_performer(source)
 
         except Exception as e:
-            logger.error(f"Scraper {source} error: {e}")
-            self.stats.errors += 1
+            if not self._shutdown.is_set():
+                logger.error(f"[{source}] Error: {e}")
+                self.stats.errors += 1
 
         # Final progress save
         if processed > 0:
@@ -205,7 +251,7 @@ class EnrichmentCoordinator:
                 faces_added=faces_added,
             )
 
-        logger.info(f"Scraper {source} complete: {processed} performers")
+        logger.info(f"[{source}] Complete: {processed} performers, {faces_added} faces added")
 
     def _run_reference_scraper(self, scraper: BaseScraper):
         """Run a reference site scraper that looks up performers from our DB."""
@@ -213,14 +259,17 @@ class EnrichmentCoordinator:
         mode = self.reference_site_mode.value
         progress_key = f"{source}:{mode}"
 
-        logger.info(f"Starting reference scraper: {source} (mode={mode})")
-
         progress = self.database.get_scrape_progress(progress_key)
         last_id = int(progress['last_processed_id']) if progress and progress['last_processed_id'] else 0
+        resume_info = f" (resuming from performer #{last_id})" if last_id else ""
+
+        logger.info(f"[{source}] Starting reference scraper (mode={mode}){resume_info}")
 
         processed = 0
         faces_added = 0
         last_performer_id = last_id
+        batch_start = time.time()
+        batch_faces = 0
 
         try:
             if self.reference_site_mode == ReferenceSiteMode.URL_LOOKUP:
@@ -229,33 +278,53 @@ class EnrichmentCoordinator:
                 iterator = self._iter_name_lookup(scraper, last_id)
 
             for performer_id, slug in iterator:
+                # Check for shutdown
+                if self._shutdown.is_set():
+                    logger.info(f"[{source}] Shutdown requested, stopping...")
+                    break
+
                 last_performer_id = performer_id
 
                 scraped = scraper.get_performer(slug)
                 if not scraped:
                     processed += 1
+                    logger.debug(f"[{source}] #{processed}: performer #{performer_id} not found")
                     continue
 
                 faces_from_performer = self._process_reference_performer(scraper, performer_id, scraped)
                 faces_added += faces_from_performer
+                batch_faces += faces_from_performer
                 processed += 1
 
+                # Log each performer with result
+                face_info = f"+{faces_from_performer} faces" if faces_from_performer > 0 else "no faces"
+                logger.info(f"[{source}] #{processed}: {scraped.name} ({face_info})")
+
+                # Save progress and show batch summary every 100
                 if processed % 100 == 0:
+                    elapsed = time.time() - batch_start
+                    rate = 100 / elapsed if elapsed > 0 else 0
                     self.database.save_scrape_progress(
                         source=progress_key,
                         last_processed_id=str(performer_id),
                         performers_processed=processed,
                         faces_added=faces_added,
                     )
-                    logger.info(f"{source}: {processed} performers processed, {faces_added} faces added")
+                    logger.info(
+                        f"[{source}] === Batch complete: {processed} total, "
+                        f"{batch_faces} faces this batch, {rate:.1f} performers/min ==="
+                    )
+                    batch_start = time.time()
+                    batch_faces = 0
 
                 self.stats.record_performer(source)
 
         except Exception as e:
-            logger.error(f"Reference scraper {source} error: {e}")
-            import traceback
-            traceback.print_exc()
-            self.stats.errors += 1
+            if not self._shutdown.is_set():
+                logger.error(f"[{source}] Error: {e}")
+                import traceback
+                traceback.print_exc()
+                self.stats.errors += 1
 
         self.database.save_scrape_progress(
             source=progress_key,
@@ -264,7 +333,7 @@ class EnrichmentCoordinator:
             faces_added=faces_added,
         )
 
-        logger.info(f"Reference scraper {source} complete: {processed} performers, {faces_added} faces")
+        logger.info(f"[{source}] Complete: {processed} performers, {faces_added} faces added")
 
     def _iter_url_lookup(self, scraper: BaseScraper, last_id: int):
         """Iterate performers with URLs for this reference site."""

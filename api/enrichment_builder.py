@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -25,7 +26,9 @@ from stashdb_client import StashDBClient
 from stashbox_clients import PMVStashClient, JAVStashClient, FansDBClient
 from theporndb_client import ThePornDBClient
 from babepedia_client import BabepediaScraper
+from boobpedia_client import BoobpediaScraper
 from iafd_client import IAFDScraper
+from indexxx_client import IndexxxScraper
 from freeones_client import FreeOnesScraper
 
 # Configure logging
@@ -145,6 +148,22 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             )
             scrapers.append(scraper)
             logger.info(f"Created FreeOnes scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "indexxx":
+            chrome_cdp_url = os.environ.get("CHROME_CDP_URL", "http://10.0.0.4:9222")
+            scraper = IndexxxScraper(
+                chrome_cdp_url=chrome_cdp_url,
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created Indexxx scraper (Chrome CDP: {chrome_cdp_url}, rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "boobpedia":
+            scraper = BoobpediaScraper(
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created Boobpedia scraper (rate: {source_config.rate_limit} req/min)")
 
     return scrapers
 
@@ -342,20 +361,28 @@ Examples:
         logger.info(f"Face processing ENABLED - using data dir: {data_dir}")
         logger.info(f"Trust levels: {source_trust_levels}")
 
+    # Set up signal handler for graceful shutdown
+    def signal_handler(signum, frame):
+        logger.info("Received interrupt signal, requesting graceful shutdown...")
+        coordinator.request_shutdown()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     # Run
     try:
         asyncio.run(coordinator.run())
-        print("\n=== Enrichment Complete ===")
-        print(f"Performers processed: {coordinator.stats.performers_processed:,}")
-        print(f"Images processed: {coordinator.stats.images_processed:,}")
-        print(f"Faces added: {coordinator.stats.faces_added:,}")
-        print(f"Faces rejected: {coordinator.stats.faces_rejected:,}")
-        print(f"Errors: {coordinator.stats.errors}")
-        for source, count in coordinator.stats.by_source.items():
-            print(f"  {source}: {count:,}")
     except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        sys.exit(1)
+        pass  # Already handled by signal handler
+
+    print("\n=== Enrichment Complete ===")
+    print(f"Performers processed: {coordinator.stats.performers_processed:,}")
+    print(f"Images processed: {coordinator.stats.images_processed:,}")
+    print(f"Faces added: {coordinator.stats.faces_added:,}")
+    print(f"Faces rejected: {coordinator.stats.faces_rejected:,}")
+    print(f"Errors: {coordinator.stats.errors}")
+    for source, count in coordinator.stats.by_source.items():
+        print(f"  {source}: {count:,}")
 
 
 if __name__ == "__main__":

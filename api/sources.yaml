@@ -69,6 +69,13 @@ reference_sites:
     max_faces: 3
     needs_flaresolverr: true
 
+  indexxx:
+    enabled: false  # Needs Chrome CDP at CHROME_CDP_URL
+    trust_level: high
+    rate_limit: 20  # Low rate limit - site aggressively returns 429
+    max_faces: 5
+    needs_chrome_cdp: true  # Uses Playwright with remote Chrome
+
   freeones:
     enabled: false
     trust_level: medium

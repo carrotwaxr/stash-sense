@@ -27,16 +27,20 @@ class IndexManager:
     FACENET_FILENAME = "face_facenet512.voy"
     ARCFACE_FILENAME = "face_arcface.voy"
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, min_index: int = None):
         """
         Load indices from data directory.
 
         Args:
             data_dir: Directory containing .voy index files
+            min_index: Minimum starting index (e.g., from DB max index + 1).
+                       Used to prevent index conflicts after unclean shutdowns
+                       where DB committed but index wasn't saved.
         """
         self.data_dir = Path(data_dir)
         self.facenet_path = self.data_dir / self.FACENET_FILENAME
         self.arcface_path = self.data_dir / self.ARCFACE_FILENAME
+        self._min_index = min_index
 
         self._load_indices()
 
@@ -78,9 +82,18 @@ class IndexManager:
                 num_dimensions=512,
             )
 
-        # Current index = length of existing index
-        self.current_index = len(self.facenet_index)
-        logger.info(f"Loaded {self.current_index} existing embeddings")
+        # Current index = max of index length and min_index
+        # This prevents conflicts when DB committed faces but index wasn't saved
+        index_len = len(self.facenet_index)
+        if self._min_index is not None and self._min_index > index_len:
+            logger.warning(
+                f"DB has faces up to index {self._min_index - 1}, but Voyager only has {index_len}. "
+                f"Starting from {self._min_index} to avoid conflicts."
+            )
+            self.current_index = self._min_index
+        else:
+            self.current_index = index_len
+        logger.info(f"Loaded {index_len} existing embeddings, next index: {self.current_index}")
 
     def add_embedding(self, embedding: FaceEmbedding) -> int:
         """

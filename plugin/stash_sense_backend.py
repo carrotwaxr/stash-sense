@@ -26,9 +26,9 @@ def main():
         result = health_check(sidecar_url)
     elif mode == "identify_scene":
         scene_id = args.get("scene_id")
-        max_frames = int(args.get("max_frames", 20))
-        top_k = int(args.get("top_k", 5))
-        max_distance = float(args.get("max_distance", 0.5))
+        max_frames = int(args.get("max_frames", 40))  # 40 frames optimal per tuning
+        top_k = int(args.get("top_k", 3))
+        max_distance = float(args.get("max_distance", 0.7))  # 0.7 optimal per tuning
 
         result = identify_scene(
             sidecar_url, scene_id, max_frames, top_k, max_distance
@@ -86,9 +86,10 @@ def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance):
     try:
         payload = {
             "scene_id": str(scene_id),
-            "max_frames": max_frames,
+            "num_frames": max_frames,
             "top_k": top_k,
             "max_distance": max_distance,
+            # Let API use its default min_face_size (40px)
         }
 
         log(f"Identifying scene {scene_id} with max_distance={max_distance}")
@@ -96,7 +97,7 @@ def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance):
         response = requests.post(
             f"{sidecar_url}/identify/scene",
             json=payload,
-            timeout=120,  # Scene analysis can take a while
+            timeout=180,  # ffmpeg extraction can take a while
         )
 
         if response.ok:

@@ -30,6 +30,12 @@ from config import DatabaseConfig
 from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
 from embeddings import load_image
 from sprite_parser import parse_vtt_file, extract_frames_from_sprite
+from frame_extractor import (
+    FrameExtractionConfig,
+    extract_frames_from_stash_scene,
+    check_ffmpeg_available,
+)
+from matching import MatchingConfig
 from recommendations_router import router as recommendations_router, init_recommendations
 
 
@@ -291,13 +297,29 @@ async def identify_from_url(
 
 # Scene identification models
 class SceneIdentifyRequest(BaseModel):
-    """Request to identify performers in a scene using sprite sheet."""
+    """Request to identify performers in a scene using ffmpeg frame extraction."""
     stash_url: Optional[str] = Field(None, description="Base URL of Stash instance (or use STASH_URL env var)")
     scene_id: str = Field(description="Scene ID in Stash")
     api_key: Optional[str] = Field(None, description="Stash API key (or use STASH_API_KEY env var)")
-    max_frames: int = Field(20, ge=1, le=100, description="Max frames to analyze")
+
+    # Frame extraction settings
+    num_frames: int = Field(40, ge=5, le=120, description="Number of frames to extract")
+    start_offset_pct: float = Field(0.05, ge=0.0, le=0.5, description="Skip first N% of video")
+    end_offset_pct: float = Field(0.95, ge=0.5, le=1.0, description="Stop at N% of video")
+
+    # Face detection settings
+    min_face_size: int = Field(40, ge=20, le=200, description="Minimum face size in pixels")
+    min_face_confidence: float = Field(0.5, ge=0.1, le=1.0, description="Minimum face detection confidence")
+
+    # Matching settings
     top_k: int = Field(3, ge=1, le=10, description="Matches per person")
-    max_distance: float = Field(0.6, ge=0.0, le=2.0)
+    max_distance: float = Field(0.7, ge=0.0, le=2.0, description="Maximum match distance")
+
+    # Clustering settings
+    cluster_threshold: float = Field(0.6, ge=0.2, le=3.0, description="Distance threshold for face clustering")
+
+    # Matching mode: "cluster", "frequency", or "hybrid"
+    matching_mode: str = Field("frequency", description="Matching mode: 'cluster' (cluster faces then match), 'frequency' (count performer appearances), or 'hybrid' (combine both)")
 
 
 class PersonResult(BaseModel):
@@ -312,14 +334,17 @@ class SceneIdentifyResponse(BaseModel):
     """Response with scene identification results."""
     scene_id: str
     frames_analyzed: int
+    frames_requested: int = 0
     faces_detected: int
+    faces_after_filter: int = 0
     persons: list[PersonResult]
+    errors: list[str] = []
 
 
 def cluster_faces_by_person(
     all_results: list[tuple[int, RecognitionResult]],
     recognizer: FaceRecognizer,
-    distance_threshold: float = 0.5,
+    distance_threshold: float = 0.9,
 ) -> list[list[tuple[int, RecognitionResult]]]:
     """
     Cluster detected faces by person using embedding similarity.
@@ -330,7 +355,7 @@ def cluster_faces_by_person(
     Args:
         all_results: List of (frame_index, RecognitionResult) tuples
         recognizer: FaceRecognizer instance for generating embeddings
-        distance_threshold: Max distance to consider same person
+        distance_threshold: Max distance to consider same person (default 0.9 for L2 on concatenated embeddings)
 
     Returns:
         List of clusters, each containing faces of the same person
@@ -367,6 +392,64 @@ def cluster_faces_by_person(
 
     # Remove embedding vectors from output
     return [[(f, r) for f, r, _ in cluster] for cluster in clusters]
+
+
+def merge_clusters_by_match(
+    clusters: list[list[tuple[int, RecognitionResult]]],
+) -> list[list[tuple[int, RecognitionResult]]]:
+    """
+    Merge clusters that have the same best performer match.
+
+    If multiple clusters all have "Xander Corvus" as their top match,
+    they're probably the same person and should be merged.
+    """
+    if len(clusters) <= 1:
+        return clusters
+
+    # Get best match for each cluster
+    cluster_best_match: list[tuple[str, float]] = []
+    for cluster in clusters:
+        # Find best match across all faces in cluster
+        best_match_id = None
+        best_score = float("inf")
+
+        for _, result in cluster:
+            if result.matches:
+                top_match = result.matches[0]
+                if top_match.combined_score < best_score:
+                    best_score = top_match.combined_score
+                    best_match_id = top_match.stashdb_id
+
+        cluster_best_match.append((best_match_id, best_score))
+
+    # Group clusters by their best match
+    match_to_clusters: dict[str, list[int]] = defaultdict(list)
+    for i, (match_id, _) in enumerate(cluster_best_match):
+        if match_id:
+            match_to_clusters[match_id].append(i)
+
+    # Merge clusters with same best match
+    merged_indices: set[int] = set()
+    merged_clusters: list[list[tuple[int, RecognitionResult]]] = []
+
+    for match_id, cluster_indices in match_to_clusters.items():
+        if len(cluster_indices) > 1:
+            # Merge all these clusters
+            merged = []
+            for idx in cluster_indices:
+                merged.extend(clusters[idx])
+                merged_indices.add(idx)
+            merged_clusters.append(merged)
+        elif cluster_indices[0] not in merged_indices:
+            merged_clusters.append(clusters[cluster_indices[0]])
+            merged_indices.add(cluster_indices[0])
+
+    # Add clusters that had no matches
+    for i, cluster in enumerate(clusters):
+        if i not in merged_indices:
+            merged_clusters.append(cluster)
+
+    return merged_clusters
 
 
 def aggregate_matches(
@@ -414,110 +497,514 @@ def aggregate_matches(
     return aggregated[:top_k]
 
 
+def frequency_based_matching(
+    all_results: list[tuple[int, RecognitionResult]],
+    top_k: int = 5,
+    min_appearances: int = 1,
+    max_distance: float = 0.7,
+) -> list[PersonResult]:
+    """
+    Identify performers by counting appearances across all face matches.
+
+    Instead of clustering faces first (which can fail when embeddings vary too much),
+    this approach:
+    1. Collects all matches from all detected faces
+    2. Counts how many times each performer appears in the top matches
+    3. Weights by match distance (closer matches count more)
+    4. Returns performers sorted by weighted frequency
+
+    This is more robust when clustering fails but may include false positives
+    if the same wrong performer happens to match multiple faces.
+
+    Args:
+        all_results: List of (frame_index, RecognitionResult) tuples
+        top_k: Number of performers to return
+        min_appearances: Minimum number of face matches to include a performer
+        max_distance: Only count matches below this distance
+
+    Returns:
+        List of PersonResult objects, one per identified performer
+    """
+    # Collect all matches across all faces
+    performer_matches: dict[str, list[tuple[float, PerformerMatch, int]]] = defaultdict(list)
+
+    for frame_idx, result in all_results:
+        for match in result.matches:
+            if match.combined_score <= max_distance:
+                performer_matches[match.stashdb_id].append((match.combined_score, match, frame_idx))
+
+    # Calculate weighted frequency score for each performer
+    # Score = appearances * (1 / avg_distance) - rewards frequent, close matches
+    performer_scores = []
+    for stashdb_id, matches in performer_matches.items():
+        if len(matches) < min_appearances:
+            continue
+
+        distances = [m[0] for m in matches]
+        avg_distance = np.mean(distances)
+        min_distance = min(distances)
+        appearances = len(matches)
+        unique_frames = len(set(m[2] for m in matches))
+
+        # Weighted score: primarily based on match quality, with modest bonus for frame count
+        # Formula: confidence * (1 + small_frame_bonus)
+        # This ensures a single excellent match beats multiple mediocre matches
+        confidence = 1 - min_distance  # Use best match, not average
+        frame_bonus = 0.1 * (unique_frames - 1)  # Small bonus: +10% per additional frame
+        weighted_score = confidence * (1 + frame_bonus)
+
+        # For display, use the match with the best (lowest) distance
+        best_match = min(matches, key=lambda m: m[0])[1]
+
+        performer_scores.append({
+            "stashdb_id": stashdb_id,
+            "appearances": appearances,
+            "unique_frames": unique_frames,
+            "avg_distance": avg_distance,
+            "min_distance": min_distance,
+            "weighted_score": weighted_score,
+            "best_match": best_match,
+        })
+
+    # Sort by weighted score (higher is better)
+    performer_scores.sort(key=lambda p: p["weighted_score"], reverse=True)
+
+    # Convert to PersonResult format
+    persons = []
+    for i, p in enumerate(performer_scores[:top_k]):
+        match = p["best_match"]
+        persons.append(PersonResult(
+            person_id=i,
+            frame_count=p["unique_frames"],
+            best_match=PerformerMatchResponse(
+                stashdb_id=match.stashdb_id,
+                name=match.name,
+                confidence=distance_to_confidence(p["avg_distance"]),
+                distance=p["avg_distance"],
+                facenet_distance=match.facenet_distance,
+                arcface_distance=match.arcface_distance,
+                country=match.country,
+                image_url=match.image_url,
+            ),
+            all_matches=[PerformerMatchResponse(
+                stashdb_id=match.stashdb_id,
+                name=match.name,
+                confidence=distance_to_confidence(p["avg_distance"]),
+                distance=p["avg_distance"],
+                facenet_distance=match.facenet_distance,
+                arcface_distance=match.arcface_distance,
+                country=match.country,
+                image_url=match.image_url,
+            )],
+        ))
+
+    return persons
+
+
+def hybrid_matching(
+    all_results: list[tuple[int, RecognitionResult]],
+    recognizer: "FaceRecognizer",
+    cluster_threshold: float = 0.6,
+    top_k: int = 5,
+    max_distance: float = 0.7,
+) -> list[PersonResult]:
+    """
+    Hybrid matching combining cluster and frequency approaches.
+
+    Runs both methods and combines results:
+    - Performers found by BOTH methods get a significant boost
+    - Uses the best (lowest) distance from either method
+    - Sorts by combined score
+
+    This helps when:
+    - Clustering works well (cluster mode catches it)
+    - Clustering fails but frequency catches appearances (frequency mode catches it)
+    """
+    # Get frequency results (as a dict for lookup)
+    freq_persons = frequency_based_matching(
+        all_results, top_k=top_k * 3, min_appearances=1, max_distance=max_distance
+    )
+    freq_by_id = {p.best_match.stashdb_id: p for p in freq_persons if p.best_match}
+
+    # Get cluster results
+    clusters = cluster_faces_by_person(all_results, recognizer, cluster_threshold)
+    clusters = merge_clusters_by_match(clusters)
+
+    cluster_persons = []
+    for cluster in clusters:
+        aggregated = aggregate_matches(cluster, top_k=3)
+        if aggregated:
+            cluster_persons.append({
+                "stashdb_id": aggregated[0].stashdb_id,
+                "name": aggregated[0].name,
+                "frame_count": len(cluster),
+                "distance": aggregated[0].distance,
+                "match": aggregated[0],
+            })
+
+    cluster_by_id = {p["stashdb_id"]: p for p in cluster_persons}
+
+    # Combine results
+    all_performers = set(freq_by_id.keys()) | set(cluster_by_id.keys())
+
+    combined_scores = []
+    for stashdb_id in all_performers:
+        freq_result = freq_by_id.get(stashdb_id)
+        cluster_result = cluster_by_id.get(stashdb_id)
+
+        # Determine best distance and frame count
+        if freq_result and cluster_result:
+            # Found by both - use best distance, combine frame counts
+            best_distance = min(freq_result.best_match.distance, cluster_result["distance"])
+            frame_count = max(freq_result.frame_count, cluster_result["frame_count"])
+            found_by = "both"
+            # Significant boost for being found by both methods
+            confidence_boost = 0.15
+        elif freq_result:
+            best_distance = freq_result.best_match.distance
+            frame_count = freq_result.frame_count
+            found_by = "frequency"
+            confidence_boost = 0.0
+        else:
+            best_distance = cluster_result["distance"]
+            frame_count = cluster_result["frame_count"]
+            found_by = "cluster"
+            confidence_boost = 0.0
+
+        # Calculate hybrid score: confidence with boost, plus small frame bonus
+        base_confidence = 1 - best_distance
+        boosted_confidence = min(1.0, base_confidence + confidence_boost)
+        frame_bonus = 0.05 * (frame_count - 1)  # Small bonus per additional frame
+        hybrid_score = boosted_confidence * (1 + frame_bonus)
+
+        # Get the match object
+        if freq_result:
+            match_obj = freq_result.best_match
+        else:
+            match_obj = cluster_result["match"]
+
+        combined_scores.append({
+            "stashdb_id": stashdb_id,
+            "name": match_obj.name,
+            "frame_count": frame_count,
+            "distance": best_distance,
+            "hybrid_score": hybrid_score,
+            "found_by": found_by,
+            "match": match_obj,
+        })
+
+    # Sort by hybrid score (higher is better)
+    combined_scores.sort(key=lambda p: p["hybrid_score"], reverse=True)
+
+    # Convert to PersonResult format
+    persons = []
+    for i, p in enumerate(combined_scores[:top_k]):
+        match = p["match"]
+        persons.append(PersonResult(
+            person_id=i,
+            frame_count=p["frame_count"],
+            best_match=PerformerMatchResponse(
+                stashdb_id=match.stashdb_id,
+                name=match.name,
+                confidence=distance_to_confidence(p["distance"]),
+                distance=p["distance"],
+                facenet_distance=match.facenet_distance,
+                arcface_distance=match.arcface_distance,
+                country=match.country,
+                image_url=match.image_url,
+            ),
+            all_matches=[PerformerMatchResponse(
+                stashdb_id=match.stashdb_id,
+                name=match.name,
+                confidence=distance_to_confidence(p["distance"]),
+                distance=p["distance"],
+                facenet_distance=match.facenet_distance,
+                arcface_distance=match.arcface_distance,
+                country=match.country,
+                image_url=match.image_url,
+            )],
+        ))
+
+    return persons
+
+
 @app.post("/identify/scene", response_model=SceneIdentifyResponse)
 async def identify_scene(request: SceneIdentifyRequest):
     """
-    Identify all performers in a scene using its sprite sheet.
+    Identify all performers in a scene using ffmpeg frame extraction.
 
-    Fetches the sprite sheet and VTT from Stash, extracts frames,
+    Extracts full-resolution frames from the video stream using ffmpeg,
     detects faces, clusters them by person, and returns matches.
     """
+    import time
+    t_start = time.time()
+
     if recognizer is None:
         raise HTTPException(status_code=503, detail="Database not loaded")
 
-    # ALWAYS use environment variables (ignore request values to avoid stale plugin issues)
+    if not check_ffmpeg_available():
+        raise HTTPException(status_code=503, detail="ffmpeg not available")
+
     base_url = STASH_URL.rstrip("/")
     api_key = STASH_API_KEY
 
     if not base_url:
         raise HTTPException(status_code=400, detail="STASH_URL env var not set")
 
-    headers = {"ApiKey": api_key} if api_key else {}
+    print(f"[identify_scene] === START scene_id={request.scene_id} ===")
+    print(f"[identify_scene] Settings: num_frames={request.num_frames}, min_face_size={request.min_face_size}, max_distance={request.max_distance}, mode={request.matching_mode}")
 
-    print(f"[identify_scene] stash_url={base_url}, scene_id={request.scene_id}")
-    print(f"[identify_scene] api_key={'<set>' if api_key else '<empty>'}")
-
+    # Get scene info from Stash
+    screenshot_url = None
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # Query GraphQL for sprite path (Stash uses hash-based paths)
+        async with httpx.AsyncClient(timeout=30.0) as client:
             gql_query = {
-                "query": f'{{ findScene(id: "{request.scene_id}") {{ paths {{ sprite }} }} }}'
+                "query": f'''{{
+                    findScene(id: "{request.scene_id}") {{
+                        files {{
+                            duration
+                            width
+                            height
+                        }}
+                        paths {{
+                            screenshot
+                        }}
+                    }}
+                }}'''
             }
-            gql_headers = {**headers, "Content-Type": "application/json"}
-            gql_response = await client.post(f"{base_url}/graphql", json=gql_query, headers=gql_headers)
-            gql_response.raise_for_status()
-            gql_data = gql_response.json()
+            headers = {"ApiKey": api_key, "Content-Type": "application/json"}
+            response = await client.post(f"{base_url}/graphql", json=gql_query, headers=headers)
+            response.raise_for_status()
+            data = response.json()
 
-            sprite_url = gql_data.get("data", {}).get("findScene", {}).get("paths", {}).get("sprite")
-            if not sprite_url:
-                raise HTTPException(status_code=400, detail="Scene has no sprite sheet generated")
+            scene_data = data.get("data", {}).get("findScene", {})
+            if not scene_data or not scene_data.get("files"):
+                raise HTTPException(status_code=404, detail="Scene not found or has no files")
 
-            print(f"[identify_scene] Fetching sprite from: {sprite_url}")
-            sprite_response = await client.get(sprite_url, headers=headers)
-            sprite_response.raise_for_status()
-            sprite_image = Image.open(BytesIO(sprite_response.content))
+            file_info = scene_data["files"][0]
+            duration_sec = file_info.get("duration", 0)
+            if not duration_sec:
+                raise HTTPException(status_code=400, detail="Scene has no duration")
 
-            # Fetch VTT file
-            vtt_url = f"{base_url}/scene/{request.scene_id}/vtt/thumbs"
-            vtt_response = await client.get(vtt_url, headers=headers)
-            vtt_response.raise_for_status()
-            vtt_content = vtt_response.text
+            # Get screenshot URL if available
+            paths = scene_data.get("paths", {})
+            screenshot_url = paths.get("screenshot") if paths else None
+
+            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Scene info: duration={duration_sec:.1f}s, resolution={file_info.get('width')}x{file_info.get('height')}, screenshot={'yes' if screenshot_url else 'no'}")
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch sprite sheet: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to query scene: {e}")
 
-    # Parse VTT and extract frames
-    cues = parse_vtt_file(vtt_content)
-    if not cues:
-        raise HTTPException(status_code=400, detail="No frames found in VTT file")
+    # Configure frame extraction
+    config = FrameExtractionConfig(
+        num_frames=request.num_frames,
+        start_offset_pct=request.start_offset_pct,
+        end_offset_pct=request.end_offset_pct,
+        min_face_size=request.min_face_size,
+        min_face_confidence=request.min_face_confidence,
+    )
 
-    # Sample frames evenly across the scene
-    sample_interval = max(1, len(cues) // request.max_frames)
-    frames = extract_frames_from_sprite(
-        sprite_image,
-        cues,
-        max_frames=request.max_frames,
-        sample_interval=sample_interval,
+    # Extract frames using ffmpeg
+    t_extract = time.time()
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Extracting {request.num_frames} frames...")
+    extraction_result = await extract_frames_from_stash_scene(
+        stash_url=base_url,
+        scene_id=request.scene_id,
+        duration_sec=duration_sec,
+        api_key=api_key,
+        config=config,
+    )
+
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Extracted {len(extraction_result.frames)} frames in {time.time()-t_extract:.1f}s")
+    if extraction_result.errors:
+        print(f"[identify_scene] Errors: {extraction_result.errors[:3]}")
+
+    # Configure matching
+    match_config = MatchingConfig(
+        query_k=100,  # Get more candidates for better fusion
+        facenet_weight=0.6,
+        arcface_weight=0.4,
+        max_results=request.top_k * 2,
+        max_distance=request.max_distance,
     )
 
     # Detect and recognize faces in each frame
     all_results: list[tuple[int, RecognitionResult]] = []
     total_faces = 0
+    filtered_faces = 0
 
-    for frame in frames:
-        results = recognizer.recognize_image(
+    for frame in extraction_result.frames:
+        # Detect faces
+        faces = recognizer.generator.detect_faces(
             frame.image,
-            top_k=request.top_k * 2,  # Get more for aggregation
-            max_distance=request.max_distance,
-            min_face_confidence=0.5,
+            min_confidence=request.min_face_confidence,
         )
-        total_faces += len(results)
-        for result in results:
-            all_results.append((frame.index, result))
 
-    # Cluster faces by person
-    clusters = cluster_faces_by_person(all_results, recognizer)
+        for face in faces:
+            total_faces += 1
 
-    # Build response
-    persons = []
-    for person_id, cluster in enumerate(clusters):
-        aggregated_matches = aggregate_matches(cluster, top_k=request.top_k)
-        persons.append(PersonResult(
-            person_id=person_id,
-            frame_count=len(cluster),
-            best_match=aggregated_matches[0] if aggregated_matches else None,
-            all_matches=aggregated_matches,
-        ))
+            # Apply minimum face size filter
+            if face.bbox["w"] < request.min_face_size or face.bbox["h"] < request.min_face_size:
+                continue
 
-    # Sort by frame count (most prominent people first)
-    persons.sort(key=lambda p: p.frame_count, reverse=True)
+            filtered_faces += 1
+
+            # Recognize this face using V2 matching (with health detection)
+            matches, _match_result = recognizer.recognize_face_v2(face, match_config)
+
+            result = RecognitionResult(face=face, matches=matches)
+            all_results.append((frame.frame_index, result))
+
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Face detection: {total_faces} detected, {filtered_faces} after size filter")
+
+    # Process screenshot if available (high-quality cover image often has clear faces)
+    # Stash serves thumbnails via paths.screenshot, so we scale up if needed
+    screenshot_faces = 0
+    if screenshot_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                headers = {"ApiKey": api_key}
+                screenshot_resp = await client.get(screenshot_url, headers=headers)
+                if screenshot_resp.status_code == 200:
+                    screenshot_image = load_image(screenshot_resp.content)
+                    img_h, img_w = screenshot_image.shape[:2]
+
+                    # Scale up thumbnail if significantly smaller than video resolution
+                    video_width = file_info.get("width", 1920)
+                    if img_w < video_width * 0.8:
+                        import cv2
+                        scale_factor = video_width / img_w
+                        new_w = int(img_w * scale_factor)
+                        new_h = int(img_h * scale_factor)
+                        screenshot_image = cv2.resize(screenshot_image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+                        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot upscaled: {img_w}x{img_h} -> {new_w}x{new_h}")
+                        img_w, img_h = new_w, new_h
+
+                    screenshot_detected = recognizer.generator.detect_faces(
+                        screenshot_image,
+                        min_confidence=request.min_face_confidence,
+                    )
+                    for face in screenshot_detected:
+                        face_w, face_h = face.bbox["w"], face.bbox["h"]
+                        if face_w >= request.min_face_size and face_h >= request.min_face_size:
+                            matches, _ = recognizer.recognize_face_v2(face, match_config)
+                            result = RecognitionResult(face=face, matches=matches)
+                            # Use frame_index -1 to indicate screenshot
+                            all_results.append((-1, result))
+                            screenshot_faces += 1
+                            top_match = matches[0].name if matches else "no match"
+                            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot face: {face_w}x{face_h}px -> {top_match}")
+                        else:
+                            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot face too small: {face_w}x{face_h}px < {request.min_face_size}")
+                    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot ({img_w}x{img_h}): {len(screenshot_detected)} faces, {screenshot_faces} usable")
+        except Exception as e:
+            print(f"[identify_scene] Screenshot processing failed: {e}")
+
+    # Choose matching mode
+    t_match = time.time()
+    if request.matching_mode == "hybrid":
+        # Hybrid matching: combine cluster and frequency approaches
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using hybrid matching...")
+        persons = hybrid_matching(
+            all_results,
+            recognizer,
+            cluster_threshold=request.cluster_threshold,
+            top_k=request.top_k * 2,
+            max_distance=request.max_distance,
+        )
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Hybrid matching: {len(persons)} performers in {time.time()-t_match:.1f}s")
+    elif request.matching_mode == "frequency":
+        # Frequency-based matching: count performer appearances across all faces
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using frequency matching...")
+        persons = frequency_based_matching(
+            all_results,
+            top_k=request.top_k * 2,  # Get more candidates, we'll filter later
+            min_appearances=1,
+            max_distance=request.max_distance,
+        )
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Frequency matching: {len(persons)} performers in {time.time()-t_match:.1f}s")
+    else:
+        # Cluster-based matching (original approach)
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using cluster matching...")
+
+        # Cluster faces by person
+        clusters = cluster_faces_by_person(
+            all_results,
+            recognizer,
+            distance_threshold=request.cluster_threshold,
+        )
+        print(f"[identify_scene] Initial clusters: {len(clusters)}")
+
+        # Merge clusters that have the same best match
+        clusters = merge_clusters_by_match(clusters)
+        print(f"[identify_scene] After merge: {len(clusters)} clusters")
+
+        # Build response with deduplication
+        persons = []
+        used_performers: set[str] = set()  # Track which performers we've assigned
+
+        # First pass: build all persons sorted by frame count
+        all_persons = []
+        for person_id, cluster in enumerate(clusters):
+            aggregated_matches = aggregate_matches(cluster, top_k=request.top_k)
+            all_persons.append((len(cluster), PersonResult(
+                person_id=person_id,
+                frame_count=len(cluster),
+                best_match=aggregated_matches[0] if aggregated_matches else None,
+                all_matches=aggregated_matches,
+            )))
+
+        # Sort by frame count (most prominent people first)
+        all_persons.sort(key=lambda x: x[0], reverse=True)
+
+        # Second pass: deduplicate - each performer can only be the best match once
+        for _, person in all_persons:
+            if person.best_match:
+                if person.best_match.stashdb_id in used_performers:
+                    # This performer already assigned to a more prominent person
+                    # Find next best match that isn't used
+                    for alt_match in person.all_matches[1:]:
+                        if alt_match.stashdb_id not in used_performers:
+                            person.best_match = alt_match
+                            used_performers.add(alt_match.stashdb_id)
+                            break
+                    else:
+                        # No unused matches, set best_match to None
+                        person.best_match = None
+                else:
+                    used_performers.add(person.best_match.stashdb_id)
+
+            # Also filter all_matches to not include already-used performers
+            person.all_matches = [m for m in person.all_matches if m.stashdb_id not in used_performers or m.stashdb_id == (person.best_match.stashdb_id if person.best_match else None)]
+            persons.append(person)
+
+        # Re-assign person IDs after sorting
+        for i, person in enumerate(persons):
+            person.person_id = i
+
+    top_names = [p.best_match.name for p in persons[:3] if p.best_match]
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] === DONE === Top matches: {', '.join(top_names)}")
 
     return SceneIdentifyResponse(
         scene_id=request.scene_id,
-        frames_analyzed=len(frames),
+        frames_analyzed=len(extraction_result.frames),
+        frames_requested=request.num_frames,
         faces_detected=total_faces,
+        faces_after_filter=filtered_faces,
         persons=persons,
+        errors=extraction_result.errors[:5] if extraction_result.errors else [],
     )
+
+
+# Health check for ffmpeg
+@app.get("/health/ffmpeg")
+async def ffmpeg_health():
+    """Check if ffmpeg is available for V2 scene identification."""
+    available = check_ffmpeg_available()
+    return {
+        "ffmpeg_available": available,
+        "v2_endpoint_ready": available,
+    }
 
 
 if __name__ == "__main__":

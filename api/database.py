@@ -721,6 +721,18 @@ class PerformerDatabase:
             ).fetchall()
             return [Face(**dict(row)) for row in rows]
 
+    def get_max_face_index(self) -> Optional[int]:
+        """Get the maximum face index in the database.
+
+        Used to sync IndexManager after unclean shutdowns where DB
+        committed faces but Voyager index wasn't saved.
+        """
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT MAX(arcface_index) FROM faces"
+            ).fetchone()
+            return row[0] if row and row[0] is not None else None
+
     def get_performer_by_face_index(
         self, facenet_index: int
     ) -> Optional[Performer]:

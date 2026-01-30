@@ -12,6 +12,7 @@ from voyager import Index, Space
 
 from config import DatabaseConfig, FACENET_DIM, ARCFACE_DIM
 from embeddings import FaceEmbeddingGenerator, DetectedFace, FaceEmbedding
+from matching import MatchingConfig, match_face, MatchingResult
 
 
 @dataclass
@@ -154,21 +155,79 @@ class FaceRecognizer:
 
         return result[:top_k]
 
+    def recognize_face_v2(
+        self,
+        face: DetectedFace,
+        config: MatchingConfig = None,
+    ) -> tuple[list[PerformerMatch], MatchingResult]:
+        """
+        Recognize a face using the robust matching strategy (V2).
+
+        This uses intelligent health detection to determine when ArcFace
+        is producing reliable vs degenerate output, and adapts the fusion
+        strategy accordingly.
+
+        Args:
+            face: DetectedFace object with cropped face image
+            config: Matching configuration (uses defaults if not provided)
+
+        Returns:
+            Tuple of (matches, matching_result) where matching_result contains
+            diagnostic info about the fusion strategy used.
+        """
+        if config is None:
+            config = MatchingConfig()
+
+        # Generate embedding
+        embedding = self.generator.get_embedding(face.image)
+
+        # Use new matching logic
+        result = match_face(
+            facenet_embedding=embedding.facenet,
+            arcface_embedding=embedding.arcface,
+            facenet_index=self.facenet_index,
+            arcface_index=self.arcface_index,
+            faces_mapping=self.faces,
+            performers=self.performers,
+            config=config,
+        )
+
+        # Convert to PerformerMatch format for compatibility
+        matches = []
+        for candidate in result.matches:
+            stashdb_id = candidate.universal_id.split(":", 1)[1] if ":" in candidate.universal_id else candidate.universal_id
+            matches.append(PerformerMatch(
+                universal_id=candidate.universal_id,
+                stashdb_id=stashdb_id,
+                name=candidate.name,
+                country=self.performers.get(candidate.universal_id, {}).get("country"),
+                image_url=self.performers.get(candidate.universal_id, {}).get("image_url"),
+                facenet_distance=candidate.facenet_distance or 0.0,
+                arcface_distance=candidate.arcface_distance or 0.0,
+                combined_score=candidate.combined_distance,
+            ))
+
+        return matches, result
+
     def recognize_image(
         self,
         image: np.ndarray,
         top_k: int = 5,
         max_distance: float = 1.0,
         min_face_confidence: float = 0.5,
+        min_face_size: int = 40,
     ) -> list[RecognitionResult]:
         """
         Detect and recognize all faces in an image.
+
+        Uses the V2 matching logic with adaptive health detection.
 
         Args:
             image: RGB image as numpy array
             top_k: Number of top matches per face
             max_distance: Maximum distance threshold
             min_face_confidence: Minimum face detection confidence
+            min_face_size: Minimum face width/height in pixels
 
         Returns:
             List of RecognitionResult objects, one per detected face
@@ -176,10 +235,20 @@ class FaceRecognizer:
         # Detect faces
         faces = self.generator.detect_faces(image, min_confidence=min_face_confidence)
 
-        # Recognize each face
+        # Configure matching
+        config = MatchingConfig(
+            max_results=top_k,
+            max_distance=max_distance,
+        )
+
+        # Recognize each face using V2 logic
         results = []
         for face in faces:
-            matches = self.recognize_face(face, top_k=top_k, max_distance=max_distance)
+            # Skip small faces
+            if face.bbox["w"] < min_face_size or face.bbox["h"] < min_face_size:
+                continue
+
+            matches, _ = self.recognize_face_v2(face, config)
             results.append(RecognitionResult(face=face, matches=matches))
 
         return results

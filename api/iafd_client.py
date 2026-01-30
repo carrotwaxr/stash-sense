@@ -39,16 +39,25 @@ class IAFDScraper(BaseScraper):
         self.flaresolverr = FlareSolverr(flaresolverr_url)
         self._last_cookies = []
         self._last_user_agent = ""
+        self._last_page_url = ""  # Track the page URL for Referer
 
     def _fetch_html(self, url: str) -> Optional[str]:
         """Fetch HTML via FlareSolverr."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         self._rate_limit()
         response = self.flaresolverr.get(url)
         if response and response.solution_status == 200:
-            # Store cookies and user-agent for image downloads
+            # Store cookies, user-agent, and page URL for image downloads
             self._last_cookies = response.cookies
             self._last_user_agent = response.user_agent
+            self._last_page_url = response.solution_url or url
             return response.solution_html
+        elif response:
+            logger.debug(f"[iafd] FlareSolverr returned status {response.solution_status} for {url}")
+        else:
+            logger.debug(f"[iafd] FlareSolverr returned None for {url}")
         return None
 
     def get_performer(self, performer_id: str) -> Optional[ScrapedPerformer]:
@@ -212,50 +221,53 @@ class IAFDScraper(BaseScraper):
     def download_image(self, url: str, max_retries: int = 3) -> Optional[bytes]:
         """Download an image from IAFD.
 
-        IAFD has hotlink protection, so we need to use cookies from
-        a recent FlareSolverr session.
+        IAFD has Cloudflare protection. We use cloudscraper which handles
+        the JavaScript challenges automatically.
         """
-        import requests
+        import logging
+        import cloudscraper
 
-        # Build cookie header from last FlareSolverr session
-        cookies = {}
-        for cookie in self._last_cookies:
-            if isinstance(cookie, dict):
-                cookies[cookie.get("name", "")] = cookie.get("value", "")
-
-        headers = {
-            "User-Agent": self._last_user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": self.BASE_URL,
-            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-        }
+        logger = logging.getLogger(__name__)
 
         for attempt in range(max_retries):
             try:
                 self._rate_limit()
-                response = requests.get(
-                    url,
-                    headers=headers,
-                    cookies=cookies,
-                    timeout=30,
-                )
+
+                # Use cloudscraper which handles Cloudflare challenges
+                scraper = cloudscraper.create_scraper()
+                response = scraper.get(url, timeout=30)
 
                 if response.status_code == 200:
                     content_type = response.headers.get("content-type", "")
                     if "image" in content_type or len(response.content) > 1000:
                         return response.content
-                    # Might be a redirect page or error
+                    logger.debug(f"[iafd] Image too small or wrong content-type: {len(response.content)} bytes")
                     return None
                 elif response.status_code == 403:
-                    print(f"  IAFD image blocked (403), hotlink protection")
+                    # Cloudflare blocked - retry with backoff
+                    wait_time = 10 * (attempt + 1)
+                    logger.warning(f"[iafd] 403 on image (attempt {attempt+1}/{max_retries}), waiting {wait_time}s")
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                        continue
+                    return None
+                elif response.status_code == 429:
+                    # Rate limited - longer backoff
+                    wait_time = 30 * (attempt + 1)
+                    logger.warning(f"[iafd] Rate limited (429), waiting {wait_time}s")
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                        continue
                     return None
                 else:
-                    print(f"  IAFD image error: {response.status_code}")
+                    logger.debug(f"[iafd] Image download failed: {response.status_code}")
+                    return None
 
             except Exception as e:
+                logger.warning(f"[iafd] Download error (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(5 * (attempt + 1))
                     continue
-                print(f"Failed to download {url}: {e}")
                 return None
 
         return None
