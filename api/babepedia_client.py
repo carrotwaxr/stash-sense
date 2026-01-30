@@ -19,6 +19,7 @@ class BabepediaScraper(BaseScraper):
 
     source_name = "babepedia"
     source_type = "reference_site"
+    gender_filter = "FEMALE"
 
     BASE_URL = "https://www.babepedia.com"
 
@@ -207,6 +208,21 @@ class BabepediaScraper(BaseScraper):
         # e.g., "Mia Malkova" -> "Mia_Malkova"
         slug = name.replace(" ", "_")
         return self.get_performer(slug)
+
+    def extract_slug_from_url(self, url: str) -> Optional[str]:
+        """Extract Babepedia slug from URL.
+
+        Example: https://www.babepedia.com/babe/Mia_Malkova -> Mia_Malkova
+        """
+        match = re.search(r'babepedia\.com/babe/([^/?#]+)', url)
+        return match.group(1) if match else None
+
+    def name_to_slug(self, name: str) -> str:
+        """Convert name to Babepedia slug format.
+
+        Example: "Mia Malkova" -> "Mia_Malkova"
+        """
+        return name.replace(" ", "_")
 
 
 if __name__ == "__main__":

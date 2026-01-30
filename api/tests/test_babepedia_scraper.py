@@ -92,3 +92,59 @@ class TestBabepediaScraper:
         performer = scraper._parse_performer_page("Test_Performer", html)
 
         assert performer.stash_ids.get("babepedia") == "Test_Performer"
+
+
+class TestBabepediaSlugMethods:
+    """Tests for Babepedia slug extraction and conversion."""
+
+    def test_source_type_is_reference_site(self):
+        from unittest.mock import patch, MagicMock
+
+        with patch('babepedia_client.FlareSolverr') as mock_flare:
+            mock_flare.return_value.is_available.return_value = True
+            from babepedia_client import BabepediaScraper
+            scraper = BabepediaScraper()
+
+        assert scraper.source_type == "reference_site"
+
+    def test_gender_filter_is_female(self):
+        from unittest.mock import patch
+
+        with patch('babepedia_client.FlareSolverr') as mock_flare:
+            mock_flare.return_value.is_available.return_value = True
+            from babepedia_client import BabepediaScraper
+            scraper = BabepediaScraper()
+
+        assert scraper.gender_filter == "FEMALE"
+
+    def test_extract_slug_from_url(self):
+        from unittest.mock import patch
+
+        with patch('babepedia_client.FlareSolverr') as mock_flare:
+            mock_flare.return_value.is_available.return_value = True
+            from babepedia_client import BabepediaScraper
+            scraper = BabepediaScraper()
+
+        # Standard URL
+        assert scraper.extract_slug_from_url("https://www.babepedia.com/babe/Mia_Malkova") == "Mia_Malkova"
+
+        # Without www
+        assert scraper.extract_slug_from_url("https://babepedia.com/babe/Angela_White") == "Angela_White"
+
+        # With query string
+        assert scraper.extract_slug_from_url("https://www.babepedia.com/babe/Test_Name?ref=123") == "Test_Name"
+
+        # Non-matching URL
+        assert scraper.extract_slug_from_url("https://iafd.com/person/test") is None
+
+    def test_name_to_slug(self):
+        from unittest.mock import patch
+
+        with patch('babepedia_client.FlareSolverr') as mock_flare:
+            mock_flare.return_value.is_available.return_value = True
+            from babepedia_client import BabepediaScraper
+            scraper = BabepediaScraper()
+
+        assert scraper.name_to_slug("Mia Malkova") == "Mia_Malkova"
+        assert scraper.name_to_slug("Angela White") == "Angela_White"
+        assert scraper.name_to_slug("Single") == "Single"
