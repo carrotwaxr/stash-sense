@@ -44,7 +44,15 @@ class IndexManager:
         """Load or create indices."""
         if self.facenet_path.exists():
             logger.info(f"Loading FaceNet index from {self.facenet_path}")
-            self.facenet_index = voyager.Index.load(str(self.facenet_path))
+            try:
+                self.facenet_index = voyager.Index.load(str(self.facenet_path))
+            except RuntimeError as e:
+                logger.warning(f"Failed to load FaceNet index (corrupted?): {e}")
+                logger.info("Creating new FaceNet index")
+                self.facenet_index = voyager.Index(
+                    voyager.Space.Cosine,
+                    num_dimensions=512,
+                )
         else:
             logger.info("Creating new FaceNet index")
             self.facenet_index = voyager.Index(
@@ -54,7 +62,15 @@ class IndexManager:
 
         if self.arcface_path.exists():
             logger.info(f"Loading ArcFace index from {self.arcface_path}")
-            self.arcface_index = voyager.Index.load(str(self.arcface_path))
+            try:
+                self.arcface_index = voyager.Index.load(str(self.arcface_path))
+            except RuntimeError as e:
+                logger.warning(f"Failed to load ArcFace index (corrupted?): {e}")
+                logger.info("Creating new ArcFace index")
+                self.arcface_index = voyager.Index(
+                    voyager.Space.Cosine,
+                    num_dimensions=512,
+                )
         else:
             logger.info("Creating new ArcFace index")
             self.arcface_index = voyager.Index(
