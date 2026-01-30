@@ -12,7 +12,7 @@ See: docs/plans/2026-01-30-duplicate-scene-detection-design.md
 import asyncio
 import logging
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .base import BaseAnalyzer, AnalysisResult
 from duplicate_detection import (
@@ -49,15 +49,20 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         min_confidence: float = 50.0,
         batch_size: int = 100,
         max_comparisons: int = 50000,
+        max_scenes: int = 10000,  # Limit for memory safety
     ):
         super().__init__(stash, rec_db)
         self.min_confidence = min_confidence
         self.batch_size = batch_size
         self.max_comparisons = max_comparisons
+        self.max_scenes = max_scenes
 
     async def run(self, incremental: bool = True) -> AnalysisResult:
         """
         Run duplicate scene detection.
+
+        Note: Incremental mode is not supported for this analyzer since
+        we need to compare all scenes against each other. Always runs full scan.
 
         Phase 1: Load scenes and existing fingerprints
         Phase 2: Compare all pairs for duplicates
@@ -78,6 +83,11 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
             if len(all_scenes) >= total or not scenes:
                 break
 
+            if len(all_scenes) >= self.max_scenes:
+                logger.warning(f"Hit max scenes limit ({self.max_scenes})")
+                all_scenes = all_scenes[: self.max_scenes]
+                break
+
             offset += self.batch_size
             await asyncio.sleep(0.1)  # Rate limiting
 
@@ -92,24 +102,28 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         # Load existing fingerprints
         fingerprints: dict[str, SceneFingerprint] = {}
         for fp_data in self.rec_db.get_all_scene_fingerprints(status="complete"):
-            scene_id = str(fp_data["stash_scene_id"])
-            faces_data = self.rec_db.get_fingerprint_faces(fp_data["id"])
+            try:
+                scene_id = str(fp_data["stash_scene_id"])
+                faces_data = self.rec_db.get_fingerprint_faces(fp_data["id"])
 
-            faces = {}
-            for f in faces_data:
-                faces[f["performer_id"]] = FaceAppearance(
-                    performer_id=f["performer_id"],
-                    face_count=f["face_count"],
-                    avg_confidence=f["avg_confidence"],
-                    proportion=f["proportion"],
+                faces = {}
+                for f in faces_data:
+                    faces[f["performer_id"]] = FaceAppearance(
+                        performer_id=f["performer_id"],
+                        face_count=f["face_count"],
+                        avg_confidence=f["avg_confidence"],
+                        proportion=f["proportion"],
+                    )
+
+                fingerprints[scene_id] = SceneFingerprint(
+                    stash_scene_id=fp_data["stash_scene_id"],
+                    faces=faces,
+                    total_faces_detected=fp_data["total_faces"],
+                    frames_analyzed=fp_data["frames_analyzed"],
                 )
-
-            fingerprints[scene_id] = SceneFingerprint(
-                stash_scene_id=fp_data["stash_scene_id"],
-                faces=faces,
-                total_faces_detected=fp_data["total_faces"],
-                frames_analyzed=fp_data["frames_analyzed"],
-            )
+            except (KeyError, TypeError) as e:
+                logger.warning(f"Skipping malformed fingerprint {fp_data.get('id')}: {e}")
+                continue
 
         logger.info(f"Loaded {len(fingerprints)} existing fingerprints")
 
