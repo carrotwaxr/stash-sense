@@ -386,3 +386,81 @@ class TestReferenceSiteMode:
         )
 
         assert coordinator.reference_site_mode == ReferenceSiteMode.URL_LOOKUP
+
+
+class TestReferenceSiteScraperRunner:
+    """Tests for reference site scraper execution."""
+
+    @pytest.mark.asyncio
+    async def test_url_mode_processes_performers_with_urls(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+        from database import PerformerDatabase
+        from enrichment_coordinator import EnrichmentCoordinator, ReferenceSiteMode
+        from base_scraper import ScrapedPerformer
+
+        db = PerformerDatabase(tmp_path / "test.db")
+
+        # Create performer with babepedia URL
+        pid = db.add_performer("Mia Malkova", gender="FEMALE")
+        db.add_url(pid, "https://www.babepedia.com/babe/Mia_Malkova", "stashdb")
+
+        # Mock scraper
+        mock_scraper = MagicMock()
+        mock_scraper.source_name = "babepedia"
+        mock_scraper.source_type = "reference_site"
+        mock_scraper.gender_filter = "FEMALE"
+        mock_scraper.extract_slug_from_url.return_value = "Mia_Malkova"
+        mock_scraper.get_performer.return_value = ScrapedPerformer(
+            id="Mia_Malkova",
+            name="Mia Malkova",
+            image_urls=["https://example.com/img.jpg"],
+        )
+        mock_scraper.download_image.return_value = None  # Skip image processing
+
+        coordinator = EnrichmentCoordinator(
+            database=db,
+            scrapers=[mock_scraper],
+            reference_site_mode=ReferenceSiteMode.URL_LOOKUP,
+        )
+
+        await coordinator.run()
+
+        # Verify slug extraction was called
+        mock_scraper.extract_slug_from_url.assert_called_once()
+        # Verify get_performer was called with extracted slug
+        mock_scraper.get_performer.assert_called_once_with("Mia_Malkova")
+
+    @pytest.mark.asyncio
+    async def test_name_mode_iterates_all_performers(self, tmp_path):
+        from unittest.mock import MagicMock
+        from database import PerformerDatabase
+        from enrichment_coordinator import EnrichmentCoordinator, ReferenceSiteMode
+        from base_scraper import ScrapedPerformer
+
+        db = PerformerDatabase(tmp_path / "test.db")
+
+        # Create performers (no URLs needed for name mode)
+        db.add_performer("Mia Malkova", gender="FEMALE")
+        db.add_performer("Male Performer", gender="MALE")
+        db.add_performer("Angela White", gender="FEMALE")
+
+        # Mock scraper with gender filter
+        mock_scraper = MagicMock()
+        mock_scraper.source_name = "babepedia"
+        mock_scraper.source_type = "reference_site"
+        mock_scraper.gender_filter = "FEMALE"
+        mock_scraper.name_to_slug.side_effect = lambda n: n.replace(" ", "_")
+        mock_scraper.get_performer.return_value = None  # All 404s for simplicity
+        mock_scraper.download_image.return_value = None
+
+        coordinator = EnrichmentCoordinator(
+            database=db,
+            scrapers=[mock_scraper],
+            reference_site_mode=ReferenceSiteMode.NAME_LOOKUP,
+        )
+
+        await coordinator.run()
+
+        # Should have tried 2 female performers (skipped male)
+        assert mock_scraper.name_to_slug.call_count == 2
+        assert mock_scraper.get_performer.call_count == 2

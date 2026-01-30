@@ -155,8 +155,15 @@ class EnrichmentCoordinator:
 
     def _run_scraper(self, scraper: BaseScraper):
         """Run a single scraper (called from thread pool)."""
+        if scraper.source_type == "reference_site":
+            self._run_reference_scraper(scraper)
+        else:
+            self._run_stashbox_scraper(scraper)
+
+    def _run_stashbox_scraper(self, scraper: BaseScraper):
+        """Run a stash-box scraper that iterates its own performers."""
         source = scraper.source_name
-        logger.info(f"Starting scraper: {source}")
+        logger.info(f"Starting stash-box scraper: {source}")
 
         # Get resume point
         progress = self.database.get_scrape_progress(source)
@@ -190,14 +197,171 @@ class EnrichmentCoordinator:
             self.stats.errors += 1
 
         # Final progress save
+        if processed > 0:
+            self.database.save_scrape_progress(
+                source=source,
+                last_processed_id=performer.id,
+                performers_processed=processed,
+                faces_added=faces_added,
+            )
+
+        logger.info(f"Scraper {source} complete: {processed} performers")
+
+    def _run_reference_scraper(self, scraper: BaseScraper):
+        """Run a reference site scraper that looks up performers from our DB."""
+        source = scraper.source_name
+        mode = self.reference_site_mode.value
+        progress_key = f"{source}:{mode}"
+
+        logger.info(f"Starting reference scraper: {source} (mode={mode})")
+
+        progress = self.database.get_scrape_progress(progress_key)
+        last_id = int(progress['last_processed_id']) if progress and progress['last_processed_id'] else 0
+
+        processed = 0
+        faces_added = 0
+        last_performer_id = last_id
+
+        try:
+            if self.reference_site_mode == ReferenceSiteMode.URL_LOOKUP:
+                iterator = self._iter_url_lookup(scraper, last_id)
+            else:
+                iterator = self._iter_name_lookup(scraper, last_id)
+
+            for performer_id, slug in iterator:
+                last_performer_id = performer_id
+
+                scraped = scraper.get_performer(slug)
+                if not scraped:
+                    processed += 1
+                    continue
+
+                faces_from_performer = self._process_reference_performer(scraper, performer_id, scraped)
+                faces_added += faces_from_performer
+                processed += 1
+
+                if processed % 100 == 0:
+                    self.database.save_scrape_progress(
+                        source=progress_key,
+                        last_processed_id=str(performer_id),
+                        performers_processed=processed,
+                        faces_added=faces_added,
+                    )
+                    logger.info(f"{source}: {processed} performers processed, {faces_added} faces added")
+
+                self.stats.record_performer(source)
+
+        except Exception as e:
+            logger.error(f"Reference scraper {source} error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.stats.errors += 1
+
         self.database.save_scrape_progress(
-            source=source,
-            last_processed_id=performer.id if processed > 0 else last_id,
+            source=progress_key,
+            last_processed_id=str(last_performer_id),
             performers_processed=processed,
             faces_added=faces_added,
         )
 
-        logger.info(f"Scraper {source} complete: {processed} performers")
+        logger.info(f"Reference scraper {source} complete: {processed} performers, {faces_added} faces")
+
+    def _iter_url_lookup(self, scraper: BaseScraper, last_id: int):
+        """Iterate performers with URLs for this reference site."""
+        for performer_id, name, url in self.database.iter_performers_with_site_urls(
+            site=scraper.source_name,
+            after_id=last_id,
+        ):
+            slug = scraper.extract_slug_from_url(url)
+            if slug:
+                yield performer_id, slug
+
+    def _iter_name_lookup(self, scraper: BaseScraper, last_id: int):
+        """Iterate all performers for name-based lookup."""
+        for performer in self.database.iter_performers_after_id(after_id=last_id):
+            if scraper.gender_filter and performer.gender != scraper.gender_filter:
+                continue
+            slug = scraper.name_to_slug(performer.canonical_name)
+            yield performer.id, slug
+
+    def _process_reference_performer(self, scraper: BaseScraper, performer_id: int, scraped: ScrapedPerformer) -> int:
+        """Process a performer fetched from a reference site. Returns faces added."""
+        source = scraper.source_name
+        trust_level = self.source_trust_levels.get(source, "high")
+
+        existing_source_faces = len([
+            f for f in self.database.get_faces(performer_id)
+            if f.source_endpoint == source
+        ])
+        existing_total_faces = len(self.database.get_faces(performer_id))
+
+        if existing_total_faces >= self.max_faces_total:
+            return 0
+
+        existing_embeddings = self._get_existing_embeddings(performer_id)
+        faces_added = 0
+
+        for image_url in scraped.image_urls:
+            if existing_source_faces + faces_added >= self.max_faces_per_source:
+                break
+            if existing_total_faces + faces_added >= self.max_faces_total:
+                break
+
+            try:
+                image_data = scraper.download_image(image_url)
+                if not image_data:
+                    continue
+            except Exception as e:
+                logger.debug(f"Failed to download {image_url}: {e}")
+                continue
+
+            self.stats.images_processed += 1
+
+            if not self.enable_face_processing or not self._face_processor:
+                continue
+
+            processed_faces = self._face_processor.process_image(image_data, trust_level)
+
+            if not processed_faces:
+                continue
+
+            for face in processed_faces:
+                validation = self._face_validator.validate(
+                    new_embedding=face.embedding.facenet,
+                    existing_embeddings=existing_embeddings,
+                    trust_level=trust_level,
+                )
+
+                if not validation.accepted:
+                    self.stats.faces_rejected += 1
+                    continue
+
+                with self._index_lock:
+                    face_index = self._index_manager.add_embedding(face.embedding)
+                    self._faces_since_save += 1
+
+                    if self._faces_since_save >= self.SAVE_INTERVAL:
+                        self._index_manager.save()
+                        self._faces_since_save = 0
+
+                future = asyncio.run_coroutine_threadsafe(
+                    self.write_queue.enqueue(WriteMessage(
+                        operation=WriteOperation.ADD_EMBEDDING,
+                        source=source,
+                        performer_id=performer_id,
+                        image_url=image_url,
+                        quality_score=face.quality_score,
+                        embedding_type=str(face_index),
+                    )),
+                    self._loop,
+                )
+                future.result(timeout=10.0)
+
+                faces_added += 1
+                self.stats.faces_added += 1
+                existing_embeddings.append(face.embedding.facenet)
+
+        return faces_added
 
     def _process_performer(self, scraper: BaseScraper, performer: ScrapedPerformer) -> int:
         """Process a single performer. Returns number of faces added."""
