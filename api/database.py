@@ -1043,6 +1043,42 @@ class PerformerDatabase:
                     yield (row[0], row[1], row[2])
                     offset_id = row[0]
 
+    def iter_performers_after_id(
+        self,
+        after_id: int = 0,
+        batch_size: int = 1000,
+    ) -> Iterator[Performer]:
+        """
+        Iterate all performers with ID greater than after_id.
+
+        Args:
+            after_id: Resume after this performer ID (0 = start from beginning)
+            batch_size: Batch size for queries
+
+        Yields:
+            Performer objects ordered by id
+        """
+        with self._connection() as conn:
+            offset_id = after_id
+            while True:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM performers
+                    WHERE id > ?
+                    ORDER BY id ASC
+                    LIMIT ?
+                    """,
+                    (offset_id, batch_size),
+                ).fetchall()
+
+                if not rows:
+                    break
+
+                for row in rows:
+                    performer = Performer(**dict(row))
+                    yield performer
+                    offset_id = performer.id
+
     def iter_performers_needing_urls(self, batch_size: int = 1000) -> Iterator[tuple[int, str]]:
         """
         Iterate over performers that have stash-box IDs but no URLs.

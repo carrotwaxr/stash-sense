@@ -49,3 +49,35 @@ class TestIterPerformersWithSiteUrls:
         assert len(results) == 2
         assert results[0][0] == pid2
         assert results[1][0] == pid3
+
+
+class TestIterPerformersAfterId:
+    """Tests for iter_performers_after_id."""
+
+    def test_iterates_performers_after_id(self, tmp_path):
+        from database import PerformerDatabase
+
+        db = PerformerDatabase(tmp_path / "test.db")
+
+        pid1 = db.add_performer("A", gender="FEMALE")
+        pid2 = db.add_performer("B", gender="MALE")
+        pid3 = db.add_performer("C", gender="FEMALE")
+
+        # Get all after pid1
+        results = list(db.iter_performers_after_id(after_id=pid1))
+
+        assert len(results) == 2
+        assert results[0].id == pid2
+        assert results[1].id == pid3
+
+    def test_returns_all_when_after_id_zero(self, tmp_path):
+        from database import PerformerDatabase
+
+        db = PerformerDatabase(tmp_path / "test.db")
+
+        db.add_performer("A")
+        db.add_performer("B")
+
+        results = list(db.iter_performers_after_id(after_id=0))
+
+        assert len(results) == 2
