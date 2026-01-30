@@ -101,7 +101,7 @@ class ThePornDBClient(BaseScraper):
         # Extract data from extras
         extras = data.get("extras", {}) or {}
         country = extras.get("nationality") or extras.get("birthplace_code")
-        gender = extras.get("gender", "").upper() or None
+        gender = (extras.get("gender") or "").upper() or None
 
         # Extract external URLs
         external_urls = {}
