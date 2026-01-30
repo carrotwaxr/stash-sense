@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -106,12 +106,12 @@ class RecommendationsDB:
 
     def _create_schema(self, conn: sqlite3.Connection):
         """Create the database schema."""
-        conn.executescript("""
+        conn.executescript(f"""
             -- Schema version tracking
             CREATE TABLE schema_version (
                 version INTEGER PRIMARY KEY
             );
-            INSERT INTO schema_version (version) VALUES (1);
+            INSERT INTO schema_version (version) VALUES ({SCHEMA_VERSION});
 
             -- Core recommendations table
             CREATE TABLE recommendations (
@@ -178,12 +178,70 @@ class RecommendationsDB:
                 last_cursor TEXT,
                 last_stash_updated_at TEXT
             );
+
+            -- Scene fingerprints for duplicate detection
+            CREATE TABLE scene_fingerprints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stash_scene_id INTEGER NOT NULL UNIQUE,
+                total_faces INTEGER NOT NULL DEFAULT 0,
+                frames_analyzed INTEGER NOT NULL DEFAULT 0,
+                fingerprint_status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX idx_scene_fp_stash_id ON scene_fingerprints(stash_scene_id);
+            CREATE INDEX idx_scene_fp_status ON scene_fingerprints(fingerprint_status);
+
+            -- Face entries within scene fingerprints
+            CREATE TABLE scene_fingerprint_faces (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint_id INTEGER NOT NULL REFERENCES scene_fingerprints(id) ON DELETE CASCADE,
+                performer_id TEXT NOT NULL,
+                face_count INTEGER NOT NULL DEFAULT 0,
+                avg_confidence REAL,
+                proportion REAL,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(fingerprint_id, performer_id)
+            );
+            CREATE INDEX idx_scene_fp_faces_fingerprint ON scene_fingerprint_faces(fingerprint_id);
+            CREATE INDEX idx_scene_fp_faces_performer ON scene_fingerprint_faces(performer_id);
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
         """Migrate schema from older version."""
-        # No migrations yet - version 1
-        pass
+        if from_version < 2:
+            # Add scene fingerprint tables
+            conn.executescript("""
+                -- Scene fingerprints for duplicate detection
+                CREATE TABLE IF NOT EXISTS scene_fingerprints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stash_scene_id INTEGER NOT NULL UNIQUE,
+                    total_faces INTEGER NOT NULL DEFAULT 0,
+                    frames_analyzed INTEGER NOT NULL DEFAULT 0,
+                    fingerprint_status TEXT NOT NULL DEFAULT 'pending',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_scene_fp_stash_id ON scene_fingerprints(stash_scene_id);
+                CREATE INDEX IF NOT EXISTS idx_scene_fp_status ON scene_fingerprints(fingerprint_status);
+
+                -- Face entries within scene fingerprints
+                CREATE TABLE IF NOT EXISTS scene_fingerprint_faces (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fingerprint_id INTEGER NOT NULL REFERENCES scene_fingerprints(id) ON DELETE CASCADE,
+                    performer_id TEXT NOT NULL,
+                    face_count INTEGER NOT NULL DEFAULT 0,
+                    avg_confidence REAL,
+                    proportion REAL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(fingerprint_id, performer_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_scene_fp_faces_fingerprint ON scene_fingerprint_faces(fingerprint_id);
+                CREATE INDEX IF NOT EXISTS idx_scene_fp_faces_performer ON scene_fingerprint_faces(performer_id);
+
+                -- Update schema version
+                UPDATE schema_version SET version = 2;
+            """)
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -574,6 +632,100 @@ class RecommendationsDB:
                 """,
                 (type, last_cursor, last_stash_updated_at, last_cursor, last_stash_updated_at)
             )
+
+    # ==================== Scene Fingerprints ====================
+
+    def create_scene_fingerprint(
+        self,
+        stash_scene_id: int,
+        total_faces: int,
+        frames_analyzed: int,
+        fingerprint_status: str = "pending",
+    ) -> int:
+        """
+        Create or update a scene fingerprint. Returns the fingerprint ID.
+        Uses upsert - if fingerprint exists for scene, updates it.
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO scene_fingerprints (stash_scene_id, total_faces, frames_analyzed, fingerprint_status)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(stash_scene_id) DO UPDATE SET
+                    total_faces = excluded.total_faces,
+                    frames_analyzed = excluded.frames_analyzed,
+                    fingerprint_status = excluded.fingerprint_status,
+                    updated_at = datetime('now')
+                RETURNING id
+                """,
+                (stash_scene_id, total_faces, frames_analyzed, fingerprint_status)
+            )
+            return cursor.fetchone()[0]
+
+    def get_scene_fingerprint(self, stash_scene_id: int) -> Optional[dict]:
+        """Get a scene fingerprint by stash scene ID."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM scene_fingerprints WHERE stash_scene_id = ?",
+                (stash_scene_id,)
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
+    def get_all_scene_fingerprints(self, status: Optional[str] = None) -> list[dict]:
+        """Get all scene fingerprints, optionally filtered by status."""
+        with self._connection() as conn:
+            if status is not None:
+                rows = conn.execute(
+                    "SELECT * FROM scene_fingerprints WHERE fingerprint_status = ?",
+                    (status,)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM scene_fingerprints").fetchall()
+            return [dict(row) for row in rows]
+
+    def add_fingerprint_face(
+        self,
+        fingerprint_id: int,
+        performer_id: str,
+        face_count: int,
+        avg_confidence: Optional[float] = None,
+        proportion: Optional[float] = None,
+    ) -> int:
+        """Add or update a face entry in a scene fingerprint. Returns the face entry ID."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO scene_fingerprint_faces (fingerprint_id, performer_id, face_count, avg_confidence, proportion)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(fingerprint_id, performer_id) DO UPDATE SET
+                    face_count = excluded.face_count,
+                    avg_confidence = excluded.avg_confidence,
+                    proportion = excluded.proportion
+                RETURNING id
+                """,
+                (fingerprint_id, performer_id, face_count, avg_confidence, proportion)
+            )
+            return cursor.fetchone()[0]
+
+    def get_fingerprint_faces(self, fingerprint_id: int) -> list[dict]:
+        """Get all face entries for a scene fingerprint."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM scene_fingerprint_faces WHERE fingerprint_id = ?",
+                (fingerprint_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_fingerprint_faces(self, fingerprint_id: int) -> int:
+        """Delete all face entries for a scene fingerprint. Returns count deleted."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM scene_fingerprint_faces WHERE fingerprint_id = ?",
+                (fingerprint_id,)
+            )
+            return cursor.rowcount
 
     # ==================== Statistics ====================
 
