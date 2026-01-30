@@ -15,9 +15,12 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from database import PerformerDatabase
 from enrichment_config import EnrichmentConfig
-from enrichment_coordinator import EnrichmentCoordinator
+from enrichment_coordinator import EnrichmentCoordinator, ReferenceSiteMode
 from stashdb_client import StashDBClient
 from stashbox_clients import PMVStashClient, JAVStashClient, FansDBClient
 from theporndb_client import ThePornDBClient
@@ -253,6 +256,12 @@ Examples:
         default=1000,
         help="Save indices every N faces (default: 1000)",
     )
+    parser.add_argument(
+        "--reference-mode",
+        choices=["url", "name"],
+        default="url",
+        help="How to find performers for reference sites: 'url' (lookup by existing URLs) or 'name' (try all by name)",
+    )
 
     args = parser.parse_args()
 
@@ -308,6 +317,11 @@ Examples:
     # Determine data directory for face processing
     data_dir = args.database.parent if args.enable_faces else None
 
+    # Parse reference mode
+    reference_mode = ReferenceSiteMode.URL_LOOKUP
+    if args.reference_mode == "name":
+        reference_mode = ReferenceSiteMode.NAME_LOOKUP
+
     # Create coordinator
     coordinator = EnrichmentCoordinator(
         database=db,
@@ -318,6 +332,7 @@ Examples:
         dry_run=args.dry_run,
         enable_face_processing=args.enable_faces,
         source_trust_levels=source_trust_levels,
+        reference_site_mode=reference_mode,
     )
 
     if args.dry_run:
