@@ -19,8 +19,11 @@ from database import PerformerDatabase
 from enrichment_config import EnrichmentConfig
 from enrichment_coordinator import EnrichmentCoordinator
 from stashdb_client import StashDBClient
+from stashbox_clients import PMVStashClient, JAVStashClient, FansDBClient
 from theporndb_client import ThePornDBClient
 from babepedia_client import BabepediaScraper
+from iafd_client import IAFDScraper
+from freeones_client import FreeOnesScraper
 
 # Configure logging
 logging.basicConfig(
@@ -78,6 +81,67 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
 
             scrapers.append(scraper)
             logger.info(f"Created Babepedia scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "pmvstash":
+            api_key = os.environ.get("PMVSTASH_API_KEY", "")
+            if not api_key:
+                logger.warning("PMVSTASH_API_KEY not set, skipping pmvstash")
+                continue
+
+            scrapers.append(PMVStashClient(
+                url=source_config.url,
+                api_key=api_key,
+                rate_limit_delay=60 / source_config.rate_limit,
+            ))
+            logger.info(f"Created PMVStash scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "javstash":
+            api_key = os.environ.get("JAVSTASH_API_KEY", "")
+            if not api_key:
+                logger.warning("JAVSTASH_API_KEY not set, skipping javstash")
+                continue
+
+            scrapers.append(JAVStashClient(
+                url=source_config.url,
+                api_key=api_key,
+                rate_limit_delay=60 / source_config.rate_limit,
+            ))
+            logger.info(f"Created JAVStash scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "fansdb":
+            api_key = os.environ.get("FANSDB_API_KEY", "")
+            if not api_key:
+                logger.warning("FANSDB_API_KEY not set, skipping fansdb")
+                continue
+
+            scrapers.append(FansDBClient(
+                url=source_config.url,
+                api_key=api_key,
+                rate_limit_delay=60 / source_config.rate_limit,
+            ))
+            logger.info(f"Created FansDB scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "iafd":
+            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+            scraper = IAFDScraper(
+                flaresolverr_url=flaresolverr_url,
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            if not scraper.flaresolverr.is_available():
+                logger.warning(f"FlareSolverr not available at {flaresolverr_url}, skipping iafd")
+                continue
+
+            scrapers.append(scraper)
+            logger.info(f"Created IAFD scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "freeones":
+            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+            scraper = FreeOnesScraper(
+                flaresolverr_url=flaresolverr_url,
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created FreeOnes scraper (rate: {source_config.rate_limit} req/min)")
 
     return scrapers
 
@@ -178,6 +242,17 @@ Examples:
         metavar="SOURCE",
         help="Clear progress for a source and exit",
     )
+    parser.add_argument(
+        "--enable-faces",
+        action="store_true",
+        help="Enable face detection and embedding (requires GPU, slower)",
+    )
+    parser.add_argument(
+        "--save-interval",
+        type=int,
+        default=1000,
+        help="Save indices every N faces (default: 1000)",
+    )
 
     args = parser.parse_args()
 
@@ -221,23 +296,45 @@ Examples:
         logger.error("No scrapers created! Check API keys and source configuration.")
         sys.exit(1)
 
+    # Build trust levels from config
+    source_trust_levels = {}
+    for source_name in sources:
+        try:
+            source_config = config.get_source(source_name)
+            source_trust_levels[source_name] = source_config.trust_level
+        except KeyError:
+            pass
+
+    # Determine data directory for face processing
+    data_dir = args.database.parent if args.enable_faces else None
+
     # Create coordinator
     coordinator = EnrichmentCoordinator(
         database=db,
         scrapers=scrapers,
+        data_dir=data_dir,
         max_faces_per_source=args.max_faces_per_source,
         max_faces_total=args.max_faces_total,
         dry_run=args.dry_run,
+        enable_face_processing=args.enable_faces,
+        source_trust_levels=source_trust_levels,
     )
 
     if args.dry_run:
         logger.info("DRY RUN - no changes will be written to database")
+
+    if args.enable_faces:
+        logger.info(f"Face processing ENABLED - using data dir: {data_dir}")
+        logger.info(f"Trust levels: {source_trust_levels}")
 
     # Run
     try:
         asyncio.run(coordinator.run())
         print("\n=== Enrichment Complete ===")
         print(f"Performers processed: {coordinator.stats.performers_processed:,}")
+        print(f"Images processed: {coordinator.stats.images_processed:,}")
+        print(f"Faces added: {coordinator.stats.faces_added:,}")
+        print(f"Faces rejected: {coordinator.stats.faces_rejected:,}")
         print(f"Errors: {coordinator.stats.errors}")
         for source, count in coordinator.stats.by_source.items():
             print(f"  {source}: {count:,}")
