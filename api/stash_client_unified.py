@@ -440,3 +440,104 @@ class StashClientUnified:
         """
         data = await self._execute(query)
         return data["configuration"]["general"]["stashBoxes"]
+
+    # ==================== Scene Query Methods ====================
+
+    async def get_scenes_for_fingerprinting(
+        self,
+        updated_after: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """
+        Get scenes with full metadata for fingerprinting.
+        Returns (scenes, total_count).
+        """
+        query = """
+        query ScenesForFingerprinting($filter: FindFilterType, $scene_filter: SceneFilterType) {
+          findScenes(filter: $filter, scene_filter: $scene_filter) {
+            count
+            scenes {
+              id
+              title
+              date
+              updated_at
+              studio {
+                id
+                name
+              }
+              performers {
+                id
+                name
+              }
+              files {
+                duration
+              }
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        filter_input = {"per_page": limit, "page": (offset // limit) + 1}
+        scene_filter = {}
+
+        if updated_after:
+            scene_filter["updated_at"] = {"value": updated_after, "modifier": "GREATER_THAN"}
+
+        data = await self._execute(query, variables={"filter": filter_input, "scene_filter": scene_filter})
+        return data["findScenes"]["scenes"], data["findScenes"]["count"]
+
+    async def get_scene_stream_url(self, scene_id: str) -> Optional[str]:
+        """Get the stream URL for a scene."""
+        query = """
+        query SceneStream($id: ID!) {
+          findScene(id: $id) {
+            id
+            sceneStreams {
+              url
+              label
+            }
+          }
+        }
+        """
+        data = await self._execute(query, variables={"id": scene_id})
+        scene = data.get("findScene")
+        if not scene or not scene.get("sceneStreams"):
+            return None
+
+        # Return first available stream
+        streams = scene["sceneStreams"]
+        return streams[0]["url"] if streams else None
+
+    async def get_scene_by_id(self, scene_id: str) -> Optional[dict]:
+        """Get a scene by ID with full metadata."""
+        query = """
+        query GetScene($id: ID!) {
+          findScene(id: $id) {
+            id
+            title
+            date
+            updated_at
+            studio {
+              id
+              name
+            }
+            performers {
+              id
+              name
+            }
+            files {
+              duration
+            }
+            stash_ids {
+              endpoint
+              stash_id
+            }
+          }
+        }
+        """
+        data = await self._execute(query, variables={"id": scene_id})
+        return data.get("findScene")
