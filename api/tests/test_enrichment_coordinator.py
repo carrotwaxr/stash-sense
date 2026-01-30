@@ -349,3 +349,40 @@ class TestEnrichmentCoordinator:
 
         # Should have stopped at 3 faces due to per-source limit
         assert coordinator.stats.faces_added == 3
+
+
+class TestReferenceSiteMode:
+    """Tests for reference site mode enum and routing."""
+
+    def test_reference_site_mode_enum_exists(self):
+        from enrichment_coordinator import ReferenceSiteMode
+
+        assert ReferenceSiteMode.URL_LOOKUP.value == "url"
+        assert ReferenceSiteMode.NAME_LOOKUP.value == "name"
+
+    def test_coordinator_accepts_reference_site_mode(self, tmp_path):
+        from database import PerformerDatabase
+        from enrichment_coordinator import EnrichmentCoordinator, ReferenceSiteMode
+
+        db = PerformerDatabase(tmp_path / "test.db")
+
+        coordinator = EnrichmentCoordinator(
+            database=db,
+            scrapers=[],
+            reference_site_mode=ReferenceSiteMode.URL_LOOKUP,
+        )
+
+        assert coordinator.reference_site_mode == ReferenceSiteMode.URL_LOOKUP
+
+    def test_coordinator_defaults_to_url_mode(self, tmp_path):
+        from database import PerformerDatabase
+        from enrichment_coordinator import EnrichmentCoordinator, ReferenceSiteMode
+
+        db = PerformerDatabase(tmp_path / "test.db")
+
+        coordinator = EnrichmentCoordinator(
+            database=db,
+            scrapers=[],
+        )
+
+        assert coordinator.reference_site_mode == ReferenceSiteMode.URL_LOOKUP

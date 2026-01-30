@@ -9,6 +9,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +18,12 @@ from database import PerformerDatabase
 from write_queue import WriteQueue, WriteMessage, WriteOperation
 
 logger = logging.getLogger(__name__)
+
+
+class ReferenceSiteMode(Enum):
+    """Mode for reference site scraper iteration."""
+    URL_LOOKUP = "url"   # Look up performers by existing URLs
+    NAME_LOOKUP = "name" # Try all performers by name
 
 
 @dataclass
@@ -59,6 +66,7 @@ class EnrichmentCoordinator:
         dry_run: bool = False,
         enable_face_processing: bool = False,
         source_trust_levels: Optional[dict[str, str]] = None,
+        reference_site_mode: ReferenceSiteMode = ReferenceSiteMode.URL_LOOKUP,
     ):
         self.database = database
         self.scrapers = scrapers
@@ -68,6 +76,7 @@ class EnrichmentCoordinator:
         self.dry_run = dry_run
         self.enable_face_processing = enable_face_processing
         self.source_trust_levels = source_trust_levels or {}
+        self.reference_site_mode = reference_site_mode
 
         self.stats = CoordinatorStats()
 
