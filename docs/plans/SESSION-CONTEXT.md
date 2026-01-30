@@ -24,11 +24,22 @@
 - **SQLite Migration:** ✅ Complete - `performers.db` (schema v5)
 - **Metadata Refresh:** 🔄 Running (updates URLs, aliases, identity graph fields)
 - **Multi-Source Enrichment:** ✅ Infrastructure complete (Tasks 1-10)
-- **Recommendations System:** ✅ Complete - duplicate performers & duplicate scene files analyzers
+- **Recommendations System:** ✅ Complete - duplicate performers, duplicate scene files, and duplicate scenes analyzers
 - **Plugin:** ✅ Complete - Face recognition + recommendations dashboard
 - **Backup Available:** `api/data/performers_backup_20260129_*.db` - pre-enrichment snapshot
 
-### Active Work (2026-01-29)
+### Active Work (2026-01-30)
+
+**8. Duplicate Scene Detection** ✅ COMPLETE
+- Multi-signal duplicate detection: stash-box IDs (100%), face fingerprints (85%), metadata (60%)
+- New analyzer: `DuplicateScenesAnalyzer` with configurable min_confidence
+- API: `POST /recommendations/analysis/duplicate_scenes/run`
+- Schema v2: scene_fingerprints and scene_fingerprint_faces tables
+- New module: `duplicate_detection/` with models and scoring functions
+- 37 new tests, 172 total passing
+- **Reference:** [duplicate-scene-detection-design.md](2026-01-30-duplicate-scene-detection-design.md)
+
+### Previous Work (2026-01-29)
 
 **1. Missing Performers Recovery** ✅ COMPLETE
 - Found and added 3,223 performers missing from DB due to StashDB pagination bug
@@ -105,6 +116,7 @@
 - Analyzes Stash library for curation opportunities
 - **Duplicate Performers:** Finds performers that may be duplicates (same name, shared scenes, StashDB IDs)
 - **Duplicate Scene Files:** Finds scenes with multiple files, suggests which to keep/delete
+- **Duplicate Scenes:** Finds scenes that may be duplicates using stash-box IDs, face fingerprints, and metadata heuristics
 
 **Architecture:**
 ```
@@ -144,6 +156,7 @@ User's Stash                          Stash Sense Sidecar
 - Recommendations database (stash_sense.db)
 - Duplicate performer analyzer
 - Duplicate scene files analyzer
+- Duplicate scenes analyzer (stash-box IDs, face fingerprints, metadata heuristics)
 - Plugin dashboard UI with resolve/dismiss actions
 
 ### Phase 3: Multi-Source Enrichment 🔄 IN PROGRESS
@@ -243,7 +256,8 @@ python enrichment_builder.py --sources freeones --dry-run
 | `main.py` | FastAPI app - face recognition + recommendations |
 | `recommendations_router.py` | `/recommendations` endpoints |
 | `recommendations_db.py` | SQLite database for recommendations |
-| `recommendations_analyzers.py` | Analyzer implementations |
+| `analyzers/` | Analyzer implementations (duplicate_performer, duplicate_scene_files, duplicate_scenes) |
+| `duplicate_detection/` | Models and scoring for duplicate scene detection |
 | `database_builder.py` | Builds face embedding database |
 | `metadata_refresh.py` | Updates performer metadata from StashDB |
 | `database.py` | SQLite layer for performer metadata (schema v5) |
@@ -284,6 +298,8 @@ python enrichment_builder.py --sources freeones --dry-run
 | [face-recognition-system-design.md](2026-01-24-face-recognition-system-design.md) | Face recognition details |
 | [performer-identity-graph.md](2026-01-27-performer-identity-graph.md) | Multi-source linking strategy |
 | [data-sources-catalog.md](2026-01-27-data-sources-catalog.md) | All data sources with rate limits |
+| [duplicate-scene-detection-design.md](2026-01-30-duplicate-scene-detection-design.md) | Multi-signal duplicate scene detection |
+| [duplicate-scene-detection-implementation.md](2026-01-30-duplicate-scene-detection-implementation.md) | TDD implementation plan for duplicate scenes |
 
 ---
 
