@@ -1004,6 +1004,45 @@ class PerformerDatabase:
                     yield Performer(**dict(row))
                 offset += batch_size
 
+    def iter_performers_with_site_urls(
+        self,
+        site: str,
+        after_id: int = 0,
+        batch_size: int = 1000,
+    ) -> Iterator[tuple[int, str, str]]:
+        """
+        Iterate performers that have URLs matching the given site.
+
+        Args:
+            site: Site name to match in URL (e.g., 'babepedia', 'iafd')
+            after_id: Resume after this performer ID
+            batch_size: Batch size for queries
+
+        Yields:
+            (performer_id, performer_name, url) tuples ordered by performer_id
+        """
+        with self._connection() as conn:
+            offset_id = after_id
+            while True:
+                rows = conn.execute(
+                    """
+                    SELECT p.id, p.canonical_name, u.url
+                    FROM performers p
+                    JOIN external_urls u ON p.id = u.performer_id
+                    WHERE u.url LIKE ? AND p.id > ?
+                    ORDER BY p.id ASC
+                    LIMIT ?
+                    """,
+                    (f"%{site}%", offset_id, batch_size),
+                ).fetchall()
+
+                if not rows:
+                    break
+
+                for row in rows:
+                    yield (row[0], row[1], row[2])
+                    offset_id = row[0]
+
     def iter_performers_needing_urls(self, batch_size: int = 1000) -> Iterator[tuple[int, str]]:
         """
         Iterate over performers that have stash-box IDs but no URLs.
