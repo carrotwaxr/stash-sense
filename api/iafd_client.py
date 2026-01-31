@@ -26,7 +26,7 @@ class IAFDScraper(BaseScraper):
 
     def __init__(
         self,
-        flaresolverr_url: str = "http://10.0.0.4:8191",
+        flaresolverr_url: str = "http://localhost:8191",
         rate_limit_delay: float = 0.5,  # 120 req/min
     ):
         """Initialize IAFD scraper.

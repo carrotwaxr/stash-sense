@@ -4,10 +4,10 @@
 # All commands automatically activate the virtual environment.
 
 SHELL := /bin/bash
-VENV := .venv
-PYTHON := $(VENV)/bin/python
-PIP := $(VENV)/bin/pip
-UVICORN := $(VENV)/bin/uvicorn
+
+# Use system python/pip if in activated venv, otherwise use .venv
+PYTHON := $(if $(VIRTUAL_ENV),python,$(shell [ -f .venv/bin/python ] && echo .venv/bin/python || echo python))
+PIP := $(if $(VIRTUAL_ENV),pip,$(shell [ -f .venv/bin/pip ] && echo .venv/bin/pip || echo pip))
 
 # Colors for output
 CYAN := \033[36m
@@ -57,35 +57,31 @@ venv:
 	python3 -m venv $(VENV)
 	@echo "$(GREEN)Done. Run 'make install' to install dependencies.$(RESET)"
 
-install: $(VENV)
+install:
 	@echo "$(CYAN)Installing dependencies...$(RESET)"
 	$(PIP) install -r requirements.txt
 	@echo "$(GREEN)Done.$(RESET)"
-
-$(VENV):
-	@echo "$(YELLOW)Virtual environment not found. Creating...$(RESET)"
-	python3 -m venv $(VENV)
 
 # ============================================================================
 # Services
 # ============================================================================
 
-sidecar: $(VENV)
+sidecar:
 	@echo "$(CYAN)Starting FastAPI sidecar...$(RESET)"
-	@echo "$(YELLOW)API will be available at http://localhost:8000$(RESET)"
-	@echo "$(YELLOW)Docs at http://localhost:8000/docs$(RESET)"
+	@echo "$(YELLOW)API will be available at http://localhost:5000$(RESET)"
+	@echo "$(YELLOW)Docs at http://localhost:5000/docs$(RESET)"
 	@echo ""
-	$(UVICORN) main:app --host 0.0.0.0 --port 8000 --reload
+	$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 
-sidecar-prod: $(VENV)
+sidecar-prod:
 	@echo "$(CYAN)Starting FastAPI sidecar (production mode)...$(RESET)"
-	$(UVICORN) main:app --host 0.0.0.0 --port 8000 --workers 1
+	$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 5000 --workers 1
 
 # ============================================================================
 # Enrichment
 # ============================================================================
 
-enrich: $(VENV)
+enrich:
 	@echo "$(CYAN)Running face enrichment (all sources)...$(RESET)"
 	@echo "$(YELLOW)Press Ctrl+C for graceful shutdown$(RESET)"
 	@echo ""
@@ -94,7 +90,7 @@ enrich: $(VENV)
 		--enable-faces \
 		--max-faces-total 12
 
-enrich-quick: $(VENV)
+enrich-quick:
 	@echo "$(CYAN)Running face enrichment (without indexxx)...$(RESET)"
 	@echo "$(YELLOW)Press Ctrl+C for graceful shutdown$(RESET)"
 	@echo ""
@@ -103,7 +99,7 @@ enrich-quick: $(VENV)
 		--enable-faces \
 		--max-faces-total 12
 
-enrich-meta: $(VENV)
+enrich-meta:
 	@echo "$(CYAN)Running metadata enrichment (no face processing)...$(RESET)"
 	$(PYTHON) enrichment_builder.py \
 		--sources stashdb,theporndb,babepedia,iafd,boobpedia
@@ -112,7 +108,7 @@ enrich-meta: $(VENV)
 # Database & Status
 # ============================================================================
 
-status: $(VENV)
+status:
 	@echo "$(CYAN)Database Status$(RESET)"
 	@echo "==============="
 	@$(PYTHON) -c "import sqlite3; c = sqlite3.connect('data/performers.db').cursor(); c.execute('SELECT COUNT(*) FROM performers'); p = c.fetchone()[0]; c.execute('SELECT COUNT(*), MAX(arcface_index) FROM faces'); f, m = c.fetchone(); print(f'Performers: {p:,}\nFaces: {f:,}\nMax index: {m}')"
@@ -121,28 +117,26 @@ status: $(VENV)
 	@echo "=============="
 	@$(PYTHON) -c "from index_manager import IndexManager; im = IndexManager('data'); print(f'Embeddings: {im.current_index:,}')" 2>/dev/null || echo "Index not loaded"
 
-progress: $(VENV)
-	@echo "$(CYAN)Scraper Progress$(RESET)"
-	@echo "================="
-	@$(PYTHON) -c "import sqlite3; conn = sqlite3.connect('data/performers.db'); cur = conn.cursor(); cur.execute('SELECT source, performers_processed, faces_added FROM scrape_progress ORDER BY performers_processed DESC'); print('\n'.join([f\"{r[0]}: {r[1]} performers, {r[2]} faces\" for r in cur.fetchall()]))"
+progress:
+	@$(PYTHON) show_progress.py
 
 # ============================================================================
 # Development
 # ============================================================================
 
-test: $(VENV)
+test:
 	@echo "$(CYAN)Running tests...$(RESET)"
 	$(PYTHON) -m pytest tests/ -v
 
-test-fast: $(VENV)
+test-fast:
 	@echo "$(CYAN)Running fast tests...$(RESET)"
 	$(PYTHON) -m pytest tests/ -v -x --tb=short
 
-lint: $(VENV)
+lint:
 	@echo "$(CYAN)Running linter...$(RESET)"
 	$(PYTHON) -m ruff check .
 
-shell: $(VENV)
+shell:
 	@echo "$(CYAN)Opening Python shell...$(RESET)"
 	$(PYTHON)
 

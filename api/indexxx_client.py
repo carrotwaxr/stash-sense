@@ -35,11 +35,11 @@ class IndexxxScraper(BaseScraper):
         """Initialize Indexxx scraper.
 
         Args:
-            chrome_cdp_url: Chrome DevTools Protocol URL (e.g., http://10.0.0.4:9222)
+            chrome_cdp_url: Chrome DevTools Protocol URL (e.g., http://localhost:9222)
             rate_limit_delay: Delay between requests (seconds)
         """
         super().__init__(rate_limit_delay=rate_limit_delay)
-        self.chrome_cdp_url = chrome_cdp_url or os.environ.get("CHROME_CDP_URL", "http://10.0.0.4:9222")
+        self.chrome_cdp_url = chrome_cdp_url or os.environ.get("CHROME_CDP_URL", "http://localhost:9222")
         self._browser = None
         self._context = None
         self._playwright = None

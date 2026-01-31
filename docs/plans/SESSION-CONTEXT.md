@@ -30,6 +30,17 @@
 
 ### Active Work (2026-01-30)
 
+**9. Multi-Source Enrichment Scrapers** 🔄 IN PROGRESS
+- **IAFD fix:** `min_image_size` lowered 400→300 to support IAFD images (340x400)
+- **5 new scrapers implemented:**
+  - `thenude_client.py` - 4,324 URLs in StashDB, converts `/medheads/` to full-size (520x782)
+  - `afdb_client.py` - 3,267 URLs in StashDB, gallery images (320x480)
+  - `pornpics_client.py` - 815 URLs in StashDB, converts `/460/` to `/1280/` (854x1280)
+  - `elitebabes_client.py` - 10 URLs in StashDB, high-quality (1200x801)
+  - `javdatabase_client.py` - slug-based matching to avoid related idols (400x500)
+- **Indexxx blocked:** IP returning 429 errors, needs proxy or cooldown period
+- **Progress logging:** Needs X/Y counts, percentages, completion rates
+
 **8. Duplicate Scene Detection** ✅ COMPLETE
 - Multi-signal duplicate detection: stash-box IDs (100%), face fingerprints (85%), metadata (60%)
 - New analyzer: `DuplicateScenesAnalyzer` with configurable min_confidence
@@ -235,8 +246,14 @@ python enrichment_builder.py --sources freeones --dry-run
 | JAVStash | stash_box | `stashbox_clients.py` | ✅ Ready | ~21.7K performers |
 | FansDB | stash_box | `stashbox_clients.py` | ⚠️ Not in Stash | Register at fansdb.cc |
 | Babepedia | reference_site | `babepedia_client.py` | ✅ Ready | FlareSolverr, female only |
-| IAFD | reference_site | `iafd_client.py` | ✅ Ready | FlareSolverr |
+| IAFD | reference_site | `iafd_client.py` | ✅ Ready | FlareSolverr, min_image_size fixed |
 | FreeOnes | reference_site | `freeones_client.py` | ✅ Ready | Gallery drilling |
+| TheNude | reference_site | `thenude_client.py` | ✅ Ready | 4,324 URLs, URL_LOOKUP mode |
+| AFDB | reference_site | `afdb_client.py` | ✅ Ready | 3,267 URLs, URL_LOOKUP mode |
+| PornPics | reference_site | `pornpics_client.py` | ✅ Ready | 815 URLs, URL_LOOKUP mode |
+| EliteBabes | reference_site | `elitebabes_client.py` | ✅ Ready | High-quality glamour photos |
+| JavDatabase | reference_site | `javdatabase_client.py` | ✅ Ready | JAV supplement (run after JAVStash) |
+| Indexxx | reference_site | - | ❌ Blocked | IP rate-limited (429), needs proxy |
 
 ### Still Pending
 

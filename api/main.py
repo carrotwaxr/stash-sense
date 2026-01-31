@@ -9,6 +9,9 @@ import json
 import os
 from collections import defaultdict
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Environment variables
 STASH_URL = os.environ.get("STASH_URL", "").rstrip("/")
 STASH_API_KEY = os.environ.get("STASH_API_KEY", "")

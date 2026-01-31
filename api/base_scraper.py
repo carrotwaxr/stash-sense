@@ -72,6 +72,12 @@ class BaseScraper(ABC):
     source_name: str = ""  # Must be set by subclass
     source_type: str = "stash_box"  # "stash_box" or "reference_site"
     gender_filter: Optional[str] = None  # "FEMALE", "MALE", or None
+    url_site_pattern: Optional[str] = None  # Pattern to match in URLs (defaults to source_name)
+
+    @property
+    def url_match_pattern(self) -> str:
+        """Return the pattern to match in URLs for URL_LOOKUP mode."""
+        return self.url_site_pattern or self.source_name
 
     def __init__(self, rate_limit_delay: float = 0.5):
         """

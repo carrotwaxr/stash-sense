@@ -25,7 +25,7 @@ class BabepediaScraper(BaseScraper):
 
     def __init__(
         self,
-        flaresolverr_url: str = "http://10.0.0.4:8191",
+        flaresolverr_url: str = "http://localhost:8191",
         rate_limit_delay: float = 2.0,  # Be respectful - 30/min
     ):
         """Initialize Babepedia scraper.

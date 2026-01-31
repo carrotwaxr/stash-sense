@@ -23,7 +23,7 @@ class FlareSolverResponse:
 class FlareSolverr:
     """Client for FlareSolverr proxy."""
 
-    def __init__(self, url: str = "http://10.0.0.4:8191"):
+    def __init__(self, url: str = "http://localhost:8191"):
         """Initialize FlareSolverr client.
 
         Args:
@@ -109,7 +109,7 @@ class FlareSolverr:
 _client: Optional[FlareSolverr] = None
 
 
-def get_client(url: str = "http://10.0.0.4:8191") -> FlareSolverr:
+def get_client(url: str = "http://localhost:8191") -> FlareSolverr:
     """Get or create FlareSolverr client."""
     global _client
     if _client is None:
@@ -117,7 +117,7 @@ def get_client(url: str = "http://10.0.0.4:8191") -> FlareSolverr:
     return _client
 
 
-def fetch_with_flaresolverr(url: str, flaresolverr_url: str = "http://10.0.0.4:8191") -> Optional[str]:
+def fetch_with_flaresolverr(url: str, flaresolverr_url: str = "http://localhost:8191") -> Optional[str]:
     """Convenience function to fetch HTML through FlareSolverr.
 
     Args:

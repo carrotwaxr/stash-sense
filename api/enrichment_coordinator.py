@@ -263,7 +263,17 @@ class EnrichmentCoordinator:
         last_id = int(progress['last_processed_id']) if progress and progress['last_processed_id'] else 0
         resume_info = f" (resuming from performer #{last_id})" if last_id else ""
 
+        # Get total count for progress tracking
+        if mode == "url":
+            # Use url_match_pattern which may differ from source_name (e.g., afdb -> adultfilmdatabase)
+            site_pattern = scraper.url_match_pattern
+            total_count = self.database.count_performers_with_site_urls(site_pattern, after_id=last_id)
+        else:
+            gender = scraper.gender_filter if hasattr(scraper, 'gender_filter') else None
+            total_count = self.database.count_performers(after_id=last_id, gender=gender)
+
         logger.info(f"[{source}] Starting reference scraper (mode={mode}){resume_info}")
+        logger.info(f"[{source}] {total_count:,} performers to process")
 
         processed = 0
         faces_added = 0
@@ -310,9 +320,18 @@ class EnrichmentCoordinator:
                         performers_processed=processed,
                         faces_added=faces_added,
                     )
+                    # Calculate percentage and ETA
+                    if total_count > 0:
+                        pct = (processed / total_count) * 100
+                        remaining = total_count - processed
+                        eta_min = (remaining / rate) if rate > 0 else 0
+                        eta_str = f", ETA {eta_min:.0f}m" if eta_min < 120 else f", ETA {eta_min/60:.1f}h"
+                        progress_str = f"{processed:,}/{total_count:,} ({pct:.1f}%){eta_str}"
+                    else:
+                        progress_str = f"{processed:,} processed"
                     logger.info(
-                        f"[{source}] === Batch complete: {processed} total, "
-                        f"{batch_faces} faces this batch, {rate:.1f} performers/min ==="
+                        f"[{source}] === {progress_str}, "
+                        f"+{batch_faces} faces this batch, {rate:.1f}/min ==="
                     )
                     batch_start = time.time()
                     batch_faces = 0
@@ -333,12 +352,19 @@ class EnrichmentCoordinator:
             faces_added=faces_added,
         )
 
-        logger.info(f"[{source}] Complete: {processed} performers, {faces_added} faces added")
+        # Final summary with percentage
+        if total_count > 0:
+            pct = (processed / total_count) * 100
+            logger.info(f"[{source}] Complete: {processed:,}/{total_count:,} ({pct:.1f}%), {faces_added:,} faces added")
+        else:
+            logger.info(f"[{source}] Complete: {processed:,} performers, {faces_added:,} faces added")
 
     def _iter_url_lookup(self, scraper: BaseScraper, last_id: int):
         """Iterate performers with URLs for this reference site."""
+        # Use url_match_pattern which may differ from source_name (e.g., afdb -> adultfilmdatabase)
+        site_pattern = scraper.url_match_pattern
         for performer_id, name, url in self.database.iter_performers_with_site_urls(
-            site=scraper.source_name,
+            site=site_pattern,
             after_id=last_id,
         ):
             slug = scraper.extract_slug_from_url(url)

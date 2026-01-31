@@ -349,10 +349,15 @@ class PerformerDatabase:
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
-        """Get a database connection with row factory."""
-        conn = sqlite3.connect(self.db_path)
+        """Get a database connection with row factory.
+
+        Uses WAL mode and 30s timeout for better concurrent access.
+        """
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 30000")  # 30 seconds in ms
         try:
             yield conn
             conn.commit()
@@ -1090,6 +1095,59 @@ class PerformerDatabase:
                     performer = Performer(**dict(row))
                     yield performer
                     offset_id = performer.id
+
+    def count_performers_with_site_urls(self, site: str, after_id: int = 0) -> int:
+        """
+        Count performers that have URLs matching the given site.
+
+        Args:
+            site: Site name to match in URL (e.g., 'babepedia', 'iafd')
+            after_id: Only count performers with ID > after_id
+
+        Returns:
+            Count of performers with matching URLs
+        """
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(DISTINCT p.id)
+                FROM performers p
+                JOIN external_urls u ON p.id = u.performer_id
+                WHERE u.url LIKE ? AND p.id > ?
+                """,
+                (f"%{site}%", after_id),
+            ).fetchone()
+            return row[0] if row else 0
+
+    def count_performers(self, after_id: int = 0, gender: str = None) -> int:
+        """
+        Count performers with ID greater than after_id.
+
+        Args:
+            after_id: Only count performers with ID > after_id
+            gender: Optional gender filter
+
+        Returns:
+            Count of performers
+        """
+        with self._connection() as conn:
+            if gender:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM performers
+                    WHERE id > ? AND gender = ?
+                    """,
+                    (after_id, gender),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM performers
+                    WHERE id > ?
+                    """,
+                    (after_id,),
+                ).fetchone()
+            return row[0] if row else 0
 
     def iter_performers_needing_urls(self, batch_size: int = 1000) -> Iterator[tuple[int, str]]:
         """

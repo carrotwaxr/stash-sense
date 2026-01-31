@@ -1,7 +1,7 @@
 # Data Sources Catalog
 
-**Date:** 2026-01-27
-**Status:** Research in Progress
+**Date:** 2026-01-27 (Updated: 2026-01-30)
+**Status:** Implementation In Progress
 
 ---
 
@@ -462,28 +462,53 @@ Tested with `api/test_scrape_sources.py` and FlareSolverr at `10.0.0.4:8191`:
 
 | Source | Status | Images | Notes |
 |--------|--------|--------|-------|
-| **Indexxx** | ✓ Works | 88 | Via FlareSolverr |
-| **EliteBabes** | ✓ Works | 44 | High-quality images |
+| **Indexxx** | ❌ Blocked | - | IP rate-limited (429), needs proxy |
+| **EliteBabes** | ✓ Works | 44 | High-quality images (1200x801) |
 | **FreeOnes** | ✓ Works | 24 | Reliable CDN |
 | **Boobpedia** | ✓ Works | 23 | MediaWiki format |
-| **PornPics** | ✓ Works | 21 | Gallery drilling |
+| **PornPics** | ✓ Works | 21 | Gallery drilling, 1280px images |
 | **Pornhub** | ✓ Works | 20 | Needs age cookie |
-| **JavDatabase** | ✓ Works | 7 | JAV performers only |
+| **JavDatabase** | ✓ Works | 7 | JAV performers only (400x500) |
 | **Babepedia** | ✓ Works | 4 | Via FlareSolverr |
-| **IAFD** | ✓ Works | 1 | Via FlareSolverr, hotlink protected |
-| **AFDB** | Requires URL | - | URLs include ID suffix from StashDB |
+| **IAFD** | ✓ Works | 1 | Via FlareSolverr, 340x400 images |
+| **AFDB** | ✓ Works | - | URL_LOOKUP mode, 320x480 gallery images |
+| **theNude** | ✓ Works | - | URL_LOOKUP mode, 520x782 full-size images |
 | **DATA18** | Requires URL | - | Use pre-existing StashDB URLs |
-| **theNude** | Requires URL | - | URLs use ID only (e.g., `/_44689.htm`) |
 | **dbNaked** | Slow/Unreliable | - | Timeouts common |
 
-**Total: 9/13 sources working, 232 images found for test performer**
+**Total: 10/13 sources working**
 
 **Notes:**
 - IAFD and Indexxx have hotlink protection - need to download through FlareSolverr session
-- AFDB, DATA18, theNude require full URLs from StashDB (can't construct from name)
+- AFDB, theNude now implemented with URL_LOOKUP mode (use StashDB URLs directly)
 - FlareSolverr client: `api/flaresolverr_client.py`
+- **IAFD fix (2026-01-30):** Lowered `min_image_size` from 400 to 300 to accept 340x400 images
 
 **Strategy:** Use StashDB's pre-existing `urls` field to get full URLs for AFDB, DATA18, theNude. Don't try to construct URLs from performer names for these sites.
+
+### Scraper Implementation Status (2026-01-30)
+
+| Source | Client File | Mode | StashDB URLs | Status |
+|--------|-------------|------|--------------|--------|
+| **StashDB** | `stashdb_client.py` | N/A | - | ✅ Ready |
+| **ThePornDB** | `theporndb_client.py` | N/A | - | ✅ Ready |
+| **PMVStash** | `stashbox_clients.py` | N/A | - | ✅ Ready |
+| **JAVStash** | `stashbox_clients.py` | N/A | - | ✅ Ready |
+| **FansDB** | `stashbox_clients.py` | N/A | - | ⚠️ No API key |
+| **Babepedia** | `babepedia_client.py` | NAME_LOOKUP | - | ✅ Ready |
+| **IAFD** | `iafd_client.py` | URL_LOOKUP | 28,451 | ✅ Ready |
+| **FreeOnes** | `freeones_client.py` | NAME_LOOKUP | - | ✅ Ready |
+| **TheNude** | `thenude_client.py` | URL_LOOKUP | 4,324 | ✅ Ready |
+| **AFDB** | `afdb_client.py` | URL_LOOKUP | 3,267 | ✅ Ready |
+| **PornPics** | `pornpics_client.py` | URL_LOOKUP | 815 | ✅ Ready |
+| **EliteBabes** | `elitebabes_client.py` | NAME_LOOKUP | 10 | ✅ Ready |
+| **JavDatabase** | `javdatabase_client.py` | NAME_LOOKUP | - | ✅ Ready |
+| **Indexxx** | - | - | - | ❌ Blocked |
+| **Boobpedia** | `boobpedia_client.py` | NAME_LOOKUP | - | ✅ Ready |
+
+**Mode definitions:**
+- **NAME_LOOKUP:** Constructs URL from performer name (e.g., "Angela White" → `/babe/Angela_White`)
+- **URL_LOOKUP:** Uses URLs stored in StashDB's `urls` field (requires `:url` suffix in sources.yaml)
 
 ---
 
@@ -733,14 +758,17 @@ Working sources: FreeOnes (72), Pornhub (67), Indexxx (27), theNude (9), AFDB (4
 
 1. [x] Update `stashdb_client.py` to capture `aliases` and `urls` fields ✅
 2. [x] Create scraping test scripts ✅
-3. [ ] Run second pass of StashDB builder to collect new fields (after current build completes)
-4. [ ] Test PMVStash and FansDB APIs
-5. [ ] Build URL parser to extract IDs from StashDB's pre-built cross-references
-6. [ ] Adapt performerImageSearch patterns for bulk scraping
-7. [ ] Build curation UI framework
-8. [ ] Implement confidence threshold configuration
-9. [ ] Add FlareSolverr integration for Cloudflare-protected sites (Babepedia, IAFD, Indexxx)
+3. [x] Implement reference site scrapers ✅
+   - TheNude (4,324 URLs), AFDB (3,267 URLs), PornPics (815 URLs)
+   - EliteBabes, JavDatabase, Boobpedia
+4. [x] Add FlareSolverr integration for Cloudflare-protected sites ✅
+5. [x] Fix IAFD 0 faces issue (min_image_size 400→300) ✅
+6. [ ] Add improved progress logging (X/Y counts, percentages, rates)
+7. [ ] Run full enrichment pass across all sources
+8. [ ] Test PMVStash and FansDB APIs
+9. [ ] Build URL parser to extract IDs from StashDB's pre-built cross-references
+10. [ ] Find Indexxx workaround (currently IP-blocked with 429 errors)
 
 ---
 
-*This document will be updated as testing progresses.*
+*Last updated: 2026-01-30*

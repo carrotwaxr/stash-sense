@@ -7,7 +7,7 @@ global:
 
   quality_filters:
     min_face_size: 80
-    min_image_size: 400
+    min_image_size: 300  # Lowered from 400 to support IAFD (340x400)
     min_detection_confidence: 0.8
     max_face_angle: 45.0
     prefer_single_face: true
@@ -90,6 +90,21 @@ reference_sites:
     rate_limit: 60
     max_faces: 3
     gender_filter: female
+    needs_flaresolverr: false
+
+  thenude:
+    enabled: false
+    trust_level: medium
+    rate_limit: 60
+    max_faces: 5
+    gender_filter: female
+    needs_flaresolverr: false
+
+  afdb:
+    enabled: false
+    trust_level: high
+    rate_limit: 60
+    max_faces: 5
     needs_flaresolverr: false
 
   pornpics:

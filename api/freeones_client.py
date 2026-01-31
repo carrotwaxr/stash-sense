@@ -297,12 +297,36 @@ class FreeOnesScraper(BaseScraper):
 
         return self.get_performer(best_match)
 
+    def extract_slug_from_url(self, url: str) -> Optional[str]:
+        """Extract FreeOnes slug from URL.
+
+        Example: https://www.freeones.com/angela-white -> angela-white
+        """
+        match = re.search(r'freeones\.com/([a-z0-9-]+)(?:/|$)', url, re.IGNORECASE)
+        if match:
+            slug = match.group(1)
+            # Skip common non-profile paths
+            if slug in ('babes', 'photos', 'videos', 'feed', 'search', 'login', 'signup'):
+                return None
+            return slug
+        return None
+
+    def name_to_slug(self, name: str) -> str:
+        """Convert name to FreeOnes slug format.
+
+        Example: "Angela White" -> "angela-white"
+        """
+        slug = name.lower().replace(" ", "-")
+        slug = re.sub(r'[^a-z0-9-]', '', slug)
+        slug = re.sub(r'-+', '-', slug).strip('-')
+        return slug
+
 
 if __name__ == "__main__":
     # Test the scraper
     import os
 
-    flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+    flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191")
     scraper = FreeOnesScraper(flaresolverr_url=flaresolverr_url)
 
     print("Testing FreeOnes scraper...")

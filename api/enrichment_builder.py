@@ -30,6 +30,11 @@ from boobpedia_client import BoobpediaScraper
 from iafd_client import IAFDScraper
 from indexxx_client import IndexxxScraper
 from freeones_client import FreeOnesScraper
+from thenude_client import TheNudeScraper
+from afdb_client import AFDBScraper
+from pornpics_client import PornPicsScraper
+from elitebabes_client import EliteBabesScraper
+from javdatabase_client import JavDatabaseScraper
 
 # Configure logging
 logging.basicConfig(
@@ -76,7 +81,7 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             logger.info(f"Created ThePornDB scraper (rate: {source_config.rate_limit} req/min)")
 
         elif source_name == "babepedia":
-            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191")
             scraper = BabepediaScraper(
                 flaresolverr_url=flaresolverr_url,
                 rate_limit_delay=60 / source_config.rate_limit,
@@ -128,7 +133,7 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             logger.info(f"Created FansDB scraper (rate: {source_config.rate_limit} req/min)")
 
         elif source_name == "iafd":
-            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191")
             scraper = IAFDScraper(
                 flaresolverr_url=flaresolverr_url,
                 rate_limit_delay=60 / source_config.rate_limit,
@@ -141,7 +146,7 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             logger.info(f"Created IAFD scraper (rate: {source_config.rate_limit} req/min)")
 
         elif source_name == "freeones":
-            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://10.0.0.4:8191")
+            flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191")
             scraper = FreeOnesScraper(
                 flaresolverr_url=flaresolverr_url,
                 rate_limit_delay=60 / source_config.rate_limit,
@@ -150,7 +155,7 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             logger.info(f"Created FreeOnes scraper (rate: {source_config.rate_limit} req/min)")
 
         elif source_name == "indexxx":
-            chrome_cdp_url = os.environ.get("CHROME_CDP_URL", "http://10.0.0.4:9222")
+            chrome_cdp_url = os.environ.get("CHROME_CDP_URL", "http://localhost:9222")
             scraper = IndexxxScraper(
                 chrome_cdp_url=chrome_cdp_url,
                 rate_limit_delay=60 / source_config.rate_limit,
@@ -164,6 +169,41 @@ def create_scrapers(config: EnrichmentConfig, sources: list[str]) -> list:
             )
             scrapers.append(scraper)
             logger.info(f"Created Boobpedia scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "thenude":
+            scraper = TheNudeScraper(
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created TheNude scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "afdb":
+            scraper = AFDBScraper(
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created AFDB scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "pornpics":
+            scraper = PornPicsScraper(
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created PornPics scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "elitebabes":
+            scraper = EliteBabesScraper(
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created EliteBabes scraper (rate: {source_config.rate_limit} req/min)")
+
+        elif source_name == "javdatabase":
+            scraper = JavDatabaseScraper(
+                rate_limit_delay=60 / source_config.rate_limit,
+            )
+            scrapers.append(scraper)
+            logger.info(f"Created JavDatabase scraper (rate: {source_config.rate_limit} req/min)")
 
     return scrapers
 

@@ -424,7 +424,7 @@ if __name__ == "__main__":
     load_dotenv()
 
     async def test_extraction():
-        stash_url = os.environ.get("STASH_URL", "http://10.0.0.4:6969")
+        stash_url = os.environ.get("STASH_URL", "http://localhost:9999")
         api_key = os.environ.get("STASH_API_KEY", "")
         scene_id = sys.argv[1] if len(sys.argv) > 1 else "33326"
         duration = float(sys.argv[2]) if len(sys.argv) > 2 else 1800  # Default 30 min

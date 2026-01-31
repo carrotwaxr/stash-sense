@@ -13,7 +13,7 @@ from typing import Optional
 class QualityFilters:
     """Quality filter configuration."""
     min_face_size: int = 80
-    min_image_size: int = 400
+    min_image_size: int = 300  # Lowered from 400 to support IAFD (340x400)
     min_detection_confidence: float = 0.8
     max_face_angle: float = 45.0
     prefer_single_face: bool = True
