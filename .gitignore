@@ -35,6 +35,9 @@ api/test_output/
 api/validation/
 api/profile_test/
 
+# Local development/debug scripts (not the tests/ suite)
+api/test_*.py
+
 # InsightFace model cache
 .insightface/
 api/.deepface/
