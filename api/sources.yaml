@@ -109,14 +109,14 @@ reference_sites:
 
   pornpics:
     enabled: false
-    trust_level: low
+    trust_level: medium  # Was low, but medium still validates against existing faces
     rate_limit: 60
     max_faces: 5
     needs_flaresolverr: false
 
   elitebabes:
     enabled: false
-    trust_level: low
+    trust_level: medium  # Was low, but medium still validates against existing faces
     rate_limit: 60
     max_faces: 5
     gender_filter: female
