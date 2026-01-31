@@ -196,7 +196,7 @@ class StashDBClient(BaseScraper):
             piercings=piercings,
             scene_count=p.get("scene_count"),
             updated_at=p.get("updated"),
-            stash_ids={"stashdb": p["id"]},  # Include self reference
+            stash_ids={self.source_name: p["id"]},  # Include self reference
         )
 
     def get_performers_batch(
