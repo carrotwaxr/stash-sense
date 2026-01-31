@@ -8,12 +8,12 @@ from pathlib import Path
 # Source configuration - defines how to count total for each source
 # Keys must match the source names in scrape_progress table
 SOURCE_CONFIG = {
-    # Stash-boxes (paginate through API, total from API)
-    "stashdb": {"type": "stashbox", "total": 100000},
-    "theporndb": {"type": "stashbox", "total": 10000},
-    "pmvstash": {"type": "stashbox", "total": 6500},
-    "javstash": {"type": "stashbox", "total": 21700},
-    "fansdb": {"type": "stashbox", "total": 50000},
+    # Stash-boxes (count from stashbox_ids table)
+    "stashdb": {"type": "stashbox", "endpoint": "stashdb"},
+    "theporndb": {"type": "stashbox", "endpoint": "theporndb"},
+    "pmvstash": {"type": "stashbox", "endpoint": "pmvstash"},
+    "javstash": {"type": "stashbox", "endpoint": "javstash"},
+    "fansdb": {"type": "stashbox", "endpoint": "fansdb"},
     # URL lookup sources (progress key = source:url)
     "iafd:url": {"type": "url_lookup", "site": "iafd"},
     "thenude:url": {"type": "url_lookup", "site": "thenude"},
@@ -53,7 +53,13 @@ def get_total_for_source(conn: sqlite3.Connection, source: str) -> int:
         return 0
 
     if config["type"] == "stashbox":
-        return config["total"]
+        # Count actual performers from this stashbox endpoint
+        endpoint = config["endpoint"]
+        cur = conn.execute(
+            "SELECT COUNT(*) FROM stashbox_ids WHERE endpoint = ?",
+            (endpoint,),
+        )
+        return cur.fetchone()[0]
 
     if config["type"] == "url_lookup":
         site = config["site"]
