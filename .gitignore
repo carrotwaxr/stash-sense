@@ -1,6 +1,8 @@
 # Environment and secrets
 .env
 *.env
+api/.env
+api/*.env
 
 # Python
 __pycache__/

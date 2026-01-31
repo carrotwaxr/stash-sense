@@ -1,5 +1,8 @@
 # Stash-Box Endpoints
 
+> **Note:** Database building has moved to the **stash-sense-trainer** repository.
+> This document is preserved for reference but the build commands below apply to the trainer repo.
+
 This document describes the different stash-box endpoints supported for building face recognition databases, their characteristics, and considerations for each.
 
 ## Supported Endpoints
@@ -55,7 +58,8 @@ This document describes the different stash-box endpoints supported for building
 ## Running Builds
 
 ```bash
-cd /home/carrot/code/stash-face-recognition/api
+# These commands apply to the stash-sense-trainer repo
+cd /home/carrot/code/stash-sense-trainer/api
 source ../.venv/bin/activate
 
 # StashDB (default)

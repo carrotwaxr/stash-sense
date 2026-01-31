@@ -1,10 +1,10 @@
 version: "3.8"
 
 services:
-  face-recognition:
+  stash-sense:
     build: .
-    image: stash-face-recognition:latest
-    container_name: stash-face-recognition
+    image: stash-sense:latest
+    container_name: stash-sense
     restart: unless-stopped
     ports:
       - "5000:5000"
@@ -12,8 +12,8 @@ services:
       # Mount the database files
       - ./api/data:/data:ro
       # Mount model weights cache (optional, speeds up restarts)
-      - face-recognition-models:/root/.deepface
-      - face-recognition-insightface:/root/.insightface
+      - stash-sense-models:/root/.deepface
+      - stash-sense-insightface:/root/.insightface
     environment:
       - DATA_DIR=/data
       - PYTHONUNBUFFERED=1
@@ -33,5 +33,5 @@ services:
       start_period: 60s
 
 volumes:
-  face-recognition-models:
-  face-recognition-insightface:
+  stash-sense-models:
+  stash-sense-insightface:

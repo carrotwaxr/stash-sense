@@ -115,7 +115,7 @@ class TestSceneFingerprintSchema:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_scene_fingerprints.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_scene_fingerprints.py -v`
 
 Expected: FAIL with `AttributeError: 'RecommendationsDB' object has no attribute 'create_scene_fingerprint'`
 
@@ -301,14 +301,14 @@ Add these methods to the `RecommendationsDB` class:
 
 **Step 5: Run tests to verify they pass**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_scene_fingerprints.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_scene_fingerprints.py -v`
 
 Expected: All tests PASS
 
 **Step 6: Commit**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add api/recommendations_db.py api/tests/test_scene_fingerprints.py
 git commit -m "feat: add scene fingerprint storage to recommendations DB
 
@@ -430,7 +430,7 @@ class TestSceneMetadata:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_models.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_models.py -v`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'duplicate_detection'`
 
@@ -570,14 +570,14 @@ class DuplicateMatch:
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_models.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_models.py -v`
 
 Expected: All tests PASS
 
 **Step 5: Commit**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add api/duplicate_detection/ api/tests/test_duplicate_models.py
 git commit -m "feat: add data models for duplicate scene detection
 
@@ -892,7 +892,7 @@ class TestCombinedConfidence:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_scoring.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_scoring.py -v`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'duplicate_detection.scoring'`
 
@@ -1187,14 +1187,14 @@ __all__ = [
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_scoring.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_scoring.py -v`
 
 Expected: All tests PASS
 
 **Step 5: Commit**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add api/duplicate_detection/ api/tests/test_duplicate_scoring.py
 git commit -m "feat: add scoring functions for duplicate detection
 
@@ -1334,7 +1334,7 @@ class TestGetSceneStreamUrl:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_stash_client_scenes.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_stash_client_scenes.py -v`
 
 Expected: FAIL with `AttributeError: 'StashClientUnified' object has no attribute 'get_scenes_for_fingerprinting'`
 
@@ -1445,14 +1445,14 @@ Add to `api/stash_client_unified.py`:
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_stash_client_scenes.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_stash_client_scenes.py -v`
 
 Expected: All tests PASS
 
 **Step 5: Commit**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add api/stash_client_unified.py api/tests/test_stash_client_scenes.py
 git commit -m "feat: add scene query methods to Stash client
 
@@ -1660,7 +1660,7 @@ class TestDuplicateScenesAnalyzer:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_scenes_analyzer.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_scenes_analyzer.py -v`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'analyzers.duplicate_scenes'`
 
@@ -1859,14 +1859,14 @@ __all__ = [
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_scenes_analyzer.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_scenes_analyzer.py -v`
 
 Expected: All tests PASS
 
 **Step 5: Commit**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add api/analyzers/duplicate_scenes.py api/analyzers/__init__.py api/tests/test_duplicate_scenes_analyzer.py
 git commit -m "feat: implement DuplicateScenesAnalyzer
 
@@ -1941,7 +1941,7 @@ class TestDuplicateScanEndpoint:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_endpoint.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_endpoint.py -v`
 
 Expected: FAIL with route not found or similar
 
@@ -1986,14 +1986,14 @@ async def run_duplicate_scenes_analysis(
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/test_duplicate_endpoint.py -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/test_duplicate_endpoint.py -v`
 
 Expected: Tests PASS
 
 **Step 5: Commit**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add api/recommendations_router.py api/tests/test_duplicate_endpoint.py
 git commit -m "feat: add API endpoint for duplicate scene analysis
 
@@ -2009,20 +2009,20 @@ POST /analysis/duplicate_scenes/run with configurable min_confidence"
 
 **Step 1: Run the full test suite**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/ -v --ignore=tests/test_*.py -k "fingerprint or duplicate"`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/ -v --ignore=tests/test_*.py -k "fingerprint or duplicate"`
 
 Expected: All new tests PASS
 
 **Step 2: Run existing tests to ensure no regressions**
 
-Run: `cd /home/carrot/code/stash-face-recognition/api && python -m pytest tests/ -v`
+Run: `cd /home/carrot/code/stash-sense/api && python -m pytest tests/ -v`
 
 Expected: No regressions in existing tests
 
 **Step 3: Final commit with integration verification**
 
 ```bash
-cd /home/carrot/code/stash-face-recognition
+cd /home/carrot/code/stash-sense
 git add -A
 git commit -m "test: verify duplicate detection integration
 
