@@ -103,8 +103,12 @@ class FaceRecognizer:
         # Combine results - use the intersection or union approach
         # For now, let's average the distances for faces that appear in both
         matches = {}
+        faces_count = len(self.faces)
 
         for i, (idx, dist) in enumerate(zip(facenet_neighbors, facenet_distances)):
+            # Skip if index is out of bounds (can happen with index/metadata mismatch)
+            if idx < 0 or idx >= faces_count:
+                continue
             universal_id = self.faces[idx]
             if universal_id not in matches:
                 matches[universal_id] = {"facenet": dist, "arcface": None}
@@ -112,6 +116,9 @@ class FaceRecognizer:
                 matches[universal_id]["facenet"] = dist
 
         for i, (idx, dist) in enumerate(zip(arcface_neighbors, arcface_distances)):
+            # Skip if index is out of bounds (can happen with index/metadata mismatch)
+            if idx < 0 or idx >= faces_count:
+                continue
             universal_id = self.faces[idx]
             if universal_id not in matches:
                 matches[universal_id] = {"facenet": None, "arcface": dist}

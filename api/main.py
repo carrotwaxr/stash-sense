@@ -39,7 +39,7 @@ from frame_extractor import (
     check_ffmpeg_available,
 )
 from matching import MatchingConfig
-from recommendations_router import router as recommendations_router, init_recommendations
+from recommendations_router import router as recommendations_router, init_recommendations, save_scene_fingerprint, set_db_version
 
 
 # Pydantic models for API
@@ -141,6 +141,11 @@ async def lifespan(app: FastAPI):
     )
     print("Recommendations database initialized!")
 
+    # Set DB version for fingerprint tracking
+    if db_manifest.get("version"):
+        set_db_version(db_manifest["version"])
+        print(f"Face recognition DB version: {db_manifest['version']}")
+
     if STASH_URL:
         print(f"Stash connection configured: {STASH_URL}")
     else:
@@ -194,6 +199,14 @@ async def health_check():
         performer_count=len(recognizer.performers),
         face_count=len(recognizer.faces),
     )
+
+
+@app.get("/health/rate-limiter")
+async def rate_limiter_status():
+    """Get rate limiter metrics."""
+    from rate_limiter import RateLimiter
+    limiter = await RateLimiter.get_instance()
+    return limiter.get_metrics()
 
 
 @app.get("/database/info", response_model=DatabaseInfo)
@@ -987,6 +1000,31 @@ async def identify_scene(request: SceneIdentifyRequest):
 
     top_names = [p.best_match.name for p in persons[:3] if p.best_match]
     print(f"[identify_scene] [{time.time()-t_start:.1f}s] === DONE === Top matches: {', '.join(top_names)}")
+
+    # Persist fingerprint to stash_sense.db for duplicate detection
+    if persons:
+        performer_data = []
+        for person in persons:
+            if person.best_match:
+                # Convert distance to confidence (0-1 scale, lower distance = higher confidence)
+                avg_distance = person.best_match.distance
+                avg_confidence = max(0, 1 - avg_distance) if avg_distance is not None else None
+                performer_data.append({
+                    "performer_id": person.best_match.stashdb_id,
+                    "face_count": person.frame_count,
+                    "avg_confidence": avg_confidence,
+                })
+
+        if performer_data:
+            current_db_version = db_manifest.get("version")
+            fp_id = save_scene_fingerprint(
+                scene_id=int(request.scene_id),
+                frames_analyzed=len(extraction_result.frames),
+                performer_data=performer_data,
+                db_version=current_db_version,
+            )
+            if fp_id:
+                print(f"[identify_scene] [{time.time()-t_start:.1f}s] Saved fingerprint #{fp_id} with {len(performer_data)} performers")
 
     return SceneIdentifyResponse(
         scene_id=request.scene_id,

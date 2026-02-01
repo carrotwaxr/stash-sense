@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass
@@ -186,11 +186,13 @@ class RecommendationsDB:
                 total_faces INTEGER NOT NULL DEFAULT 0,
                 frames_analyzed INTEGER NOT NULL DEFAULT 0,
                 fingerprint_status TEXT NOT NULL DEFAULT 'pending',
+                db_version TEXT,  -- Face recognition DB version used to generate this fingerprint
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
             CREATE INDEX idx_scene_fp_stash_id ON scene_fingerprints(stash_scene_id);
             CREATE INDEX idx_scene_fp_status ON scene_fingerprints(fingerprint_status);
+            CREATE INDEX idx_scene_fp_db_version ON scene_fingerprints(db_version);
 
             -- Face entries within scene fingerprints
             CREATE TABLE scene_fingerprint_faces (
@@ -219,11 +221,13 @@ class RecommendationsDB:
                     total_faces INTEGER NOT NULL DEFAULT 0,
                     frames_analyzed INTEGER NOT NULL DEFAULT 0,
                     fingerprint_status TEXT NOT NULL DEFAULT 'pending',
+                    db_version TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_scene_fp_stash_id ON scene_fingerprints(stash_scene_id);
                 CREATE INDEX IF NOT EXISTS idx_scene_fp_status ON scene_fingerprints(fingerprint_status);
+                CREATE INDEX IF NOT EXISTS idx_scene_fp_db_version ON scene_fingerprints(db_version);
 
                 -- Face entries within scene fingerprints
                 CREATE TABLE IF NOT EXISTS scene_fingerprint_faces (
@@ -240,7 +244,15 @@ class RecommendationsDB:
                 CREATE INDEX IF NOT EXISTS idx_scene_fp_faces_performer ON scene_fingerprint_faces(performer_id);
 
                 -- Update schema version
-                UPDATE schema_version SET version = 2;
+                UPDATE schema_version SET version = 3;
+            """)
+
+        if from_version == 2:
+            # Add db_version column to scene_fingerprints
+            conn.executescript("""
+                ALTER TABLE scene_fingerprints ADD COLUMN db_version TEXT;
+                CREATE INDEX IF NOT EXISTS idx_scene_fp_db_version ON scene_fingerprints(db_version);
+                UPDATE schema_version SET version = 3;
             """)
 
     @contextmanager
@@ -641,24 +653,33 @@ class RecommendationsDB:
         total_faces: int,
         frames_analyzed: int,
         fingerprint_status: str = "pending",
+        db_version: Optional[str] = None,
     ) -> int:
         """
         Create or update a scene fingerprint. Returns the fingerprint ID.
         Uses upsert - if fingerprint exists for scene, updates it.
+
+        Args:
+            stash_scene_id: The Stash scene ID
+            total_faces: Total faces detected in the scene
+            frames_analyzed: Number of frames analyzed
+            fingerprint_status: Status ('pending', 'complete', 'error')
+            db_version: Face recognition DB version used for this fingerprint
         """
         with self._connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO scene_fingerprints (stash_scene_id, total_faces, frames_analyzed, fingerprint_status)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO scene_fingerprints (stash_scene_id, total_faces, frames_analyzed, fingerprint_status, db_version)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(stash_scene_id) DO UPDATE SET
                     total_faces = excluded.total_faces,
                     frames_analyzed = excluded.frames_analyzed,
                     fingerprint_status = excluded.fingerprint_status,
+                    db_version = excluded.db_version,
                     updated_at = datetime('now')
                 RETURNING id
                 """,
-                (stash_scene_id, total_faces, frames_analyzed, fingerprint_status)
+                (stash_scene_id, total_faces, frames_analyzed, fingerprint_status, db_version)
             )
             return cursor.fetchone()[0]
 
@@ -725,6 +746,87 @@ class RecommendationsDB:
                 "DELETE FROM scene_fingerprint_faces WHERE fingerprint_id = ?",
                 (fingerprint_id,)
             )
+            return cursor.rowcount
+
+    def get_fingerprints_needing_refresh(self, current_db_version: str) -> list[dict]:
+        """Get fingerprints that were generated with an older DB version."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM scene_fingerprints
+                WHERE db_version IS NULL OR db_version != ?
+                ORDER BY stash_scene_id
+                """,
+                (current_db_version,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_scene_ids_without_fingerprints(self, scene_ids: list[int]) -> list[int]:
+        """Given a list of scene IDs, return those without fingerprints."""
+        if not scene_ids:
+            return []
+        with self._connection() as conn:
+            placeholders = ",".join("?" * len(scene_ids))
+            rows = conn.execute(
+                f"""
+                SELECT stash_scene_id FROM scene_fingerprints
+                WHERE stash_scene_id IN ({placeholders})
+                """,
+                scene_ids
+            ).fetchall()
+            existing = {row[0] for row in rows}
+            return [sid for sid in scene_ids if sid not in existing]
+
+    def get_fingerprint_stats(self, current_db_version: Optional[str] = None) -> dict:
+        """Get fingerprint coverage statistics."""
+        with self._connection() as conn:
+            stats = {}
+            stats['total_fingerprints'] = conn.execute(
+                "SELECT COUNT(*) FROM scene_fingerprints"
+            ).fetchone()[0]
+            stats['complete_fingerprints'] = conn.execute(
+                "SELECT COUNT(*) FROM scene_fingerprints WHERE fingerprint_status = 'complete'"
+            ).fetchone()[0]
+            stats['pending_fingerprints'] = conn.execute(
+                "SELECT COUNT(*) FROM scene_fingerprints WHERE fingerprint_status = 'pending'"
+            ).fetchone()[0]
+            stats['error_fingerprints'] = conn.execute(
+                "SELECT COUNT(*) FROM scene_fingerprints WHERE fingerprint_status = 'error'"
+            ).fetchone()[0]
+
+            if current_db_version:
+                stats['current_version_count'] = conn.execute(
+                    "SELECT COUNT(*) FROM scene_fingerprints WHERE db_version = ?",
+                    (current_db_version,)
+                ).fetchone()[0]
+                stats['needs_refresh_count'] = conn.execute(
+                    "SELECT COUNT(*) FROM scene_fingerprints WHERE db_version IS NULL OR db_version != ?",
+                    (current_db_version,)
+                ).fetchone()[0]
+
+            return stats
+
+    def mark_fingerprints_for_refresh(self, scene_ids: Optional[list[int]] = None) -> int:
+        """
+        Mark fingerprints for refresh by clearing their db_version.
+        If scene_ids is None, marks all fingerprints.
+        Returns count of fingerprints marked.
+        """
+        with self._connection() as conn:
+            if scene_ids is None:
+                cursor = conn.execute(
+                    "UPDATE scene_fingerprints SET db_version = NULL, updated_at = datetime('now')"
+                )
+            else:
+                placeholders = ",".join("?" * len(scene_ids))
+                cursor = conn.execute(
+                    f"""
+                    UPDATE scene_fingerprints
+                    SET db_version = NULL, updated_at = datetime('now')
+                    WHERE stash_scene_id IN ({placeholders})
+                    """,
+                    scene_ids
+                )
             return cursor.rowcount
 
     # ==================== Statistics ====================

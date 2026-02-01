@@ -94,6 +94,28 @@
         all_file_ids: allFileIds,
       });
     },
+
+    // Fingerprint operations
+    async getFingerprintStatus() {
+      return apiCall('fp_status');
+    },
+
+    async startFingerprintGeneration(options = {}) {
+      return apiCall('fp_generate', {
+        refresh_outdated: options.refreshOutdated ?? true,
+        num_frames: options.numFrames ?? 12,
+        min_face_size: options.minFaceSize ?? 50,
+        max_distance: options.maxDistance ?? 0.6,
+      });
+    },
+
+    async getFingerprintProgress() {
+      return apiCall('fp_progress');
+    },
+
+    async stopFingerprintGeneration() {
+      return apiCall('fp_stop');
+    },
   };
 
   // ==================== State ====================
@@ -136,13 +158,20 @@
     `;
 
     try {
-      const [counts, stashStatus, analysisTypes] = await Promise.all([
+      const [counts, stashStatus, analysisTypes, fpStatus] = await Promise.all([
         RecommendationsAPI.getCounts(),
         RecommendationsAPI.getStashStatus(),
         RecommendationsAPI.getAnalysisTypes(),
+        RecommendationsAPI.getFingerprintStatus(),
       ]);
 
       currentState.counts = counts;
+
+      // Build fingerprint status display
+      const fpRunning = fpStatus.generation_running;
+      const fpProgress = fpStatus.generation_progress || {};
+      const fpCoverage = fpStatus.complete_fingerprints || 0;
+      const fpNeedsRefresh = fpStatus.needs_refresh_count || 0;
 
       container.innerHTML = `
         <div class="ss-dashboard-header">
@@ -164,13 +193,60 @@
           </div>
         </div>
 
+        <div class="ss-fingerprint-section">
+          <h2>Scene Fingerprints</h2>
+          <p class="ss-fingerprint-desc">Fingerprints enable face-based duplicate detection. Generate them for your library to improve accuracy.</p>
+
+          <div class="ss-fingerprint-stats">
+            <div class="ss-fp-stat">
+              <span class="ss-fp-stat-value">${fpCoverage}</span>
+              <span class="ss-fp-stat-label">Fingerprints</span>
+            </div>
+            <div class="ss-fp-stat">
+              <span class="ss-fp-stat-value">${fpStatus.current_db_version || 'N/A'}</span>
+              <span class="ss-fp-stat-label">DB Version</span>
+            </div>
+            ${fpNeedsRefresh > 0 ? `
+            <div class="ss-fp-stat ss-fp-stat-warning">
+              <span class="ss-fp-stat-value">${fpNeedsRefresh}</span>
+              <span class="ss-fp-stat-label">Need Refresh</span>
+            </div>
+            ` : ''}
+          </div>
+
+          <div class="ss-fingerprint-progress" id="ss-fp-progress" style="display: ${fpRunning ? 'block' : 'none'}">
+            <div class="ss-progress-info">
+              <span class="ss-progress-text">
+                ${fpProgress.current_scene_title || 'Processing...'}
+              </span>
+              <span class="ss-progress-numbers">
+                ${fpProgress.processed_scenes || 0} / ${fpProgress.total_scenes || 0}
+              </span>
+            </div>
+            <div class="ss-progress-bar-container">
+              <div class="ss-progress-bar" style="width: ${fpProgress.progress_pct || 0}%"></div>
+            </div>
+            <div class="ss-progress-stats">
+              <span class="ss-progress-stat ss-stat-success">${fpProgress.successful || 0} done</span>
+              <span class="ss-progress-stat ss-stat-skip">${fpProgress.skipped || 0} skipped</span>
+              <span class="ss-progress-stat ss-stat-fail">${fpProgress.failed || 0} failed</span>
+            </div>
+          </div>
+
+          <div class="ss-fingerprint-actions">
+            <button class="ss-btn ${fpRunning ? 'ss-btn-danger' : 'ss-btn-primary'}" id="ss-fp-action-btn">
+              ${fpRunning ? 'Stop Generation' : 'Generate Fingerprints'}
+            </button>
+          </div>
+        </div>
+
         <div class="ss-dashboard-types">
           <h2>Recommendation Types</h2>
           <div class="ss-type-cards"></div>
         </div>
 
         <div class="ss-dashboard-actions">
-          <h2>Run Analysis</h2>
+          <h2>Action Runner</h2>
           <div class="ss-analysis-buttons"></div>
         </div>
       `;
@@ -182,6 +258,11 @@
           title: 'Duplicate Performers',
           icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>`,
           description: 'Performers sharing the same StashDB ID',
+        },
+        duplicate_scenes: {
+          title: 'Duplicate Scenes',
+          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zm-6-1l4-4-1.4-1.4-1.6 1.6V6h-2v6.2l-1.6-1.6L10 12l4 4z"/></svg>`,
+          description: 'Scenes that may be duplicates based on stash-box ID, faces, or metadata',
         },
         duplicate_scene_files: {
           title: 'Duplicate Scene Files',
@@ -224,16 +305,22 @@
         typeCards.appendChild(card);
       }
 
-      // Render analysis buttons
+      // Render analysis buttons in desired order
       const analysisButtons = container.querySelector('.ss-analysis-buttons');
-      for (const analysis of analysisTypes.types) {
+      const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files'];
+      const sortedTypes = [...analysisTypes.types].sort((a, b) => {
+        const aIdx = buttonOrder.indexOf(a.type);
+        const bIdx = buttonOrder.indexOf(b.type);
+        return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+      });
+      for (const analysis of sortedTypes) {
         const btn = SS.createElement('button', {
           className: 'ss-btn ss-btn-secondary ss-analysis-btn',
           innerHTML: `
             <span class="ss-analysis-icon">
               ${typeConfigs[analysis.type]?.icon || ''}
             </span>
-            <span>Run ${typeConfigs[analysis.type]?.title || analysis.type}</span>
+            <span>Check ${typeConfigs[analysis.type]?.title || analysis.type}</span>
           `,
         });
 
@@ -255,6 +342,95 @@
 
         analysisButtons.appendChild(btn);
       }
+
+      // Fingerprint generation button handler
+      const fpActionBtn = container.querySelector('#ss-fp-action-btn');
+      const fpProgressEl = container.querySelector('#ss-fp-progress');
+      let fpPollInterval = null;
+
+      async function updateFingerprintProgress() {
+        try {
+          const progress = await RecommendationsAPI.getFingerprintProgress();
+
+          if (progress.status === 'running' || progress.status === 'stopping') {
+            fpProgressEl.style.display = 'block';
+            fpProgressEl.querySelector('.ss-progress-text').textContent =
+              progress.current_scene_title || 'Processing...';
+            fpProgressEl.querySelector('.ss-progress-numbers').textContent =
+              `${progress.processed_scenes || 0} / ${progress.total_scenes || 0}`;
+            fpProgressEl.querySelector('.ss-progress-bar').style.width =
+              `${progress.progress_pct || 0}%`;
+            fpProgressEl.querySelector('.ss-stat-success').textContent =
+              `${progress.successful || 0} done`;
+            fpProgressEl.querySelector('.ss-stat-skip').textContent =
+              `${progress.skipped || 0} skipped`;
+            fpProgressEl.querySelector('.ss-stat-fail').textContent =
+              `${progress.failed || 0} failed`;
+
+            if (progress.status === 'stopping') {
+              fpActionBtn.textContent = 'Stopping...';
+              fpActionBtn.disabled = true;
+            }
+          } else {
+            // Generation finished
+            clearInterval(fpPollInterval);
+            fpPollInterval = null;
+            fpActionBtn.textContent = 'Generate Fingerprints';
+            fpActionBtn.className = 'ss-btn ss-btn-primary';
+            fpActionBtn.disabled = false;
+
+            if (progress.status === 'completed') {
+              fpProgressEl.querySelector('.ss-progress-text').textContent = 'Complete!';
+              fpProgressEl.querySelector('.ss-progress-bar').style.width = '100%';
+            } else if (progress.status === 'paused') {
+              fpProgressEl.querySelector('.ss-progress-text').textContent = 'Paused - can resume';
+            }
+          }
+        } catch (e) {
+          console.error('[Stash Sense] Error polling fingerprint progress:', e);
+        }
+      }
+
+      // Start polling if already running
+      if (fpStatus.generation_running) {
+        fpPollInterval = setInterval(updateFingerprintProgress, 2000);
+      }
+
+      fpActionBtn.addEventListener('click', async () => {
+        const isRunning = fpActionBtn.textContent.includes('Stop');
+
+        if (isRunning) {
+          // Stop generation
+          fpActionBtn.disabled = true;
+          fpActionBtn.textContent = 'Stopping...';
+          try {
+            await RecommendationsAPI.stopFingerprintGeneration();
+          } catch (e) {
+            console.error('[Stash Sense] Error stopping generation:', e);
+          }
+        } else {
+          // Start generation
+          fpActionBtn.disabled = true;
+          fpActionBtn.textContent = 'Starting...';
+          try {
+            await RecommendationsAPI.startFingerprintGeneration({ refreshOutdated: true });
+            fpActionBtn.textContent = 'Stop Generation';
+            fpActionBtn.className = 'ss-btn ss-btn-danger';
+            fpActionBtn.disabled = false;
+            fpProgressEl.style.display = 'block';
+
+            // Start polling
+            if (fpPollInterval) clearInterval(fpPollInterval);
+            fpPollInterval = setInterval(updateFingerprintProgress, 2000);
+          } catch (e) {
+            fpActionBtn.textContent = 'Generate Fingerprints';
+            fpActionBtn.className = 'ss-btn ss-btn-primary';
+            fpActionBtn.disabled = false;
+            console.error('[Stash Sense] Error starting generation:', e);
+            alert('Failed to start fingerprint generation: ' + e.message);
+          }
+        }
+      });
 
     } catch (e) {
       container.innerHTML = `

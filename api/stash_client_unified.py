@@ -7,10 +7,13 @@ Combines functionality from:
 - Additional queries for recommendations engine
 
 Supports both sync and async operations.
+All async requests go through the rate limiter to prevent overwhelming Stash.
 """
 
 import httpx
 from typing import Optional
+
+from rate_limiter import RateLimiter, Priority
 
 
 class StashClientUnified:
@@ -46,12 +49,36 @@ class StashClientUnified:
 
             return result["data"]
 
-    async def _execute(self, query: str, variables: dict | None = None) -> dict:
-        """Execute a GraphQL query asynchronously."""
+    async def _execute(
+        self,
+        query: str,
+        variables: dict | None = None,
+        priority: Priority = Priority.NORMAL,
+        skip_rate_limit: bool = False,
+    ) -> dict:
+        """
+        Execute a GraphQL query asynchronously.
+
+        Args:
+            query: GraphQL query string
+            variables: Query variables
+            priority: Request priority for rate limiting (default: NORMAL)
+            skip_rate_limit: Skip rate limiting (for health checks, etc.)
+        """
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
 
+        # Apply rate limiting unless skipped
+        if not skip_rate_limit:
+            limiter = await RateLimiter.get_instance()
+            async with limiter.acquire(priority):
+                return await self._do_request(payload)
+        else:
+            return await self._do_request(payload)
+
+    async def _do_request(self, payload: dict) -> dict:
+        """Execute the actual HTTP request."""
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(self.graphql_url, json=payload, headers=self.headers)
             response.raise_for_status()
@@ -67,7 +94,7 @@ class StashClientUnified:
     async def test_connection(self) -> bool:
         """Test connection to Stash. Returns True if successful."""
         query = "query { systemStatus { databaseSchema databasePath } }"
-        await self._execute(query)
+        await self._execute(query, skip_rate_limit=True)
         return True
 
     def test_connection_sync(self) -> bool:
@@ -239,7 +266,7 @@ class StashClientUnified:
           }
         }
         """
-        await self._execute(query, {"id": performer_id, "alias_list": aliases})
+        await self._execute(query, {"id": performer_id, "alias_list": aliases}, priority=Priority.CRITICAL)
 
     # ==================== Scenes ====================
 
@@ -341,7 +368,7 @@ class StashClientUnified:
           }
         }
         """
-        await self._execute(query, {"id": scene_id, "performer_ids": performer_ids})
+        await self._execute(query, {"id": scene_id, "performer_ids": performer_ids}, priority=Priority.CRITICAL)
 
     async def update_image_performers(self, image_id: str, performer_ids: list[str]) -> None:
         """Update the performers for an image."""
@@ -352,7 +379,7 @@ class StashClientUnified:
           }
         }
         """
-        await self._execute(query, {"id": image_id, "performer_ids": performer_ids})
+        await self._execute(query, {"id": image_id, "performer_ids": performer_ids}, priority=Priority.CRITICAL)
 
     async def update_gallery_performers(self, gallery_id: str, performer_ids: list[str]) -> None:
         """Update the performers for a gallery."""
@@ -363,7 +390,7 @@ class StashClientUnified:
           }
         }
         """
-        await self._execute(query, {"id": gallery_id, "performer_ids": performer_ids})
+        await self._execute(query, {"id": gallery_id, "performer_ids": performer_ids}, priority=Priority.CRITICAL)
 
     # ==================== Files ====================
 
@@ -376,7 +403,7 @@ class StashClientUnified:
           }
         }
         """
-        await self._execute(query, {"id": scene_id, "primary_file_id": file_id})
+        await self._execute(query, {"id": scene_id, "primary_file_id": file_id}, priority=Priority.CRITICAL)
 
     async def delete_files(self, file_ids: list[str]) -> bool:
         """Delete files by ID. Returns True if successful."""
@@ -385,7 +412,7 @@ class StashClientUnified:
           deleteFiles(ids: $ids)
         }
         """
-        data = await self._execute(query, {"ids": file_ids})
+        data = await self._execute(query, {"ids": file_ids}, priority=Priority.CRITICAL)
         return data["deleteFiles"]
 
     async def delete_scene_files(

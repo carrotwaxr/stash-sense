@@ -1,7 +1,7 @@
 # Stash Sense: Session Context
 
 **Last Updated:** 2026-01-31
-**Status:** Post-Split Audit Complete
+**Status:** Phase 2 & 3 Complete
 
 ---
 
@@ -27,8 +27,9 @@ The split was completed on 2026-01-30 to keep scraping code private while enabli
 | **Face Recognition API** | Production-ready | `/api/` |
 | **Stash Plugin** | Production-ready | `/plugin/` |
 | **Database Reader** | Working (read-only) | `/api/database_reader.py` |
-| **Recommendations Engine** | Designed, partially implemented | `/api/recommendations_*.py` |
-| **Duplicate Detection** | Designed, not implemented | See plans |
+| **Recommendations Engine** | **Complete** (~2,700 lines) | `/api/recommendations_*.py`, `/api/analyzers/` |
+| **Duplicate Detection** | **Complete** | `/api/duplicate_detection/`, `/api/analyzers/duplicate_scenes.py` |
+| **Recommendations Dashboard** | **Complete** | `/plugin/stash-sense-recommendations.js` |
 
 ### What's Building (in trainer repo)
 
@@ -89,11 +90,11 @@ Maintainer's System (private)
 | [recommendations-engine-design.md](docs/plans/2026-01-28-recommendations-engine-design.md) | Recommendations engine architecture | **Design Complete** |
 | [duplicate-scene-detection-design.md](docs/plans/2026-01-30-duplicate-scene-detection-design.md) | Multi-signal duplicate detection | **Design Complete** |
 
-### Ready for Implementation
+### Implemented
 
-| Document | Purpose | Notes |
-|----------|---------|-------|
-| [duplicate-scene-detection-implementation.md](docs/plans/2026-01-30-duplicate-scene-detection-implementation.md) | TDD implementation plan | 7 tasks, paths updated |
+| Document | Purpose | Status |
+|----------|---------|--------|
+| [duplicate-scene-detection-implementation.md](docs/plans/2026-01-30-duplicate-scene-detection-implementation.md) | TDD implementation plan | **Implemented** |
 
 ### Future Vision (Not Yet Designed)
 
@@ -120,29 +121,108 @@ Maintainer's System (private)
 ### Remaining
 
 1. **project-status-and-vision.md** - Could use refresh to reflect split (low priority)
+2. **Test Docker build** - Not yet verified after the repo split
+
+### Recently Completed (2026-01-31)
+
+1. **Fingerprint persistence** - `/identify/scene` now saves fingerprints to stash_sense.db
+2. **DB version tracking** - Fingerprints store which face DB version was used
+3. **Fingerprint generation API** - New endpoints for bulk fingerprint generation
+4. **Rate limiting** - Centralized rate limiter with priority queue
+
+---
+
+## Rate Limiting
+
+All Stash API calls go through a centralized rate limiter with priority queue support.
+
+### Configuration
+
+```bash
+# .env
+STASH_RATE_LIMIT=5.0  # requests per second (default: 5.0)
+```
+
+### Priority Levels
+
+| Priority | Value | Use Case |
+|----------|-------|----------|
+| CRITICAL | 0 | User-initiated mutations (merge, delete) |
+| HIGH | 10 | Interactive requests |
+| NORMAL | 50 | Background analysis (default) |
+| LOW | 100 | Bulk/batch operations |
+
+### Metrics Endpoint
+
+```bash
+curl http://localhost:5000/health/rate-limiter
+```
+
+Returns: `total_requests`, `avg_wait_time`, `queue_depth`, etc.
+
+---
+
+## Scene Fingerprints
+
+Fingerprints are per-scene summaries of which performers appear (via face recognition).
+They're stored in `stash_sense.db` and used for duplicate scene detection.
+
+### How Fingerprints Get Generated
+
+1. **Manual:** Click "Identify Performers" on a scene → fingerprint saved automatically
+2. **Bulk:** Call `POST /recommendations/fingerprints/generate` → processes all scenes
+
+### Fingerprint API Endpoints
+
+```bash
+# Check coverage and status
+GET /recommendations/fingerprints/status
+
+# Start bulk generation (runs in background)
+POST /recommendations/fingerprints/generate
+  {"refresh_outdated": true, "num_frames": 12}
+
+# Check progress
+GET /recommendations/fingerprints/progress
+
+# Stop generation gracefully
+POST /recommendations/fingerprints/stop
+
+# Mark fingerprints for refresh (when face DB updates)
+POST /recommendations/fingerprints/refresh-all?confirm=true
+```
+
+### DB Version Tracking
+
+Each fingerprint stores which face DB version was used (`db_version` column).
+When you update to a new face recognition database:
+1. `needs_refresh_count` in status will show how many are outdated
+2. Run `POST /fingerprints/generate?refresh_outdated=true` to regenerate
 
 ---
 
 ## Roadmap (Stash Sense Sidecar)
 
-### Phase 1: Current Focus
+### Phase 1: Core ✅
 - [x] Face recognition working end-to-end
 - [x] Plugin UI for identification
 - [x] Split trainer to separate repo
 - [x] Clean up stale references to old repo name
 - [ ] Test Docker build works after split
 
-### Phase 2: Recommendations Engine
-- [ ] Implement database schema for stash_sense.db
-- [ ] Duplicate performer analyzer
-- [ ] Duplicate scene files analyzer
-- [ ] Plugin UI for recommendations dashboard
+### Phase 2: Recommendations Engine ✅
+- [x] Database schema for stash_sense.db (v2 with migrations)
+- [x] Duplicate performer analyzer
+- [x] Duplicate scene files analyzer
+- [x] Plugin UI for recommendations dashboard (dashboard, list, detail views)
+- [x] 25+ API endpoints for recommendations management
 
-### Phase 3: Duplicate Scene Detection
-- [ ] Scene fingerprint storage
-- [ ] Multi-signal duplicate scoring
-- [ ] DuplicateScenesAnalyzer implementation
-- [ ] API endpoints
+### Phase 3: Duplicate Scene Detection ✅
+- [x] Scene fingerprint storage (scene_fingerprints, scene_fingerprint_faces tables)
+- [x] Multi-signal duplicate scoring (stash-box ID, face similarity, metadata heuristics)
+- [x] DuplicateScenesAnalyzer implementation
+- [x] API endpoints
+- [ ] Wire up fingerprint generation from `/identify/scene` (not yet connected)
 
 ### Phase 4: Advanced Features
 - [ ] Cross-stash-box linking (performer identity graph)
@@ -153,6 +233,33 @@ Maintainer's System (private)
 - Scene tagging (CLIP/YOLO)
 - Body recognition (Person Re-ID)
 - Crowd-sourced face database
+
+---
+
+## Deployment (Test/Dev)
+
+The plugin is deployed to a test Stash instance on Unraid for development.
+
+| Setting | Value |
+|---------|-------|
+| **Unraid Server** | `10.0.0.4` |
+| **SSH User** | `root` |
+| **SSH Key** | `~/.ssh/id_ed25519` (default) |
+| **Stash Appdata** | `/mnt/nvme_cache/appdata/stash` |
+| **Plugin Path** | `/mnt/nvme_cache/appdata/stash/config/plugins/stash-sense` |
+
+### Deploy Plugin Changes
+```bash
+# From local machine
+scp plugin/* root@10.0.0.4:/mnt/nvme_cache/appdata/stash/config/plugins/stash-sense/
+```
+
+### Quick SSH Access
+```bash
+ssh root@10.0.0.4
+```
+
+**Note:** This plugin is not yet published formally - it's deployed manually for testing.
 
 ---
 
@@ -177,8 +284,16 @@ python -m pytest tests/ -v
 | `/api/main.py` | FastAPI application |
 | `/api/recognizer.py` | Face recognition engine |
 | `/api/database_reader.py` | Read-only SQLite layer |
-| `/api/recommendations_*.py` | Recommendations engine |
+| `/api/recommendations_db.py` | Recommendations SQLite schema (v2) |
+| `/api/recommendations_router.py` | 25+ recommendation API endpoints |
+| `/api/analyzers/duplicate_performer.py` | Duplicate performer analyzer |
+| `/api/analyzers/duplicate_scene_files.py` | Duplicate scene files analyzer |
+| `/api/analyzers/duplicate_scenes.py` | Multi-signal duplicate scene analyzer |
+| `/api/duplicate_detection/` | Models and scoring for duplicate detection |
+| `/api/fingerprint_generator.py` | Bulk fingerprint generation with checkpointing |
+| `/api/rate_limiter.py` | Centralized rate limiter with priority queue |
 | `/plugin/stash-sense.js` | Main plugin UI |
+| `/plugin/stash-sense-recommendations.js` | Recommendations dashboard UI |
 | `/plugin/stash_sense_backend.py` | Python proxy for CSP bypass |
 
 ---

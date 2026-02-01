@@ -227,10 +227,14 @@ def fuse_results(
 
     # Build candidate map
     candidates: dict[int, CandidateMatch] = {}
+    faces_count = len(faces_mapping)
 
     # Process FaceNet results
     for rank, (idx, dist) in enumerate(zip(facenet_result.neighbors, facenet_result.distances)):
         idx = int(idx)
+        # Skip if index is out of bounds (can happen with index/metadata mismatch)
+        if idx < 0 or idx >= faces_count:
+            continue
         if idx not in candidates:
             uid = faces_mapping[idx]
             info = performers.get(uid, {})
@@ -247,6 +251,9 @@ def fuse_results(
     if af_weight > 0:
         for rank, (idx, dist) in enumerate(zip(arcface_result.neighbors, arcface_result.distances)):
             idx = int(idx)
+            # Skip if index is out of bounds (can happen with index/metadata mismatch)
+            if idx < 0 or idx >= faces_count:
+                continue
             if idx not in candidates:
                 uid = faces_mapping[idx]
                 info = performers.get(uid, {})

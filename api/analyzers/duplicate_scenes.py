@@ -7,12 +7,16 @@ Detects duplicate scenes using multi-signal analysis:
 - Metadata heuristics (up to 60%)
 
 See: docs/plans/2026-01-30-duplicate-scene-detection-design.md
+
+Note: Face fingerprint similarity requires fingerprints to be generated first.
+Use /recommendations/fingerprints/generate to generate fingerprints for your library.
+The analyzer will still find duplicates via stash-box IDs and metadata without fingerprints.
 """
 
 import asyncio
 import logging
-from dataclasses import asdict
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Optional
 
 from .base import BaseAnalyzer, AnalysisResult
 from duplicate_detection import (
@@ -28,6 +32,16 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DuplicateScenesResult(AnalysisResult):
+    """Extended result with fingerprint coverage info."""
+    total_scenes: int = 0
+    scenes_with_fingerprints: int = 0
+    fingerprint_coverage_pct: float = 0.0
+    comparisons_made: int = 0
+    duplicates_found: int = 0
 
 
 class DuplicateScenesAnalyzer(BaseAnalyzer):
@@ -57,7 +71,7 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         self.max_comparisons = max_comparisons
         self.max_scenes = max_scenes
 
-    async def run(self, incremental: bool = True) -> AnalysisResult:
+    async def run(self, incremental: bool = True) -> DuplicateScenesResult:
         """
         Run duplicate scene detection.
 
@@ -67,6 +81,8 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         Phase 1: Load scenes and existing fingerprints
         Phase 2: Compare all pairs for duplicates
         Phase 3: Create recommendations
+
+        Returns DuplicateScenesResult with fingerprint coverage info.
         """
         # Phase 1: Load scenes
         logger.info("Loading scenes from Stash...")
@@ -89,15 +105,20 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                 break
 
             offset += self.batch_size
-            await asyncio.sleep(0.1)  # Rate limiting
+            # Rate limiting handled by StashClientUnified
 
         logger.info(f"Loaded {len(all_scenes)} scenes")
 
         if len(all_scenes) < 2:
-            return AnalysisResult(items_processed=len(all_scenes), recommendations_created=0)
+            return DuplicateScenesResult(
+                items_processed=len(all_scenes),
+                recommendations_created=0,
+                total_scenes=len(all_scenes),
+            )
 
         # Convert to metadata objects
         scene_metadata = [SceneMetadata.from_stash(s) for s in all_scenes]
+        scene_ids = {s.scene_id for s in scene_metadata}
 
         # Load existing fingerprints
         fingerprints: dict[str, SceneFingerprint] = {}
@@ -125,7 +146,20 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                 logger.warning(f"Skipping malformed fingerprint {fp_data.get('id')}: {e}")
                 continue
 
-        logger.info(f"Loaded {len(fingerprints)} existing fingerprints")
+        # Calculate fingerprint coverage for loaded scenes
+        scenes_with_fp = sum(1 for s in scene_metadata if s.scene_id in fingerprints)
+        coverage_pct = (scenes_with_fp / len(scene_metadata) * 100) if scene_metadata else 0
+
+        logger.info(
+            f"Loaded {len(fingerprints)} fingerprints, "
+            f"{scenes_with_fp}/{len(scene_metadata)} scenes have fingerprints ({coverage_pct:.1f}%)"
+        )
+
+        if coverage_pct < 10:
+            logger.warning(
+                f"Low fingerprint coverage ({coverage_pct:.1f}%). "
+                "Run /recommendations/fingerprints/generate to improve duplicate detection accuracy."
+            )
 
         # Phase 2: Find duplicates
         duplicates = []
@@ -175,7 +209,12 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
             if rec_id:
                 created += 1
 
-        return AnalysisResult(
+        return DuplicateScenesResult(
             items_processed=len(all_scenes),
             recommendations_created=created,
+            total_scenes=len(all_scenes),
+            scenes_with_fingerprints=scenes_with_fp,
+            fingerprint_coverage_pct=round(coverage_pct, 1),
+            comparisons_made=comparisons,
+            duplicates_found=len(duplicates),
         )

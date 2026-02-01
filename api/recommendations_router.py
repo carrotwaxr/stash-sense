@@ -4,6 +4,7 @@ Recommendations API Router
 Endpoints for managing recommendations, running analysis, and configuration.
 """
 
+import asyncio
 import os
 from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -38,6 +39,64 @@ def get_stash_client() -> StashClientUnified:
     if stash_client is None:
         raise HTTPException(status_code=503, detail="Stash connection not configured. Set STASH_URL env var.")
     return stash_client
+
+
+def save_scene_fingerprint(
+    scene_id: int,
+    frames_analyzed: int,
+    performer_data: list[dict],
+    db_version: Optional[str] = None,
+) -> Optional[int]:
+    """
+    Persist a scene fingerprint to the database.
+
+    Args:
+        scene_id: Stash scene ID
+        frames_analyzed: Number of frames analyzed
+        performer_data: List of dicts with keys:
+            - performer_id: stashdb universal ID
+            - face_count: number of frames this performer appeared in
+            - avg_confidence: average match confidence (0-1)
+        db_version: Face recognition DB version
+
+    Returns:
+        Fingerprint ID if successful, None otherwise
+    """
+    if rec_db is None:
+        return None
+
+    try:
+        total_faces = sum(p.get("face_count", 0) for p in performer_data)
+
+        # Create or update the fingerprint
+        fingerprint_id = rec_db.create_scene_fingerprint(
+            stash_scene_id=scene_id,
+            total_faces=total_faces,
+            frames_analyzed=frames_analyzed,
+            fingerprint_status="complete",
+            db_version=db_version,
+        )
+
+        # Clear existing faces and add new ones
+        rec_db.delete_fingerprint_faces(fingerprint_id)
+
+        # Calculate proportions
+        total_frames = sum(p.get("face_count", 0) for p in performer_data) or 1
+
+        for performer in performer_data:
+            face_count = performer.get("face_count", 0)
+            rec_db.add_fingerprint_face(
+                fingerprint_id=fingerprint_id,
+                performer_id=performer.get("performer_id", ""),
+                face_count=face_count,
+                avg_confidence=performer.get("avg_confidence"),
+                proportion=face_count / total_frames if total_frames > 0 else 0,
+            )
+
+        return fingerprint_id
+    except Exception as e:
+        print(f"[save_scene_fingerprint] Error: {e}")
+        return None
 
 
 # ==================== Pydantic Models ====================
@@ -359,3 +418,201 @@ async def delete_scene_files(
         return {"success": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Fingerprints ====================
+
+# Background task for fingerprint generation
+_fingerprint_task: Optional[asyncio.Task] = None
+_current_db_version: Optional[str] = None
+
+
+def set_db_version(version: str):
+    """Set the current face recognition DB version (called from main.py startup)."""
+    global _current_db_version
+    _current_db_version = version
+
+
+class FingerprintStatusResponse(BaseModel):
+    """Response for fingerprint status endpoint."""
+    total_fingerprints: int
+    complete_fingerprints: int
+    pending_fingerprints: int
+    error_fingerprints: int
+    current_db_version: Optional[str]
+    current_version_count: Optional[int] = None
+    needs_refresh_count: Optional[int] = None
+    generation_running: bool = False
+    generation_progress: Optional[dict] = None
+
+
+class FingerprintGenerateRequest(BaseModel):
+    """Request to start fingerprint generation."""
+    refresh_outdated: bool = True
+    num_frames: int = 12
+    min_face_size: int = 50
+    max_distance: float = 0.6
+
+
+@router.get("/fingerprints/status", response_model=FingerprintStatusResponse)
+async def get_fingerprint_status():
+    """Get fingerprint coverage statistics."""
+    db = get_rec_db()
+
+    stats = db.get_fingerprint_stats(_current_db_version)
+
+    # Check if generation is running
+    from fingerprint_generator import get_generator
+    generator = get_generator()
+    generation_running = generator is not None and generator.status.value == "running"
+    progress = generator.progress.to_dict() if generator else None
+
+    return FingerprintStatusResponse(
+        total_fingerprints=stats.get("total_fingerprints", 0),
+        complete_fingerprints=stats.get("complete_fingerprints", 0),
+        pending_fingerprints=stats.get("pending_fingerprints", 0),
+        error_fingerprints=stats.get("error_fingerprints", 0),
+        current_db_version=_current_db_version,
+        current_version_count=stats.get("current_version_count"),
+        needs_refresh_count=stats.get("needs_refresh_count"),
+        generation_running=generation_running,
+        generation_progress=progress,
+    )
+
+
+@router.post("/fingerprints/generate")
+async def start_fingerprint_generation(
+    request: FingerprintGenerateRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Start background fingerprint generation for all scenes."""
+    global _fingerprint_task
+
+    from fingerprint_generator import SceneFingerprintGenerator, set_generator, get_generator
+
+    # Check if already running
+    existing = get_generator()
+    if existing and existing.status.value == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Fingerprint generation already running. Stop it first or wait for completion.",
+        )
+
+    db = get_rec_db()
+    stash = get_stash_client()
+
+    if not _current_db_version:
+        raise HTTPException(
+            status_code=503,
+            detail="Face recognition database not loaded. DB version unknown.",
+        )
+
+    # Create generator
+    generator = SceneFingerprintGenerator(
+        stash_client=stash,
+        rec_db=db,
+        db_version=_current_db_version,
+        num_frames=request.num_frames,
+        min_face_size=request.min_face_size,
+        max_distance=request.max_distance,
+    )
+    set_generator(generator)
+
+    # Run in background
+    async def run_generation():
+        async for progress in generator.generate_all(refresh_outdated=request.refresh_outdated):
+            pass  # Progress is tracked in generator.progress
+
+    _fingerprint_task = asyncio.create_task(run_generation())
+
+    return {
+        "status": "started",
+        "message": "Fingerprint generation started in background",
+        "config": {
+            "refresh_outdated": request.refresh_outdated,
+            "num_frames": request.num_frames,
+            "min_face_size": request.min_face_size,
+            "max_distance": request.max_distance,
+            "db_version": _current_db_version,
+        },
+    }
+
+
+@router.post("/fingerprints/stop")
+async def stop_fingerprint_generation():
+    """Stop the running fingerprint generation gracefully."""
+    from fingerprint_generator import get_generator
+
+    generator = get_generator()
+    if not generator:
+        raise HTTPException(status_code=404, detail="No fingerprint generation running")
+
+    if generator.status.value not in ("running", "stopping"):
+        return {
+            "status": generator.status.value,
+            "message": "Generation is not running",
+        }
+
+    generator.request_stop()
+
+    return {
+        "status": "stopping",
+        "message": "Stop requested. Will finish current scene then stop.",
+        "progress": generator.progress.to_dict(),
+    }
+
+
+@router.get("/fingerprints/progress")
+async def get_fingerprint_progress():
+    """Get current fingerprint generation progress."""
+    from fingerprint_generator import get_generator
+
+    generator = get_generator()
+    if not generator:
+        return {
+            "status": "idle",
+            "message": "No fingerprint generation has been started",
+        }
+
+    return generator.progress.to_dict()
+
+
+@router.post("/fingerprints/refresh")
+async def mark_fingerprints_for_refresh(scene_ids: Optional[list[int]] = None):
+    """
+    Mark fingerprints for refresh by clearing their db_version.
+    If scene_ids is provided, only those scenes are marked.
+    If scene_ids is None, ALL fingerprints are marked for refresh.
+    """
+    db = get_rec_db()
+
+    if scene_ids is None:
+        # Require explicit confirmation to refresh all
+        raise HTTPException(
+            status_code=400,
+            detail="Must provide scene_ids list. To refresh all, use /fingerprints/refresh-all",
+        )
+
+    count = db.mark_fingerprints_for_refresh(scene_ids)
+    return {
+        "marked_for_refresh": count,
+        "scene_ids": scene_ids,
+    }
+
+
+@router.post("/fingerprints/refresh-all")
+async def mark_all_fingerprints_for_refresh(confirm: bool = False):
+    """Mark ALL fingerprints for refresh. Requires confirm=true."""
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Must set confirm=true to refresh all fingerprints",
+        )
+
+    db = get_rec_db()
+    count = db.mark_fingerprints_for_refresh(None)
+
+    return {
+        "marked_for_refresh": count,
+        "message": f"All {count} fingerprints marked for refresh",
+    }

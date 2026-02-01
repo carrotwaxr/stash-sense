@@ -35,7 +35,7 @@ def main():
         )
     elif mode == "database_info":
         result = database_info(sidecar_url)
-    elif mode.startswith("rec_"):
+    elif mode.startswith("rec_") or mode.startswith("fp_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
             result = {"error": f"Unknown recommendations mode: {mode}"}
@@ -246,6 +246,34 @@ def rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, al
     return sidecar_post(sidecar_url, "/recommendations/actions/delete-scene-files", data, timeout=120)
 
 
+# ==================== Fingerprint Operations ====================
+
+def fp_status(sidecar_url):
+    """Get fingerprint status and coverage."""
+    return sidecar_get(sidecar_url, "/recommendations/fingerprints/status")
+
+
+def fp_generate(sidecar_url, refresh_outdated=True, num_frames=12, min_face_size=50, max_distance=0.6):
+    """Start fingerprint generation."""
+    data = {
+        "refresh_outdated": refresh_outdated,
+        "num_frames": num_frames,
+        "min_face_size": min_face_size,
+        "max_distance": max_distance,
+    }
+    return sidecar_post(sidecar_url, "/recommendations/fingerprints/generate", data)
+
+
+def fp_progress(sidecar_url):
+    """Get fingerprint generation progress."""
+    return sidecar_get(sidecar_url, "/recommendations/fingerprints/progress")
+
+
+def fp_stop(sidecar_url):
+    """Stop fingerprint generation."""
+    return sidecar_post(sidecar_url, "/recommendations/fingerprints/stop", {})
+
+
 def handle_recommendations(mode, args, sidecar_url):
     """Handle recommendations-related operations."""
     if mode == "rec_counts":
@@ -313,6 +341,25 @@ def handle_recommendations(mode, args, sidecar_url):
         if not scene_id or not keep_file_id:
             return {"error": "scene_id and keep_file_id required"}
         return rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, all_file_ids)
+
+    # Fingerprint operations
+    elif mode == "fp_status":
+        return fp_status(sidecar_url)
+
+    elif mode == "fp_generate":
+        return fp_generate(
+            sidecar_url,
+            refresh_outdated=args.get("refresh_outdated", True),
+            num_frames=args.get("num_frames", 12),
+            min_face_size=args.get("min_face_size", 50),
+            max_distance=args.get("max_distance", 0.6),
+        )
+
+    elif mode == "fp_progress":
+        return fp_progress(sidecar_url)
+
+    elif mode == "fp_stop":
+        return fp_stop(sidecar_url)
 
     return None
 
