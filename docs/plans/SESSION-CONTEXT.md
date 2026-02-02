@@ -1,7 +1,7 @@
 # Stash Sense: Session Context
 
-**Last Updated:** 2026-01-31
-**Status:** Phase 2 & 3 Complete
+**Last Updated:** 2026-02-02
+**Status:** Phase 2 & 3 Complete, Multi-Signal Design Complete
 
 ---
 
@@ -96,10 +96,11 @@ Maintainer's System (private)
 |----------|---------|--------|
 | [duplicate-scene-detection-implementation.md](docs/plans/2026-01-30-duplicate-scene-detection-implementation.md) | TDD implementation plan | **Implemented** |
 
-### Future Vision (Not Yet Designed)
+### Future Vision
 
 | Document | Purpose | Status |
 |----------|---------|--------|
+| [multi-signal-performer-identification-design.md](docs/plans/2026-02-02-multi-signal-performer-identification-design.md) | Body proportions, tattoos, multi-signal fusion | **Design Complete** |
 | [performer-identity-graph.md](docs/plans/2026-01-27-performer-identity-graph.md) | Cross-stash-box linking | Design in progress |
 | [scene-tagging-strategy.md](docs/plans/2026-01-26-scene-tagging-strategy.md) | CLIP/YOLO scene tagging | Conceptual |
 | [skier-ai-ecosystem-analysis.md](docs/plans/2026-01-27-skier-ai-ecosystem-analysis.md) | Haven VLM integration analysis | Research |
@@ -123,7 +124,14 @@ Maintainer's System (private)
 1. **project-status-and-vision.md** - Could use refresh to reflect split (low priority)
 2. **Test Docker build** - Not yet verified after the repo split
 
-### Recently Completed (2026-01-31)
+### Recently Completed (2026-02-02)
+
+1. **Name-based performer merge** - `merge_by_name.py` merges duplicate performers across stash-box endpoints by exact name match (skips ambiguous cases where stashdb has multiple performers with same name)
+2. **Safer merge logic** - Fixed merge scripts to skip 27 ambiguous names, merged 626 performers with 1904 faces
+3. **Multi-signal identification design** - Complete design for body proportions, tattoo recognition, and score fusion architecture
+4. **Database integrity** - All checks passing: 197,720 faces, 56,281 performers, zero gaps
+
+### Previously Completed (2026-01-31)
 
 1. **Fingerprint persistence** - `/identify/scene` now saves fingerprints to stash_sense.db
 2. **DB version tracking** - Fingerprints store which face DB version was used
@@ -224,15 +232,22 @@ When you update to a new face recognition database:
 - [x] API endpoints
 - [ ] Wire up fingerprint generation from `/identify/scene` (not yet connected)
 
-### Phase 4: Advanced Features
+### Phase 4: Multi-Signal Identification (Design Complete)
+- [ ] Body proportion extraction via pose estimation (MediaPipe)
+- [ ] Tattoo detection (YOLO-based)
+- [ ] Tattoo embedding and matching
+- [ ] Multi-signal fusion architecture
+- [ ] Semi-supervised training UI in stash-sense-trainer
+
+### Phase 5: Advanced Features
 - [ ] Cross-stash-box linking (performer identity graph)
 - [ ] Scene similarity search
 - [ ] Background scanning mode
 
 ### Future Vision
 - Scene tagging (CLIP/YOLO)
-- Body recognition (Person Re-ID)
-- Crowd-sourced face database
+- Breast characteristics model (if needed after Phase 4)
+- Birthmark detection (high value, high effort)
 
 ---
 
