@@ -110,6 +110,9 @@ class FaceRecognizer:
             if idx < 0 or idx >= faces_count:
                 continue
             universal_id = self.faces[idx]
+            # Skip null entries (gaps in index from deleted faces or missing stashbox IDs)
+            if universal_id is None:
+                continue
             if universal_id not in matches:
                 matches[universal_id] = {"facenet": dist, "arcface": None}
             else:
@@ -120,6 +123,9 @@ class FaceRecognizer:
             if idx < 0 or idx >= faces_count:
                 continue
             universal_id = self.faces[idx]
+            # Skip null entries (gaps in index from deleted faces or missing stashbox IDs)
+            if universal_id is None:
+                continue
             if universal_id not in matches:
                 matches[universal_id] = {"facenet": None, "arcface": dist}
             else:

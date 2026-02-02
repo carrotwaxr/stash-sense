@@ -355,6 +355,8 @@ class SceneIdentifyResponse(BaseModel):
     faces_after_filter: int = 0
     persons: list[PersonResult]
     errors: list[str] = []
+    fingerprint_saved: bool = False
+    fingerprint_error: Optional[str] = None
 
 
 def cluster_faces_by_person(
@@ -1002,6 +1004,9 @@ async def identify_scene(request: SceneIdentifyRequest):
     print(f"[identify_scene] [{time.time()-t_start:.1f}s] === DONE === Top matches: {', '.join(top_names)}")
 
     # Persist fingerprint to stash_sense.db for duplicate detection
+    fingerprint_saved = False
+    fingerprint_error = None
+
     if persons:
         performer_data = []
         for person in persons:
@@ -1017,14 +1022,18 @@ async def identify_scene(request: SceneIdentifyRequest):
 
         if performer_data:
             current_db_version = db_manifest.get("version")
-            fp_id = save_scene_fingerprint(
+            fp_id, fp_error = save_scene_fingerprint(
                 scene_id=int(request.scene_id),
                 frames_analyzed=len(extraction_result.frames),
                 performer_data=performer_data,
                 db_version=current_db_version,
             )
             if fp_id:
+                fingerprint_saved = True
                 print(f"[identify_scene] [{time.time()-t_start:.1f}s] Saved fingerprint #{fp_id} with {len(performer_data)} performers")
+            else:
+                fingerprint_error = fp_error
+                print(f"[identify_scene] [{time.time()-t_start:.1f}s] Failed to save fingerprint: {fp_error}")
 
     return SceneIdentifyResponse(
         scene_id=request.scene_id,
@@ -1034,6 +1043,8 @@ async def identify_scene(request: SceneIdentifyRequest):
         faces_after_filter=filtered_faces,
         persons=persons,
         errors=extraction_result.errors[:5] if extraction_result.errors else [],
+        fingerprint_saved=fingerprint_saved,
+        fingerprint_error=fingerprint_error,
     )
 
 

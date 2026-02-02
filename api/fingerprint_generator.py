@@ -271,6 +271,22 @@ class SceneFingerprintGenerator:
                     persons = data.get("persons", [])
                     performers_found = sum(1 for p in persons if p.get("best_match"))
 
+                    # Check if fingerprint was actually saved
+                    fingerprint_saved = data.get("fingerprint_saved", False)
+                    fingerprint_error = data.get("fingerprint_error")
+
+                    if not fingerprint_saved and performers_found > 0:
+                        # Identification succeeded but save failed
+                        error_msg = fingerprint_error or "Fingerprint save failed"
+                        logger.warning(f"Scene {scene_id} fingerprint save failed: {error_msg}")
+                        return FingerprintResult(
+                            scene_id=scene_id,
+                            success=False,
+                            error=f"Save failed: {error_msg}",
+                            performers_found=performers_found,
+                            frames_analyzed=data.get("frames_analyzed", 0),
+                        )
+
                     return FingerprintResult(
                         scene_id=scene_id,
                         success=True,

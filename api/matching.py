@@ -235,8 +235,11 @@ def fuse_results(
         # Skip if index is out of bounds (can happen with index/metadata mismatch)
         if idx < 0 or idx >= faces_count:
             continue
+        uid = faces_mapping[idx]
+        # Skip null entries (gaps from deleted faces or missing stashbox IDs)
+        if uid is None:
+            continue
         if idx not in candidates:
-            uid = faces_mapping[idx]
             info = performers.get(uid, {})
             candidates[idx] = CandidateMatch(
                 face_index=idx,
@@ -254,8 +257,11 @@ def fuse_results(
             # Skip if index is out of bounds (can happen with index/metadata mismatch)
             if idx < 0 or idx >= faces_count:
                 continue
+            uid = faces_mapping[idx]
+            # Skip null entries (gaps from deleted faces or missing stashbox IDs)
+            if uid is None:
+                continue
             if idx not in candidates:
-                uid = faces_mapping[idx]
                 info = performers.get(uid, {})
                 candidates[idx] = CandidateMatch(
                     face_index=idx,

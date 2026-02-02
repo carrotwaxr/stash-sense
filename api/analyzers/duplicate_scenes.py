@@ -62,8 +62,8 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         rec_db: "RecommendationsDB",
         min_confidence: float = 50.0,
         batch_size: int = 100,
-        max_comparisons: int = 50000,
-        max_scenes: int = 10000,  # Limit for memory safety
+        max_comparisons: int = None,  # No limit
+        max_scenes: int = None,  # No limit
     ):
         super().__init__(stash, rec_db)
         self.min_confidence = min_confidence
@@ -99,7 +99,7 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
             if len(all_scenes) >= total or not scenes:
                 break
 
-            if len(all_scenes) >= self.max_scenes:
+            if self.max_scenes and len(all_scenes) >= self.max_scenes:
                 logger.warning(f"Hit max scenes limit ({self.max_scenes})")
                 all_scenes = all_scenes[: self.max_scenes]
                 break
@@ -171,7 +171,7 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
             for scene_b in scene_metadata[i + 1 :]:
                 comparisons += 1
 
-                if comparisons > self.max_comparisons:
+                if self.max_comparisons and comparisons > self.max_comparisons:
                     logger.warning(f"Hit max comparisons limit ({self.max_comparisons})")
                     break
 
@@ -186,7 +186,7 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                 if match and match.confidence >= self.min_confidence:
                     duplicates.append(match)
 
-            if comparisons > self.max_comparisons:
+            if self.max_comparisons and comparisons > self.max_comparisons:
                 break
 
         logger.info(f"Found {len(duplicates)} potential duplicates from {comparisons} comparisons")

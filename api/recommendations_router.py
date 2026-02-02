@@ -46,7 +46,7 @@ def save_scene_fingerprint(
     frames_analyzed: int,
     performer_data: list[dict],
     db_version: Optional[str] = None,
-) -> Optional[int]:
+) -> tuple[Optional[int], Optional[str]]:
     """
     Persist a scene fingerprint to the database.
 
@@ -60,10 +60,11 @@ def save_scene_fingerprint(
         db_version: Face recognition DB version
 
     Returns:
-        Fingerprint ID if successful, None otherwise
+        Tuple of (fingerprint_id, error_message). On success, error is None.
+        On failure, fingerprint_id is None and error contains the message.
     """
     if rec_db is None:
-        return None
+        return None, "Recommendations database not initialized"
 
     try:
         total_faces = sum(p.get("face_count", 0) for p in performer_data)
@@ -93,10 +94,11 @@ def save_scene_fingerprint(
                 proportion=face_count / total_frames if total_frames > 0 else 0,
             )
 
-        return fingerprint_id
+        return fingerprint_id, None
     except Exception as e:
-        print(f"[save_scene_fingerprint] Error: {e}")
-        return None
+        error_msg = str(e)
+        print(f"[save_scene_fingerprint] Error: {error_msg}")
+        return None, error_msg
 
 
 # ==================== Pydantic Models ====================

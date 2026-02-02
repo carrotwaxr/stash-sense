@@ -78,6 +78,27 @@
       return apiCall('rec_stash_status');
     },
 
+    async getSidecarStatus() {
+      const settings = await SS.getSettings();
+      try {
+        const health = await SS.runPluginOperation('health', {
+          sidecar_url: settings.sidecarUrl,
+        });
+        return {
+          connected: !health.error,
+          url: settings.sidecarUrl,
+          error: health.error || null,
+          version: health.version || null,
+        };
+      } catch (e) {
+        return {
+          connected: false,
+          url: settings.sidecarUrl,
+          error: e.message,
+        };
+      }
+    },
+
     // Actions
     async mergePerformers(destinationId, sourceIds) {
       return apiCall('rec_merge_performers', {
@@ -158,9 +179,9 @@
     `;
 
     try {
-      const [counts, stashStatus, analysisTypes, fpStatus] = await Promise.all([
+      const [counts, sidecarStatus, analysisTypes, fpStatus] = await Promise.all([
         RecommendationsAPI.getCounts(),
-        RecommendationsAPI.getStashStatus(),
+        RecommendationsAPI.getSidecarStatus(),
         RecommendationsAPI.getAnalysisTypes(),
         RecommendationsAPI.getFingerprintStatus(),
       ]);
@@ -179,11 +200,11 @@
           <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
         </div>
 
-        <div class="ss-stash-status ${stashStatus.connected ? 'connected' : 'disconnected'}">
+        <div class="ss-stash-status ${sidecarStatus.connected ? 'connected' : 'disconnected'}">
           <span class="ss-status-dot"></span>
-          <span>Stash: ${stashStatus.connected ? 'Connected' : 'Disconnected'}</span>
-          ${stashStatus.url ? `<span class="ss-status-url">(${stashStatus.url})</span>` : ''}
-          ${stashStatus.error ? `<span class="ss-status-error">${stashStatus.error}</span>` : ''}
+          <span>Stash Sense: ${sidecarStatus.connected ? 'Connected' : 'Disconnected'}</span>
+          ${sidecarStatus.url ? `<span class="ss-status-url">(${sidecarStatus.url})</span>` : ''}
+          ${sidecarStatus.error ? `<span class="ss-status-error">${sidecarStatus.error}</span>` : ''}
         </div>
 
         <div class="ss-dashboard-summary">
@@ -224,12 +245,17 @@
               </span>
             </div>
             <div class="ss-progress-bar-container">
-              <div class="ss-progress-bar" style="width: ${fpProgress.progress_pct || 0}%"></div>
+              <div class="ss-progress-bar" style="width: ${fpProgress.progress_pct || 0}%">
+                <span class="ss-progress-pct">${Math.round(fpProgress.progress_pct || 0)}%</span>
+              </div>
             </div>
             <div class="ss-progress-stats">
               <span class="ss-progress-stat ss-stat-success">${fpProgress.successful || 0} done</span>
               <span class="ss-progress-stat ss-stat-skip">${fpProgress.skipped || 0} skipped</span>
               <span class="ss-progress-stat ss-stat-fail">${fpProgress.failed || 0} failed</span>
+            </div>
+            <div class="ss-progress-refresh" id="ss-fp-refresh">
+              <span class="ss-refresh-text">Refreshing in <span class="ss-refresh-countdown">30</span>s</span>
             </div>
           </div>
 
@@ -346,11 +372,44 @@
       // Fingerprint generation button handler
       const fpActionBtn = container.querySelector('#ss-fp-action-btn');
       const fpProgressEl = container.querySelector('#ss-fp-progress');
-      let fpPollInterval = null;
+      const POLL_INTERVAL = 30; // seconds
+      let fpPollTimeout = null;
+      let fpCountdownInterval = null;
+      let fpCountdownValue = POLL_INTERVAL;
+
+      function startCountdown() {
+        fpCountdownValue = POLL_INTERVAL;
+        const countdownEl = fpProgressEl.querySelector('.ss-refresh-countdown');
+        const refreshEl = fpProgressEl.querySelector('#ss-fp-refresh');
+        if (refreshEl) refreshEl.style.display = 'block';
+
+        if (fpCountdownInterval) clearInterval(fpCountdownInterval);
+        fpCountdownInterval = setInterval(() => {
+          fpCountdownValue--;
+          if (countdownEl) countdownEl.textContent = fpCountdownValue;
+          if (fpCountdownValue <= 0) {
+            clearInterval(fpCountdownInterval);
+          }
+        }, 1000);
+      }
+
+      function stopPolling() {
+        if (fpPollTimeout) {
+          clearTimeout(fpPollTimeout);
+          fpPollTimeout = null;
+        }
+        if (fpCountdownInterval) {
+          clearInterval(fpCountdownInterval);
+          fpCountdownInterval = null;
+        }
+        const refreshEl = fpProgressEl.querySelector('#ss-fp-refresh');
+        if (refreshEl) refreshEl.style.display = 'none';
+      }
 
       async function updateFingerprintProgress() {
         try {
           const progress = await RecommendationsAPI.getFingerprintProgress();
+          const pct = Math.round(progress.progress_pct || 0);
 
           if (progress.status === 'running' || progress.status === 'stopping') {
             fpProgressEl.style.display = 'block';
@@ -358,8 +417,9 @@
               progress.current_scene_title || 'Processing...';
             fpProgressEl.querySelector('.ss-progress-numbers').textContent =
               `${progress.processed_scenes || 0} / ${progress.total_scenes || 0}`;
-            fpProgressEl.querySelector('.ss-progress-bar').style.width =
-              `${progress.progress_pct || 0}%`;
+            fpProgressEl.querySelector('.ss-progress-bar').style.width = `${pct}%`;
+            const pctEl = fpProgressEl.querySelector('.ss-progress-pct');
+            if (pctEl) pctEl.textContent = `${pct}%`;
             fpProgressEl.querySelector('.ss-stat-success').textContent =
               `${progress.successful || 0} done`;
             fpProgressEl.querySelector('.ss-stat-skip').textContent =
@@ -370,11 +430,15 @@
             if (progress.status === 'stopping') {
               fpActionBtn.textContent = 'Stopping...';
               fpActionBtn.disabled = true;
+              stopPolling();
+            } else {
+              // Schedule next poll with countdown
+              startCountdown();
+              fpPollTimeout = setTimeout(updateFingerprintProgress, POLL_INTERVAL * 1000);
             }
           } else {
             // Generation finished
-            clearInterval(fpPollInterval);
-            fpPollInterval = null;
+            stopPolling();
             fpActionBtn.textContent = 'Generate Fingerprints';
             fpActionBtn.className = 'ss-btn ss-btn-primary';
             fpActionBtn.disabled = false;
@@ -382,18 +446,23 @@
             if (progress.status === 'completed') {
               fpProgressEl.querySelector('.ss-progress-text').textContent = 'Complete!';
               fpProgressEl.querySelector('.ss-progress-bar').style.width = '100%';
+              const pctEl = fpProgressEl.querySelector('.ss-progress-pct');
+              if (pctEl) pctEl.textContent = '100%';
             } else if (progress.status === 'paused') {
               fpProgressEl.querySelector('.ss-progress-text').textContent = 'Paused - can resume';
             }
           }
         } catch (e) {
           console.error('[Stash Sense] Error polling fingerprint progress:', e);
+          // Retry after interval even on error
+          startCountdown();
+          fpPollTimeout = setTimeout(updateFingerprintProgress, POLL_INTERVAL * 1000);
         }
       }
 
       // Start polling if already running
       if (fpStatus.generation_running) {
-        fpPollInterval = setInterval(updateFingerprintProgress, 2000);
+        updateFingerprintProgress();
       }
 
       fpActionBtn.addEventListener('click', async () => {
@@ -403,6 +472,7 @@
           // Stop generation
           fpActionBtn.disabled = true;
           fpActionBtn.textContent = 'Stopping...';
+          stopPolling();
           try {
             await RecommendationsAPI.stopFingerprintGeneration();
           } catch (e) {
@@ -419,9 +489,9 @@
             fpActionBtn.disabled = false;
             fpProgressEl.style.display = 'block';
 
-            // Start polling
-            if (fpPollInterval) clearInterval(fpPollInterval);
-            fpPollInterval = setInterval(updateFingerprintProgress, 2000);
+            // Start polling with countdown
+            stopPolling();
+            updateFingerprintProgress();
           } catch (e) {
             fpActionBtn.textContent = 'Generate Fingerprints';
             fpActionBtn.className = 'ss-btn ss-btn-primary';
