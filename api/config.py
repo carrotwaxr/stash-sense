@@ -83,6 +83,22 @@ class DatabaseConfig:
         self.manifest_json_path = self.manifest_json_path or self.data_dir / "manifest.json"
 
 
+@dataclass
+class MultiSignalConfig:
+    """Configuration for multi-signal identification."""
+    enable_body: bool = True
+    enable_tattoo: bool = True
+    face_candidates: int = 20
+
+    @classmethod
+    def from_env(cls) -> "MultiSignalConfig":
+        return cls(
+            enable_body=os.environ.get("ENABLE_BODY_SIGNAL", "true").lower() == "true",
+            enable_tattoo=os.environ.get("ENABLE_TATTOO_SIGNAL", "true").lower() == "true",
+            face_candidates=int(os.environ.get("FACE_CANDIDATES", "20")),
+        )
+
+
 # Embedding dimensions
 FACENET_DIM = 512
 ARCFACE_DIM = 512

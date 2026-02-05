@@ -29,8 +29,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from config import DatabaseConfig
+from config import DatabaseConfig, MultiSignalConfig
 from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
+from body_proportions import BodyProportionExtractor
+from tattoo_detector import TattooDetector
+from multi_signal_matcher import MultiSignalMatcher, MultiSignalMatch
 from embeddings import load_image
 from sprite_parser import parse_vtt_file, extract_frames_from_sprite
 from frame_extractor import (
@@ -77,6 +80,9 @@ class IdentifyRequest(BaseModel):
     top_k: int = Field(5, ge=1, le=20, description="Number of matches per face")
     max_distance: float = Field(0.6, ge=0.0, le=2.0, description="Maximum distance threshold")
     min_face_confidence: float = Field(0.5, ge=0.0, le=1.0, description="Minimum face detection confidence")
+    use_multi_signal: bool = True
+    use_body: bool = True
+    use_tattoo: bool = True
 
 
 class IdentifyResponse(BaseModel):
@@ -106,11 +112,18 @@ class HealthResponse(BaseModel):
 recognizer: Optional[FaceRecognizer] = None
 db_manifest: dict = {}
 
+# Multi-signal components
+multi_signal_matcher: Optional[MultiSignalMatcher] = None
+body_extractor: Optional[BodyProportionExtractor] = None
+tattoo_detector: Optional[TattooDetector] = None
+multi_signal_config: Optional[MultiSignalConfig] = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the recognizer and initialize recommendations on startup."""
     global recognizer, db_manifest
+    global multi_signal_matcher, body_extractor, tattoo_detector, multi_signal_config
 
     data_dir = Path(DATA_DIR)
     print(f"Loading face database from {data_dir}...")
@@ -126,6 +139,29 @@ async def lifespan(app: FastAPI):
 
         recognizer = FaceRecognizer(db_config)
         print("Face database loaded successfully!")
+
+        # Initialize multi-signal components
+        multi_signal_config = MultiSignalConfig.from_env()
+
+        if multi_signal_config.enable_body:
+            print("Initializing body proportion extractor...")
+            body_extractor = BodyProportionExtractor()
+
+        if multi_signal_config.enable_tattoo:
+            print("Initializing tattoo detector...")
+            tattoo_detector = TattooDetector()
+
+        if recognizer.db_reader and (body_extractor or tattoo_detector):
+            print("Initializing multi-signal matcher...")
+            multi_signal_matcher = MultiSignalMatcher(
+                face_recognizer=recognizer,
+                db_reader=recognizer.db_reader,
+                body_extractor=body_extractor,
+                tattoo_detector=tattoo_detector,
+            )
+            print(f"Multi-signal ready: {len(multi_signal_matcher.body_data)} body, "
+                  f"{len(multi_signal_matcher.tattoo_data)} tattoo records")
+
     except Exception as e:
         print(f"Warning: Failed to load face database: {e}")
         print("API will start but /identify will not work until database is available")
@@ -257,6 +293,39 @@ async def identify_performers(request: IdentifyRequest):
         raise HTTPException(status_code=400, detail=f"Failed to fetch image: {e}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to decode image: {e}")
+
+    # Use multi-signal matching if available and requested
+    if request.use_multi_signal and multi_signal_matcher is not None:
+        multi_results = multi_signal_matcher.identify(
+            image,
+            top_k=request.top_k,
+            use_body=request.use_body,
+            use_tattoo=request.use_tattoo,
+        )
+        # Convert to response format
+        results = []
+        for mr in multi_results:
+            results.append({
+                "face": {
+                    "bbox": mr.face.bbox,
+                    "confidence": mr.face.confidence,
+                },
+                "matches": [
+                    {
+                        "universal_id": m.universal_id,
+                        "stashdb_id": m.stashdb_id,
+                        "name": m.name,
+                        "country": m.country,
+                        "image_url": m.image_url,
+                        "score": m.combined_score,
+                    }
+                    for m in mr.matches
+                ],
+                "signals_used": mr.signals_used,
+                "body_detected": mr.body_ratios is not None,
+                "tattoos_detected": mr.tattoo_result.has_tattoos if mr.tattoo_result else False,
+            })
+        return {"results": results, "multi_signal": True}
 
     # Run recognition
     try:
