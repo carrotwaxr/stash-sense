@@ -28,3 +28,6 @@ numpy<2
 
 # Utilities
 pydantic>=2.0.0
+
+# Model downloads
+gdown>=4.7.0
