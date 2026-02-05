@@ -20,6 +20,7 @@ from api.benchmark.scene_selector import (
 from api.benchmark.test_executor import TestExecutor
 from api.benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
 from api.benchmark.reporter import Reporter
+from api.benchmark.runner import BenchmarkRunner
 
 __all__ = [
     # Models
@@ -44,4 +45,6 @@ __all__ = [
     "MIN_DB_COVERAGE",
     # Reporter
     "Reporter",
+    # Runner
+    "BenchmarkRunner",
 ]
