@@ -6,7 +6,7 @@ import os
 import tempfile
 import json
 
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     BenchmarkParams,
@@ -14,7 +14,7 @@ from api.benchmark.models import (
     BenchmarkState,
     AggregateMetrics,
 )
-from api.benchmark.runner import BenchmarkRunner
+from benchmark.runner import BenchmarkRunner
 
 
 # Fixtures for common test data

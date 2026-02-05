@@ -13,6 +13,7 @@ from voyager import Index, Space
 from config import DatabaseConfig, FACENET_DIM, ARCFACE_DIM
 from embeddings import FaceEmbeddingGenerator, DetectedFace, FaceEmbedding
 from matching import MatchingConfig, match_face, MatchingResult
+from database_reader import PerformerDatabaseReader
 
 
 @dataclass
@@ -67,6 +68,12 @@ class FaceRecognizer:
             self.performers = json.load(f)  # universal_id -> metadata
 
         print(f"Loaded {len(self.faces)} faces, {len(self.performers)} performers")
+
+        # Initialize SQLite database reader for multi-signal data
+        self.db_reader = None
+        if db_config.sqlite_db_path and db_config.sqlite_db_path.exists():
+            print(f"Loading SQLite database from {db_config.sqlite_db_path}...")
+            self.db_reader = PerformerDatabaseReader(str(db_config.sqlite_db_path))
 
     def _get_performer_info(self, universal_id: str) -> dict:
         """Get performer info from universal ID."""

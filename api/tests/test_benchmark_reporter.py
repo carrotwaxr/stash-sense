@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from api.benchmark.models import (
+from benchmark.models import (
     AggregateMetrics,
     BenchmarkParams,
     BenchmarkState,
@@ -17,7 +17,7 @@ from api.benchmark.models import (
     SceneResult,
     TestScene,
 )
-from api.benchmark.reporter import Reporter
+from benchmark.reporter import Reporter
 
 
 @pytest.fixture

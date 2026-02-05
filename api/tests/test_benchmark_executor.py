@@ -4,13 +4,13 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from dataclasses import dataclass
 
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     BenchmarkParams,
     SceneResult,
 )
-from api.benchmark.test_executor import TestExecutor
+from benchmark.test_executor import TestExecutor
 
 
 # Fixtures for common test data

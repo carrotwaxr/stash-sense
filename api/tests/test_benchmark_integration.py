@@ -8,7 +8,7 @@ import os
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     BenchmarkParams,
@@ -16,11 +16,11 @@ from api.benchmark.models import (
     BenchmarkState,
     AggregateMetrics,
 )
-from api.benchmark.scene_selector import SceneSelector, STASHDB_ENDPOINT
-from api.benchmark.test_executor import TestExecutor
-from api.benchmark.analyzer import Analyzer
-from api.benchmark.reporter import Reporter
-from api.benchmark.runner import BenchmarkRunner
+from benchmark.scene_selector import SceneSelector, STASHDB_ENDPOINT
+from benchmark.test_executor import TestExecutor
+from benchmark.analyzer import Analyzer
+from benchmark.reporter import Reporter
+from benchmark.runner import BenchmarkRunner
 
 
 # =============================================================================

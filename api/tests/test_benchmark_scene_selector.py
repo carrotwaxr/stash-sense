@@ -4,8 +4,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import random
 
-from api.benchmark.scene_selector import SceneSelector, STASHDB_ENDPOINT
-from api.benchmark.models import ExpectedPerformer, TestScene
+from benchmark.scene_selector import SceneSelector, STASHDB_ENDPOINT
+from benchmark.models import ExpectedPerformer, TestScene
 
 
 class TestResolutionTier:

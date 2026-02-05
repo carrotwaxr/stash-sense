@@ -7,7 +7,7 @@ perform stratified sampling by resolution tier.
 import random
 from typing import Optional
 
-from api.benchmark.models import ExpectedPerformer, TestScene
+from benchmark.models import ExpectedPerformer, TestScene
 
 
 # Constants

@@ -1,14 +1,14 @@
 """Tests for benchmark analyzer module."""
 
 import pytest
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     SceneResult,
     AggregateMetrics,
     PerformerResult,
 )
-from api.benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
+from benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
 
 
 def make_performer(

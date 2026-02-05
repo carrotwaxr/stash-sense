@@ -3,8 +3,8 @@
 import argparse
 import pytest
 
-from api.benchmark.config import BenchmarkConfig
-from api.benchmark.__main__ import parse_args
+from benchmark.config import BenchmarkConfig
+from benchmark.__main__ import parse_args
 
 
 class TestParseArgs:

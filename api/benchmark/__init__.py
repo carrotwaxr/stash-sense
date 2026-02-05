@@ -1,6 +1,6 @@
 """Benchmark framework for performer identification."""
 
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     BenchmarkParams,
@@ -9,7 +9,7 @@ from api.benchmark.models import (
     AggregateMetrics,
     BenchmarkState,
 )
-from api.benchmark.scene_selector import (
+from benchmark.scene_selector import (
     SceneSelector,
     STASHDB_ENDPOINT,
     MIN_RESOLUTION_WIDTH,
@@ -17,11 +17,11 @@ from api.benchmark.scene_selector import (
     MIN_PERFORMERS,
     WELL_COVERED_THRESHOLD,
 )
-from api.benchmark.test_executor import TestExecutor
-from api.benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
-from api.benchmark.reporter import Reporter
-from api.benchmark.runner import BenchmarkRunner
-from api.benchmark.config import BenchmarkConfig
+from benchmark.test_executor import TestExecutor
+from benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
+from benchmark.reporter import Reporter
+from benchmark.runner import BenchmarkRunner
+from benchmark.config import BenchmarkConfig
 
 __all__ = [
     # Models

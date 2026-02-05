@@ -7,7 +7,7 @@ to compute accuracy metrics.
 import time
 from typing import TYPE_CHECKING
 
-from api.benchmark.models import (
+from benchmark.models import (
     TestScene,
     BenchmarkParams,
     SceneResult,

@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     BenchmarkParams,

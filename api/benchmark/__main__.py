@@ -24,8 +24,8 @@ import argparse
 import asyncio
 import sys
 
-from api.benchmark.config import BenchmarkConfig
-from api.benchmark.runner import BenchmarkRunner
+from benchmark.config import BenchmarkConfig
+from benchmark.runner import BenchmarkRunner
 
 
 def parse_args(args: list[str] = None) -> argparse.Namespace:
@@ -82,10 +82,10 @@ def create_runner(config: BenchmarkConfig) -> BenchmarkRunner:
         For now, creates with None placeholders - will be wired up in integration.
     """
     # Import dependencies
-    from api.benchmark.scene_selector import SceneSelector
-    from api.benchmark.test_executor import TestExecutor
-    from api.benchmark.analyzer import Analyzer
-    from api.benchmark.reporter import Reporter
+    from benchmark.scene_selector import SceneSelector
+    from benchmark.test_executor import TestExecutor
+    from benchmark.analyzer import Analyzer
+    from benchmark.reporter import Reporter
 
     # Create instances
     # Note: SceneSelector, TestExecutor may require additional setup

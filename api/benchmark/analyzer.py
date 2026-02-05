@@ -4,7 +4,7 @@ Provides methods to compute aggregate metrics, breakdown by various dimensions,
 and analyze failure patterns from benchmark results.
 """
 
-from api.benchmark.models import (
+from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     SceneResult,

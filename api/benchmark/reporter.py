@@ -8,7 +8,7 @@ import csv
 import json
 from typing import Optional
 
-from api.benchmark.models import (
+from benchmark.models import (
     AggregateMetrics,
     BenchmarkParams,
     BenchmarkState,
