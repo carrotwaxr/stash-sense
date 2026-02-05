@@ -1,1 +1,37 @@
 """Benchmark framework for performer identification."""
+
+from api.benchmark.models import (
+    ExpectedPerformer,
+    TestScene,
+    BenchmarkParams,
+    SceneResult,
+    PerformerResult,
+    AggregateMetrics,
+    BenchmarkState,
+)
+from api.benchmark.scene_selector import (
+    SceneSelector,
+    STASHDB_ENDPOINT,
+    MIN_RESOLUTION_WIDTH,
+    MIN_RESOLUTION_HEIGHT,
+    MIN_PERFORMERS,
+    WELL_COVERED_THRESHOLD,
+)
+
+__all__ = [
+    # Models
+    "ExpectedPerformer",
+    "TestScene",
+    "BenchmarkParams",
+    "SceneResult",
+    "PerformerResult",
+    "AggregateMetrics",
+    "BenchmarkState",
+    # Scene selector
+    "SceneSelector",
+    "STASHDB_ENDPOINT",
+    "MIN_RESOLUTION_WIDTH",
+    "MIN_RESOLUTION_HEIGHT",
+    "MIN_PERFORMERS",
+    "WELL_COVERED_THRESHOLD",
+]
