@@ -18,6 +18,7 @@ from api.benchmark.scene_selector import (
     WELL_COVERED_THRESHOLD,
 )
 from api.benchmark.test_executor import TestExecutor
+from api.benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
 
 __all__ = [
     # Models
@@ -37,4 +38,7 @@ __all__ = [
     "WELL_COVERED_THRESHOLD",
     # Test executor
     "TestExecutor",
+    # Analyzer
+    "Analyzer",
+    "MIN_DB_COVERAGE",
 ]
