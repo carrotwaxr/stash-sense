@@ -377,27 +377,49 @@ class TestExecutor:
         self,
         scenes: list[TestScene],
         params: BenchmarkParams,
+        max_retries: int = 2,
     ) -> list[SceneResult]:
-        """Run identification on multiple scenes.
+        """Run identification on multiple scenes with retry logic.
 
-        Processes each scene sequentially, catching exceptions to continue
-        with remaining scenes if one fails.
+        Processes each scene sequentially, with automatic retry on failure.
+        Failed scenes are retried up to max_retries times with a small delay.
 
         Args:
             scenes: List of TestScene objects to process
             params: BenchmarkParams with identification settings
+            max_retries: Maximum number of retries per scene (default 2)
 
         Returns:
             List of SceneResult objects for successfully processed scenes
         """
-        results = []
+        import asyncio
 
-        for scene in scenes:
-            try:
-                result = await self.identify_scene(scene, params)
-                results.append(result)
-            except Exception as e:
-                print(f"Error processing scene {scene.scene_id}: {e}")
-                continue
+        results = []
+        failed_count = 0
+        retry_count = 0
+
+        for i, scene in enumerate(scenes):
+            success = False
+            last_error = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    result = await self.identify_scene(scene, params)
+                    results.append(result)
+                    success = True
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries:
+                        retry_count += 1
+                        # Brief delay before retry to let resources recover
+                        await asyncio.sleep(1.0)
+
+            if not success:
+                failed_count += 1
+                print(f"[{i+1}/{len(scenes)}] Failed scene {scene.scene_id} after {max_retries + 1} attempts: {type(last_error).__name__}: {str(last_error)[:80]}")
+
+        if failed_count > 0 or retry_count > 0:
+            print(f"Batch complete: {len(results)}/{len(scenes)} succeeded, {failed_count} failed, {retry_count} retries")
 
         return results
