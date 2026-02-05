@@ -17,6 +17,7 @@ from api.benchmark.scene_selector import (
     MIN_PERFORMERS,
     WELL_COVERED_THRESHOLD,
 )
+from api.benchmark.test_executor import TestExecutor
 
 __all__ = [
     # Models
@@ -34,4 +35,6 @@ __all__ = [
     "MIN_RESOLUTION_HEIGHT",
     "MIN_PERFORMERS",
     "WELL_COVERED_THRESHOLD",
+    # Test executor
+    "TestExecutor",
 ]
