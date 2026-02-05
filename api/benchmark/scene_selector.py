@@ -11,7 +11,7 @@ from benchmark.models import ExpectedPerformer, TestScene
 
 
 # Constants
-STASHDB_ENDPOINT = "https://stashdb.org"
+STASHDB_ENDPOINT = "https://stashdb.org/graphql"
 MIN_RESOLUTION_WIDTH = 854
 MIN_RESOLUTION_HEIGHT = 480
 MIN_PERFORMERS = 2

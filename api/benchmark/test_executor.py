@@ -4,8 +4,11 @@ Runs identification on test scenes and compares results to ground truth
 to compute accuracy metrics.
 """
 
+import os
 import time
 from typing import TYPE_CHECKING
+
+import httpx
 
 from benchmark.models import (
     TestScene,
@@ -25,7 +28,7 @@ class TestExecutor:
     parameters and computes metrics by comparing results to expected performers.
 
     Usage:
-        executor = TestExecutor(recognizer, multi_signal_matcher)
+        executor = TestExecutor(recognizer, multi_signal_matcher, stash_url, stash_api_key)
         result = await executor.identify_scene(scene, params)
         results = await executor.run_batch(scenes, params)
     """
@@ -34,15 +37,21 @@ class TestExecutor:
         self,
         recognizer: "FaceRecognizer",
         multi_signal_matcher: "MultiSignalMatcher",
+        stash_url: str = None,
+        stash_api_key: str = None,
     ):
         """Initialize the test executor.
 
         Args:
             recognizer: FaceRecognizer instance for face-only identification
             multi_signal_matcher: MultiSignalMatcher instance for multi-signal identification
+            stash_url: Stash server URL (defaults to STASH_URL env var)
+            stash_api_key: Stash API key (defaults to STASH_API_KEY env var)
         """
         self.recognizer = recognizer
         self.multi_signal_matcher = multi_signal_matcher
+        self.stash_url = (stash_url or os.environ.get("STASH_URL", "")).rstrip("/")
+        self.stash_api_key = stash_api_key or os.environ.get("STASH_API_KEY", "")
 
     def _compare_to_ground_truth(
         self,
@@ -125,6 +134,45 @@ class TestExecutor:
 
         return avg_correct - avg_incorrect
 
+    async def _get_scene_duration(self, scene_id: str) -> float:
+        """Get scene duration from Stash.
+
+        Args:
+            scene_id: The Stash scene ID
+
+        Returns:
+            Duration in seconds
+        """
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            gql_query = {
+                "query": f'''{{
+                    findScene(id: "{scene_id}") {{
+                        files {{
+                            duration
+                        }}
+                    }}
+                }}'''
+            }
+            headers = {"ApiKey": self.stash_api_key, "Content-Type": "application/json"}
+            response = await client.post(
+                f"{self.stash_url}/graphql",
+                json=gql_query,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            scene_data = data.get("data", {}).get("findScene", {})
+            if not scene_data or not scene_data.get("files"):
+                raise ValueError(f"Scene {scene_id} not found or has no files")
+
+            file_info = scene_data["files"][0]
+            duration = file_info.get("duration", 0)
+            if not duration:
+                raise ValueError(f"Scene {scene_id} has no duration")
+
+            return duration
+
     async def _run_scene_identification(
         self,
         scene: TestScene,
@@ -132,8 +180,8 @@ class TestExecutor:
     ) -> dict:
         """Run identification on a scene with given parameters.
 
-        Builds the request dict and calls either the multi_signal_matcher or
-        recognizer depending on params.use_multi_signal.
+        Extracts frames from the scene, detects faces, runs recognition,
+        and clusters results.
 
         Args:
             scene: TestScene to identify
@@ -146,48 +194,112 @@ class TestExecutor:
                 - faces_after_filter: int
                 - persons_clustered: int
         """
-        # Build request dict
-        request = {
-            "scene_id": scene.scene_id,
-            "num_frames": params.num_frames,
-            "start_offset_pct": params.start_offset_pct,
-            "end_offset_pct": params.end_offset_pct,
-            "matching_mode": params.matching_mode,
-            "max_distance": params.max_distance,
-            "min_face_size": params.min_face_size,
-            "top_k": params.top_k,
-        }
+        from frame_extractor import FrameExtractionConfig, extract_frames_from_stash_scene
+        from matching import MatchingConfig
+        from recognizer import RecognitionResult
 
-        # Call appropriate identification method
-        if params.use_multi_signal:
-            raw_result = await self.multi_signal_matcher.identify_scene(**request)
-        else:
-            raw_result = await self.recognizer.identify_scene(**request)
+        # Get scene duration
+        duration_sec = await self._get_scene_duration(scene.scene_id)
 
-        # Transform results
+        # Configure frame extraction
+        config = FrameExtractionConfig(
+            num_frames=params.num_frames,
+            start_offset_pct=params.start_offset_pct,
+            end_offset_pct=params.end_offset_pct,
+            min_face_size=params.min_face_size,
+            min_face_confidence=0.8,
+        )
+
+        # Extract frames
+        extraction_result = await extract_frames_from_stash_scene(
+            stash_url=self.stash_url,
+            scene_id=scene.scene_id,
+            duration_sec=duration_sec,
+            api_key=self.stash_api_key,
+            config=config,
+        )
+
+        # Configure matching
+        match_config = MatchingConfig(
+            query_k=100,
+            facenet_weight=0.6,
+            arcface_weight=0.4,
+            max_results=params.top_k * 2,
+            max_distance=params.max_distance,
+        )
+
+        # Detect and recognize faces in each frame
+        all_results: list[tuple[int, RecognitionResult]] = []
+        total_faces = 0
+        filtered_faces = 0
+
+        for frame in extraction_result.frames:
+            faces = self.recognizer.generator.detect_faces(
+                frame.image,
+                min_confidence=0.8,
+            )
+
+            for face in faces:
+                total_faces += 1
+
+                # Apply minimum face size filter
+                if face.bbox["w"] < params.min_face_size or face.bbox["h"] < params.min_face_size:
+                    continue
+
+                filtered_faces += 1
+
+                # Recognize this face
+                matches, _ = self.recognizer.recognize_face_v2(face, match_config)
+                result = RecognitionResult(face=face, matches=matches)
+                all_results.append((frame.frame_index, result))
+
+        # Cluster faces and aggregate results
+        from main import cluster_faces_by_person, merge_clusters_by_match, aggregate_matches
+
+        # Cluster-based matching
+        clusters = cluster_faces_by_person(
+            all_results,
+            self.recognizer,
+            distance_threshold=0.6,  # Default cluster threshold
+        )
+
+        clusters = merge_clusters_by_match(clusters)
+
+        # Build response with deduplication
         performers = []
-        for i, person in enumerate(raw_result.get("persons", [])):
-            best_match = person.get("best_match", {})
-            universal_id = best_match.get("stashdb_id", "")
+        used_performers: set[str] = set()
 
-            # Extract stashdb_id from universal_id (split on ":", take last part)
-            if ":" in universal_id:
-                stashdb_id = universal_id.split(":")[-1]
-            else:
-                stashdb_id = universal_id
+        # Build all persons sorted by frame count
+        all_persons = []
+        for person_id, cluster in enumerate(clusters):
+            aggregated_matches = aggregate_matches(cluster, top_k=params.top_k)
+            if aggregated_matches:
+                all_persons.append((len(cluster), aggregated_matches[0]))
 
-            distance = best_match.get("distance", 1.0)
+        # Sort by frame count (most prominent people first)
+        all_persons.sort(key=lambda x: x[0], reverse=True)
 
+        # Deduplicate - each performer can only appear once
+        for rank, (_, best_match) in enumerate(all_persons):
+            if best_match.stashdb_id in used_performers:
+                continue
+
+            # Extract stashdb_id from universal_id
+            stashdb_id = best_match.stashdb_id
+            if ":" in stashdb_id:
+                stashdb_id = stashdb_id.split(":")[-1]
+
+            used_performers.add(best_match.stashdb_id)
             performers.append({
                 "stashdb_id": stashdb_id,
-                "rank": i + 1,  # 1-indexed rank based on order
-                "distance": distance,
+                "rank": rank + 1,
+                "distance": best_match.distance,
             })
 
         return {
             "performers": performers,
-            "faces_detected": raw_result.get("faces_detected", 0),
-            "faces_after_filter": raw_result.get("faces_after_filter", 0),
+            "faces_detected": total_faces,
+            "faces_after_filter": filtered_faces,
             "persons_clustered": len(performers),
         }
 

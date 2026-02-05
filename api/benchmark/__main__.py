@@ -20,6 +20,9 @@ Examples:
     python -m api.benchmark --scenes "scene1,scene2,scene3"
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import argparse
 import asyncio
 import sys
@@ -77,21 +80,41 @@ def create_runner(config: BenchmarkConfig) -> BenchmarkRunner:
 
     Returns:
         BenchmarkRunner ready for execution.
-
-    Note:
-        For now, creates with None placeholders - will be wired up in integration.
     """
+    import os
+    from pathlib import Path
+
     # Import dependencies
     from benchmark.scene_selector import SceneSelector
     from benchmark.test_executor import TestExecutor
     from benchmark.analyzer import Analyzer
     from benchmark.reporter import Reporter
+    from config import StashConfig, DatabaseConfig
+    from stash_client import StashClient
+    from database_reader import PerformerDatabaseReader
+    from recognizer import FaceRecognizer
+    from multi_signal_matcher import MultiSignalMatcher
 
-    # Create instances
-    # Note: SceneSelector, TestExecutor may require additional setup
-    # This will be completed in the integration task
-    scene_selector = SceneSelector(db_reader=None)
-    executor = TestExecutor(recognizer=None)
+    # Load configuration from environment
+    stash_config = StashConfig.from_env()
+    data_dir = os.environ.get("DATA_DIR", "./data")
+    db_config = DatabaseConfig(data_dir=Path(data_dir))
+
+    # Create clients
+    stash_client = StashClient(stash_config.url, stash_config.api_key)
+    database_reader = PerformerDatabaseReader(str(db_config.sqlite_db_path))
+
+    # Create recognizer and multi-signal matcher
+    print("Loading face recognition models...")
+    recognizer = FaceRecognizer(db_config)
+    multi_signal_matcher = MultiSignalMatcher(
+        face_recognizer=recognizer,
+        db_reader=database_reader,
+    )
+
+    # Create benchmark components
+    scene_selector = SceneSelector(stash_client, database_reader)
+    executor = TestExecutor(recognizer, multi_signal_matcher)
     analyzer = Analyzer()
     reporter = Reporter()
 
