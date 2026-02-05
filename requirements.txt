@@ -14,6 +14,9 @@ insightface>=0.7.0  # RetinaFace detection (GPU via ONNX Runtime)
 onnxruntime-gpu>=1.15.0  # GPU support for InsightFace
 voyager>=2.0.0
 
+# Body pose estimation
+mediapipe>=0.10.9
+
 # API (for sidecar)
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
