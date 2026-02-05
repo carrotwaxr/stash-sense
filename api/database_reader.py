@@ -222,6 +222,121 @@ class PerformerDatabaseReader:
             ).fetchall()
             return [{"location": row[0], "description": row[1]} for row in rows]
 
+    # ==================== Multi-Signal Data ====================
+
+    def get_all_body_proportions(self) -> dict[str, dict]:
+        """
+        Load all body proportions, keyed by universal_id.
+
+        Returns:
+            Dict mapping universal_id to body proportion data:
+            {
+                "stashdb.org:uuid": {
+                    "shoulder_hip_ratio": 1.45,
+                    "leg_torso_ratio": 1.32,
+                    "arm_span_height_ratio": 1.01,
+                    "confidence": 0.89
+                }
+            }
+        """
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    'stashdb.org:' || s.stashbox_performer_id as universal_id,
+                    bp.shoulder_hip_ratio,
+                    bp.leg_torso_ratio,
+                    bp.arm_span_height_ratio,
+                    bp.confidence
+                FROM body_proportions bp
+                JOIN stashbox_ids s ON s.performer_id = bp.performer_id
+                WHERE s.endpoint = 'stashdb'
+                AND bp.confidence = (
+                    SELECT MAX(confidence) FROM body_proportions
+                    WHERE performer_id = bp.performer_id
+                )
+            """).fetchall()
+
+            return {
+                row[0]: {
+                    'shoulder_hip_ratio': row[1],
+                    'leg_torso_ratio': row[2],
+                    'arm_span_height_ratio': row[3],
+                    'confidence': row[4],
+                }
+                for row in rows
+            }
+
+    def get_all_tattoo_info(self) -> dict[str, dict]:
+        """
+        Load tattoo presence info for all performers.
+
+        Combines data from tattoos table (text descriptions) and
+        tattoo_detections table (detected locations).
+
+        Returns:
+            Dict mapping universal_id to tattoo info:
+            {
+                "stashdb.org:uuid": {
+                    "has_tattoos": True,
+                    "locations": ["left arm", "back"],
+                    "count": 2
+                }
+            }
+        """
+        import json
+
+        with self._connection() as conn:
+            # Get all performers with stashdb IDs
+            performers = conn.execute("""
+                SELECT p.id, 'stashdb.org:' || s.stashbox_performer_id as universal_id
+                FROM performers p
+                JOIN stashbox_ids s ON s.performer_id = p.id
+                WHERE s.endpoint = 'stashdb'
+            """).fetchall()
+
+            result = {}
+            for performer_id, universal_id in performers:
+                locations = set()
+
+                # Get locations from tattoos table (text descriptions)
+                tattoo_rows = conn.execute(
+                    "SELECT location FROM tattoos WHERE performer_id = ?",
+                    (performer_id,)
+                ).fetchall()
+                for row in tattoo_rows:
+                    if row[0]:
+                        locations.add(row[0].lower())
+
+                # Get locations from tattoo_detections table
+                detection_rows = conn.execute(
+                    "SELECT detections_json FROM tattoo_detections WHERE performer_id = ? AND has_tattoos = 1",
+                    (performer_id,)
+                ).fetchall()
+                for row in detection_rows:
+                    if row[0]:
+                        try:
+                            detections = json.loads(row[0])
+                            for det in detections:
+                                if det.get('location_hint'):
+                                    locations.add(det['location_hint'].lower())
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                # Check if performer has tattoos from either source
+                has_tattoos_text = len(tattoo_rows) > 0
+                has_tattoos_detected = conn.execute(
+                    "SELECT 1 FROM tattoo_detections WHERE performer_id = ? AND has_tattoos = 1 LIMIT 1",
+                    (performer_id,)
+                ).fetchone() is not None
+
+                result[universal_id] = {
+                    'has_tattoos': has_tattoos_text or has_tattoos_detected,
+                    'locations': list(locations),
+                    'count': len(locations),
+                }
+
+            return result
+
     # ==================== Statistics ====================
 
     def get_stats(self) -> dict:
