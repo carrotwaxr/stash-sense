@@ -14,6 +14,8 @@ venv/
 *.h5
 *.pt
 *.onnx
+*.task
+api/models/
 
 # Database files (large, distributed separately)
 *.voy
