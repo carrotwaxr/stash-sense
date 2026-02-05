@@ -21,6 +21,7 @@ from api.benchmark.test_executor import TestExecutor
 from api.benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
 from api.benchmark.reporter import Reporter
 from api.benchmark.runner import BenchmarkRunner
+from api.benchmark.config import BenchmarkConfig
 
 __all__ = [
     # Models
@@ -47,4 +48,6 @@ __all__ = [
     "Reporter",
     # Runner
     "BenchmarkRunner",
+    # Config
+    "BenchmarkConfig",
 ]
