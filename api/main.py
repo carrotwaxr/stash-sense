@@ -587,8 +587,10 @@ def aggregate_matches(
 def frequency_based_matching(
     all_results: list[tuple[int, RecognitionResult]],
     top_k: int = 5,
-    min_appearances: int = 1,
+    min_appearances: int = 2,
+    min_unique_frames: int = 2,
     max_distance: float = 0.7,
+    min_confidence: float = 0.35,
 ) -> list[PersonResult]:
     """
     Identify performers by counting appearances across all face matches.
@@ -607,7 +609,9 @@ def frequency_based_matching(
         all_results: List of (frame_index, RecognitionResult) tuples
         top_k: Number of performers to return
         min_appearances: Minimum number of face matches to include a performer
+        min_unique_frames: Minimum unique frames a performer must appear in
         max_distance: Only count matches below this distance
+        min_confidence: Minimum confidence threshold (filters low-quality matches)
 
     Returns:
         List of PersonResult objects, one per identified performer
@@ -632,6 +636,14 @@ def frequency_based_matching(
         min_distance = min(distances)
         appearances = len(matches)
         unique_frames = len(set(m[2] for m in matches))
+
+        # Require appearance in multiple unique frames to reduce false positives
+        if unique_frames < min_unique_frames:
+            continue
+
+        # Filter by minimum confidence (1 - distance)
+        if (1 - min_distance) < min_confidence:
+            continue
 
         # Weighted score: primarily based on match quality, with modest bonus for frame count
         # Formula: confidence * (1 + small_frame_bonus)
@@ -694,6 +706,9 @@ def hybrid_matching(
     cluster_threshold: float = 0.6,
     top_k: int = 5,
     max_distance: float = 0.7,
+    min_appearances: int = 2,
+    min_unique_frames: int = 2,
+    min_confidence: float = 0.35,
 ) -> list[PersonResult]:
     """
     Hybrid matching combining cluster and frequency approaches.
@@ -706,10 +721,25 @@ def hybrid_matching(
     This helps when:
     - Clustering works well (cluster mode catches it)
     - Clustering fails but frequency catches appearances (frequency mode catches it)
+
+    Args:
+        all_results: List of (frame_index, RecognitionResult) tuples
+        recognizer: FaceRecognizer instance for clustering
+        cluster_threshold: Distance threshold for face clustering
+        top_k: Maximum number of performers to return
+        max_distance: Maximum distance threshold for matches
+        min_appearances: Minimum face matches required per performer
+        min_unique_frames: Minimum unique frames a performer must appear in
+        min_confidence: Minimum confidence threshold (1 - distance)
     """
     # Get frequency results (as a dict for lookup)
     freq_persons = frequency_based_matching(
-        all_results, top_k=top_k * 3, min_appearances=1, max_distance=max_distance
+        all_results,
+        top_k=top_k * 3,
+        min_appearances=min_appearances,
+        min_unique_frames=min_unique_frames,
+        max_distance=max_distance,
+        min_confidence=min_confidence,
     )
     freq_by_id = {p.best_match.stashdb_id: p for p in freq_persons if p.best_match}
 
@@ -745,8 +775,8 @@ def hybrid_matching(
             best_distance = min(freq_result.best_match.distance, cluster_result["distance"])
             frame_count = max(freq_result.frame_count, cluster_result["frame_count"])
             found_by = "both"
-            # Significant boost for being found by both methods
-            confidence_boost = 0.15
+            # Strong boost for being found by both methods (high confidence signal)
+            confidence_boost = 0.25
         elif freq_result:
             best_distance = freq_result.best_match.distance
             frame_count = freq_result.frame_count
@@ -783,9 +813,20 @@ def hybrid_matching(
     # Sort by hybrid score (higher is better)
     combined_scores.sort(key=lambda p: p["hybrid_score"], reverse=True)
 
+    # Filter by minimum confidence and frame requirements
+    filtered_scores = [
+        p for p in combined_scores
+        if (1 - p["distance"]) >= min_confidence and p["frame_count"] >= min_unique_frames
+    ]
+
+    # Heuristic: limit max performers based on number of clusters
+    # A scene with 3 face clusters probably has 2-3 performers, not 10
+    max_performers = max(2, min(top_k, len(clusters)))
+    filtered_scores = filtered_scores[:max_performers]
+
     # Convert to PersonResult format
     persons = []
-    for i, p in enumerate(combined_scores[:top_k]):
+    for i, p in enumerate(filtered_scores):
         match = p["match"]
         persons.append(PersonResult(
             person_id=i,

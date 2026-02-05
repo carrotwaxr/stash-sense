@@ -253,54 +253,109 @@ class TestExecutor:
                 result = RecognitionResult(face=face, matches=matches)
                 all_results.append((frame.frame_index, result))
 
-        # Cluster faces and aggregate results
-        from main import cluster_faces_by_person, merge_clusters_by_match, aggregate_matches
-
-        # Cluster-based matching
-        clusters = cluster_faces_by_person(
-            all_results,
-            self.recognizer,
-            distance_threshold=0.6,  # Default cluster threshold
+        # Apply matching based on mode
+        from main import (
+            cluster_faces_by_person,
+            merge_clusters_by_match,
+            aggregate_matches,
+            frequency_based_matching,
+            hybrid_matching,
         )
 
-        clusters = merge_clusters_by_match(clusters)
-
-        # Build response with deduplication
         performers = []
-        used_performers: set[str] = set()
+        num_clusters = 0
 
-        # Build all persons sorted by frame count
-        all_persons = []
-        for person_id, cluster in enumerate(clusters):
-            aggregated_matches = aggregate_matches(cluster, top_k=params.top_k)
-            if aggregated_matches:
-                all_persons.append((len(cluster), aggregated_matches[0]))
+        if params.matching_mode == "hybrid":
+            # Use hybrid matching with improved false positive filtering
+            persons = hybrid_matching(
+                all_results,
+                self.recognizer,
+                cluster_threshold=params.cluster_threshold,
+                top_k=params.top_k,
+                max_distance=params.max_distance,
+                min_appearances=2,
+                min_unique_frames=2,
+                min_confidence=0.35,
+            )
+            # Get cluster count for stats
+            clusters = cluster_faces_by_person(
+                all_results, self.recognizer, params.cluster_threshold
+            )
+            num_clusters = len(clusters)
 
-        # Sort by frame count (most prominent people first)
-        all_persons.sort(key=lambda x: x[0], reverse=True)
+            for rank, person in enumerate(persons):
+                stashdb_id = person.best_match.stashdb_id
+                if ":" in stashdb_id:
+                    stashdb_id = stashdb_id.split(":")[-1]
+                performers.append({
+                    "stashdb_id": stashdb_id,
+                    "rank": rank + 1,
+                    "distance": person.best_match.distance,
+                })
 
-        # Deduplicate - each performer can only appear once
-        for rank, (_, best_match) in enumerate(all_persons):
-            if best_match.stashdb_id in used_performers:
-                continue
+        elif params.matching_mode == "frequency":
+            # Use frequency-based matching with improved filtering
+            persons = frequency_based_matching(
+                all_results,
+                top_k=params.top_k,
+                min_appearances=2,
+                min_unique_frames=2,
+                max_distance=params.max_distance,
+                min_confidence=0.35,
+            )
+            num_clusters = len(persons)
 
-            # Extract stashdb_id from universal_id
-            stashdb_id = best_match.stashdb_id
-            if ":" in stashdb_id:
-                stashdb_id = stashdb_id.split(":")[-1]
+            for rank, person in enumerate(persons):
+                stashdb_id = person.best_match.stashdb_id
+                if ":" in stashdb_id:
+                    stashdb_id = stashdb_id.split(":")[-1]
+                performers.append({
+                    "stashdb_id": stashdb_id,
+                    "rank": rank + 1,
+                    "distance": person.best_match.distance,
+                })
 
-            used_performers.add(best_match.stashdb_id)
-            performers.append({
-                "stashdb_id": stashdb_id,
-                "rank": rank + 1,
-                "distance": best_match.distance,
-            })
+        else:
+            # Default cluster-based matching
+            clusters = cluster_faces_by_person(
+                all_results,
+                self.recognizer,
+                distance_threshold=params.cluster_threshold,
+            )
+            clusters = merge_clusters_by_match(clusters)
+            num_clusters = len(clusters)
+
+            # Build response with deduplication
+            used_performers: set[str] = set()
+            all_persons = []
+
+            for person_id, cluster in enumerate(clusters):
+                aggregated_matches = aggregate_matches(cluster, top_k=params.top_k)
+                if aggregated_matches:
+                    all_persons.append((len(cluster), aggregated_matches[0]))
+
+            all_persons.sort(key=lambda x: x[0], reverse=True)
+
+            for rank, (_, best_match) in enumerate(all_persons):
+                if best_match.stashdb_id in used_performers:
+                    continue
+
+                stashdb_id = best_match.stashdb_id
+                if ":" in stashdb_id:
+                    stashdb_id = stashdb_id.split(":")[-1]
+
+                used_performers.add(best_match.stashdb_id)
+                performers.append({
+                    "stashdb_id": stashdb_id,
+                    "rank": rank + 1,
+                    "distance": best_match.distance,
+                })
 
         return {
             "performers": performers,
             "faces_detected": total_faces,
             "faces_after_filter": filtered_faces,
-            "persons_clustered": len(performers),
+            "persons_clustered": num_clusters,
         }
 
     async def identify_scene(
