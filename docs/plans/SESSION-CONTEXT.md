@@ -126,10 +126,18 @@ Maintainer's System (private)
 
 ### Recently Completed (2026-02-02)
 
-1. **Name-based performer merge** - `merge_by_name.py` merges duplicate performers across stash-box endpoints by exact name match (skips ambiguous cases where stashdb has multiple performers with same name)
-2. **Safer merge logic** - Fixed merge scripts to skip 27 ambiguous names, merged 626 performers with 1904 faces
-3. **Multi-signal identification design** - Complete design for body proportions, tattoo recognition, and score fusion architecture
-4. **Database integrity** - All checks passing: 197,720 faces, 56,281 performers, zero gaps
+1. **Fresh run mode** - Added `fresh_run` parameter to re-evaluate all performers without restarting from scratch. Respects existing face counts, enables backfilling when raising limits or adding sources. Exposed in web UI.
+2. **Lowered face detection threshold** - Changed `min_detection_confidence` from 0.8 to 0.7. Diagnostic showed 0.8 rejected 90% of valid faces (scores 0.70-0.79). With 0.7, pass rate improved from ~10% to 100%.
+3. **Test infrastructure** - Added pytest with unit tests for face limits, fresh_run behavior, and API endpoints. Created diagnostic script for debugging face detection issues.
+4. **Name-based performer merge** - `merge_by_name.py` merges duplicate performers across stash-box endpoints by exact name match (skips ambiguous cases where stashdb has multiple performers with same name)
+5. **Multi-signal identification design** - Complete design for body proportions, tattoo recognition, and score fusion architecture
+6. **Database integrity** - All checks passing: 197,720 faces, 56,281 performers, zero gaps
+
+### Pending (Next Steps)
+
+1. **Run fresh stashdb build** - Use fresh_run=True with only stashdb enabled to backfill faces with 0.7 threshold. This will add faces to ~3,417 stashdb performers currently missing faces.
+2. **Run merge_by_name again** - After stashdb performers have faces, merge will catch ~79 additional duplicates.
+3. **Implement multi-signal models** - Phase 4 work: tattoo detection, body proportions, late fusion architecture.
 
 ### Previously Completed (2026-01-31)
 
@@ -310,6 +318,27 @@ python -m pytest tests/ -v
 | `/plugin/stash-sense.js` | Main plugin UI |
 | `/plugin/stash-sense-recommendations.js` | Recommendations dashboard UI |
 | `/plugin/stash_sense_backend.py` | Python proxy for CSP bypass |
+
+---
+
+## Multi-Signal Identification (2026-02-04)
+
+Added body proportion filtering and tattoo presence signals to improve performer identification.
+
+### New Files
+- `api/body_proportions.py` - MediaPipe-based body ratio extraction
+- `api/tattoo_detector.py` - YOLO-based tattoo detection
+- `api/signal_scoring.py` - Scoring functions for body and tattoo signals
+- `api/multi_signal_matcher.py` - Combined multi-signal identification
+
+### API Changes
+- `/identify` endpoint now accepts `use_multi_signal`, `use_body`, `use_tattoo` flags
+- Response includes `signals_used`, `body_detected`, `tattoos_detected` fields
+
+### Configuration
+- `ENABLE_BODY_SIGNAL=true/false` - Enable body proportion filtering
+- `ENABLE_TATTOO_SIGNAL=true/false` - Enable tattoo presence signal
+- `FACE_CANDIDATES=20` - Number of face candidates to consider for re-ranking
 
 ---
 
