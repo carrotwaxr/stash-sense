@@ -239,32 +239,36 @@ class PerformerDatabaseReader:
                 }
             }
         """
-        with self._connection() as conn:
-            rows = conn.execute("""
-                SELECT
-                    'stashdb.org:' || s.stashbox_performer_id as universal_id,
-                    bp.shoulder_hip_ratio,
-                    bp.leg_torso_ratio,
-                    bp.arm_span_height_ratio,
-                    bp.confidence
-                FROM body_proportions bp
-                JOIN stashbox_ids s ON s.performer_id = bp.performer_id
-                WHERE s.endpoint = 'stashdb'
-                AND bp.confidence = (
-                    SELECT MAX(confidence) FROM body_proportions
-                    WHERE performer_id = bp.performer_id
-                )
-            """).fetchall()
+        try:
+            with self._connection() as conn:
+                rows = conn.execute("""
+                    SELECT
+                        'stashdb.org:' || s.stashbox_performer_id as universal_id,
+                        bp.shoulder_hip_ratio,
+                        bp.leg_torso_ratio,
+                        bp.arm_span_height_ratio,
+                        bp.confidence
+                    FROM body_proportions bp
+                    JOIN stashbox_ids s ON s.performer_id = bp.performer_id
+                    WHERE s.endpoint = 'stashdb'
+                    AND bp.confidence = (
+                        SELECT MAX(confidence) FROM body_proportions
+                        WHERE performer_id = bp.performer_id
+                    )
+                """).fetchall()
 
-            return {
-                row[0]: {
-                    'shoulder_hip_ratio': row[1],
-                    'leg_torso_ratio': row[2],
-                    'arm_span_height_ratio': row[3],
-                    'confidence': row[4],
+                return {
+                    row[0]: {
+                        'shoulder_hip_ratio': row[1],
+                        'leg_torso_ratio': row[2],
+                        'arm_span_height_ratio': row[3],
+                        'confidence': row[4],
+                    }
+                    for row in rows
                 }
-                for row in rows
-            }
+        except Exception as e:
+            print(f"Warning: Could not load body proportions: {e}")
+            return {}
 
     def get_all_tattoo_info(self) -> dict[str, dict]:
         """
@@ -285,57 +289,153 @@ class PerformerDatabaseReader:
         """
         import json
 
+        try:
+            with self._connection() as conn:
+                # Get all performers with stashdb IDs
+                performers = conn.execute("""
+                    SELECT p.id, 'stashdb.org:' || s.stashbox_performer_id as universal_id
+                    FROM performers p
+                    JOIN stashbox_ids s ON s.performer_id = p.id
+                    WHERE s.endpoint = 'stashdb'
+                """).fetchall()
+
+                result = {}
+                for performer_id, universal_id in performers:
+                    locations = set()
+
+                    # Get locations from tattoos table (text descriptions)
+                    tattoo_rows = conn.execute(
+                        "SELECT location FROM tattoos WHERE performer_id = ?",
+                        (performer_id,)
+                    ).fetchall()
+                    for row in tattoo_rows:
+                        if row[0]:
+                            locations.add(row[0].lower())
+
+                    # Get locations from tattoo_detections table
+                    detection_rows = conn.execute(
+                        "SELECT detections_json FROM tattoo_detections WHERE performer_id = ? AND has_tattoos = 1",
+                        (performer_id,)
+                    ).fetchall()
+                    for row in detection_rows:
+                        if row[0]:
+                            try:
+                                detections = json.loads(row[0])
+                                for det in detections:
+                                    if det.get('location_hint'):
+                                        locations.add(det['location_hint'].lower())
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                    # Check if performer has tattoos from either source
+                    has_tattoos_text = len(tattoo_rows) > 0
+                    has_tattoos_detected = conn.execute(
+                        "SELECT 1 FROM tattoo_detections WHERE performer_id = ? AND has_tattoos = 1 LIMIT 1",
+                        (performer_id,)
+                    ).fetchone() is not None
+
+                    result[universal_id] = {
+                        'has_tattoos': has_tattoos_text or has_tattoos_detected,
+                        'locations': list(locations),
+                        'count': len(locations),
+                    }
+
+                return result
+        except Exception as e:
+            print(f"Warning: Could not load tattoo info: {e}")
+            return {}
+
+    # ==================== Benchmark Support ====================
+
+    def _parse_universal_id(self, universal_id: str) -> tuple[str, str]:
+        """Parse universal_id into (endpoint, stashbox_id).
+
+        Args:
+            universal_id: Format "stashdb.org:uuid-here"
+
+        Returns:
+            Tuple of (endpoint, stashbox_id)
+        """
+        parts = universal_id.split(":", 1)
+        if len(parts) != 2:
+            return ("", "")
+        return (parts[0], parts[1])
+
+    def get_face_count_for_performer(self, universal_id: str) -> int:
+        """Get the face count for a performer by universal_id.
+
+        Args:
+            universal_id: Format "stashdb.org:uuid-here"
+
+        Returns:
+            The performer's face_count, or 0 if not found
+        """
+        endpoint, stashbox_id = self._parse_universal_id(universal_id)
+        if not endpoint or not stashbox_id:
+            return 0
+
         with self._connection() as conn:
-            # Get all performers with stashdb IDs
-            performers = conn.execute("""
-                SELECT p.id, 'stashdb.org:' || s.stashbox_performer_id as universal_id
-                FROM performers p
-                JOIN stashbox_ids s ON s.performer_id = p.id
-                WHERE s.endpoint = 'stashdb'
-            """).fetchall()
+            row = conn.execute(
+                """
+                SELECT p.face_count FROM performers p
+                JOIN stashbox_ids s ON p.id = s.performer_id
+                WHERE s.endpoint = ? AND s.stashbox_performer_id = ?
+                """,
+                (endpoint, stashbox_id)
+            ).fetchone()
+            if row and row[0] is not None:
+                return row[0]
+        return 0
 
-            result = {}
-            for performer_id, universal_id in performers:
-                locations = set()
+    def has_body_data(self, universal_id: str) -> bool:
+        """Check if body proportions data exists for a performer.
 
-                # Get locations from tattoos table (text descriptions)
-                tattoo_rows = conn.execute(
-                    "SELECT location FROM tattoos WHERE performer_id = ?",
-                    (performer_id,)
-                ).fetchall()
-                for row in tattoo_rows:
-                    if row[0]:
-                        locations.add(row[0].lower())
+        Args:
+            universal_id: Format "stashdb.org:uuid-here"
 
-                # Get locations from tattoo_detections table
-                detection_rows = conn.execute(
-                    "SELECT detections_json FROM tattoo_detections WHERE performer_id = ? AND has_tattoos = 1",
-                    (performer_id,)
-                ).fetchall()
-                for row in detection_rows:
-                    if row[0]:
-                        try:
-                            detections = json.loads(row[0])
-                            for det in detections:
-                                if det.get('location_hint'):
-                                    locations.add(det['location_hint'].lower())
-                        except (json.JSONDecodeError, TypeError):
-                            pass
+        Returns:
+            True if body_proportions table has data for this performer
+        """
+        endpoint, stashbox_id = self._parse_universal_id(universal_id)
+        if not endpoint or not stashbox_id:
+            return False
 
-                # Check if performer has tattoos from either source
-                has_tattoos_text = len(tattoo_rows) > 0
-                has_tattoos_detected = conn.execute(
-                    "SELECT 1 FROM tattoo_detections WHERE performer_id = ? AND has_tattoos = 1 LIMIT 1",
-                    (performer_id,)
-                ).fetchone() is not None
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM body_proportions bp
+                JOIN stashbox_ids s ON bp.performer_id = s.performer_id
+                WHERE s.endpoint = ? AND s.stashbox_performer_id = ?
+                LIMIT 1
+                """,
+                (endpoint, stashbox_id)
+            ).fetchone()
+            return row is not None
 
-                result[universal_id] = {
-                    'has_tattoos': has_tattoos_text or has_tattoos_detected,
-                    'locations': list(locations),
-                    'count': len(locations),
-                }
+    def has_tattoo_data(self, universal_id: str) -> bool:
+        """Check if tattoo detection data exists for a performer.
 
-            return result
+        Args:
+            universal_id: Format "stashdb.org:uuid-here"
+
+        Returns:
+            True if tattoo_detections table has data for this performer
+        """
+        endpoint, stashbox_id = self._parse_universal_id(universal_id)
+        if not endpoint or not stashbox_id:
+            return False
+
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM tattoo_detections td
+                JOIN stashbox_ids s ON td.performer_id = s.performer_id
+                WHERE s.endpoint = ? AND s.stashbox_performer_id = ?
+                LIMIT 1
+                """,
+                (endpoint, stashbox_id)
+            ).fetchone()
+            return row is not None
 
     # ==================== Statistics ====================
 
