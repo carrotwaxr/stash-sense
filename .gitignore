@@ -38,6 +38,7 @@ api/data-*/
 api/test_output/
 api/validation/
 api/profile_test/
+api/benchmark_results/
 
 # Local development/debug scripts (not the tests/ suite)
 api/test_*.py

@@ -17,7 +17,6 @@ def main():
     args = input_data.get("args", {})
     mode = args.get("mode", "")
 
-    log(f"Mode: {mode}, Args: {list(args.keys())}")
 
     # Get sidecar URL from args (passed by JS which reads settings)
     sidecar_url = args.get("sidecar_url", "http://localhost:5000").rstrip("/")

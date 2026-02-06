@@ -1,7 +1,7 @@
 # Stash Sense: Session Context
 
-**Last Updated:** 2026-02-02
-**Status:** Phase 2 & 3 Complete, Multi-Signal Design Complete
+**Last Updated:** 2026-02-06
+**Status:** Phase 2 & 3 Complete, Multi-Signal Implemented, Benchmark Framework Complete
 
 ---
 
@@ -33,8 +33,13 @@ The split was completed on 2026-01-30 to keep scraping code private while enabli
 
 ### What's Building (in trainer repo)
 
-The trainer Docker is currently running, building the next enriched database with:
-- Multi-source scraping (13 stash-boxes + reference sites)
+The trainer Docker is currently running with **5 new sources enabled**, bug fixes, and improved filtering. It's actively adding faces to the database. The trainer now supports a `db optimize` command that can:
+- Prune performers with zero faces from the database and index
+- Filter by minimum face count (`--min-faces N`) to reduce noise
+- This should significantly reduce false positives in stash-sense identification
+
+Sources include:
+- Multi-source scraping (13+ stash-boxes + reference sites)
 - Face detection and embedding generation
 - Quality filtering and trust levels
 
@@ -95,6 +100,9 @@ Maintainer's System (private)
 | Document | Purpose | Status |
 |----------|---------|--------|
 | [duplicate-scene-detection-implementation.md](docs/plans/2026-01-30-duplicate-scene-detection-implementation.md) | TDD implementation plan | **Implemented** |
+| [multi-signal-implementation-design.md](docs/plans/2026-02-04-multi-signal-implementation-design.md) | Multi-signal implementation | **Implemented** |
+| [identification-benchmark-design.md](docs/plans/2026-02-04-identification-benchmark-design.md) | Benchmark framework design | **Implemented** |
+| [identification-benchmark-implementation.md](docs/plans/2026-02-04-identification-benchmark-implementation.md) | Benchmark implementation plan | **Implemented** |
 
 ### Future Vision
 
@@ -124,7 +132,15 @@ Maintainer's System (private)
 1. **project-status-and-vision.md** - Could use refresh to reflect split (low priority)
 2. **Test Docker build** - Not yet verified after the repo split
 
-### Recently Completed (2026-02-02)
+### Recently Completed (2026-02-06)
+
+1. **Identification precision improvement (+75%)** - False positive filtering: `min_appearances=2`, `min_unique_frames=2`, `min_confidence=0.35`, stronger hybrid boost (0.15→0.25), cluster-based max performers. Precision 17.8%→31.1%, FP ratio 81.4%→68.9%.
+2. **Benchmark framework** - Full benchmark suite for measuring identification accuracy: scene selector with stratified sampling, test executor, analyzer for metrics/failure patterns, reporter for summaries/CSV, CLI interface, integration tests.
+3. **Multi-signal implementation** - Body proportions (MediaPipe) + tattoo detection (YOLO) integrated into API. Current finding: multi-signal provides 0% benefit with current DB — needs more face diversity first.
+4. **Retry logic** - Added retry for intermittent scene processing failures during identification.
+5. **Trainer improvements doc** - `docs/trainer-improvements.md` with actionable recommendations: 29.1% of performers have only 1 face (biggest FP source), resolution impacts (480p=12.5% vs 1080p=37.7% accuracy).
+
+### Previously Completed (2026-02-02)
 
 1. **Fresh run mode** - Added `fresh_run` parameter to re-evaluate all performers without restarting from scratch. Respects existing face counts, enables backfilling when raising limits or adding sources. Exposed in web UI.
 2. **Lowered face detection threshold** - Changed `min_detection_confidence` from 0.8 to 0.7. Diagnostic showed 0.8 rejected 90% of valid faces (scores 0.70-0.79). With 0.7, pass rate improved from ~10% to 100%.
@@ -135,9 +151,9 @@ Maintainer's System (private)
 
 ### Pending (Next Steps)
 
-1. **Run fresh stashdb build** - Use fresh_run=True with only stashdb enabled to backfill faces with 0.7 threshold. This will add faces to ~3,417 stashdb performers currently missing faces.
-2. **Run merge_by_name again** - After stashdb performers have faces, merge will catch ~79 additional duplicates.
-3. **Implement multi-signal models** - Phase 4 work: tattoo detection, body proportions, late fusion architecture.
+1. **Wait for trainer to finish building** - 5 new sources enabled, bugs fixed, actively adding faces. Once complete, run `db optimize --min-faces 2` to prune low-face-count performers.
+2. **Re-benchmark with optimized DB** - After receiving the new optimized database, re-run benchmarks to measure improvement. Target: precision >40%, FP ratio <60%.
+3. **Investigate multi-signal ineffectiveness** - Lower priority. More faces per performer should help before tuning body/tattoo signals.
 
 ### Previously Completed (2026-01-31)
 
@@ -240,12 +256,13 @@ When you update to a new face recognition database:
 - [x] API endpoints
 - [ ] Wire up fingerprint generation from `/identify/scene` (not yet connected)
 
-### Phase 4: Multi-Signal Identification (Design Complete)
-- [ ] Body proportion extraction via pose estimation (MediaPipe)
-- [ ] Tattoo detection (YOLO-based)
-- [ ] Tattoo embedding and matching
-- [ ] Multi-signal fusion architecture
+### Phase 4: Multi-Signal Identification (Implemented, Needs Better Data)
+- [x] Body proportion extraction via pose estimation (MediaPipe)
+- [x] Tattoo detection (YOLO-based)
+- [x] Multi-signal fusion architecture
+- [ ] Tattoo embedding and matching (deferred — needs discriminative data first)
 - [ ] Semi-supervised training UI in stash-sense-trainer
+- **Note:** Multi-signal currently provides 0% accuracy gain. Root cause is insufficient face diversity (29.1% of performers have only 1 face). Trainer improvements needed before signal tuning.
 
 ### Phase 5: Advanced Features
 - [ ] Cross-stash-box linking (performer identity graph)
@@ -315,9 +332,38 @@ python -m pytest tests/ -v
 | `/api/duplicate_detection/` | Models and scoring for duplicate detection |
 | `/api/fingerprint_generator.py` | Bulk fingerprint generation with checkpointing |
 | `/api/rate_limiter.py` | Centralized rate limiter with priority queue |
+| `/api/benchmark/` | Identification benchmark framework |
 | `/plugin/stash-sense.js` | Main plugin UI |
 | `/plugin/stash-sense-recommendations.js` | Recommendations dashboard UI |
 | `/plugin/stash_sense_backend.py` | Python proxy for CSP bypass |
+| `/docs/trainer-improvements.md` | Actionable recommendations for trainer |
+
+---
+
+## Identification Benchmark Framework (2026-02-05)
+
+Full benchmark suite for measuring and improving identification accuracy.
+
+### Components
+- `api/benchmark/scene_selector.py` - Stratified scene sampling from Stash library
+- `api/benchmark/test_executor.py` - Runs identification against known performers
+- `api/benchmark/analyzer.py` - Metrics computation and failure pattern analysis
+- `api/benchmark/reporter.py` - Summary reports and CSV exports
+- `api/benchmark/cli.py` - CLI interface for running benchmarks
+- `api/benchmark/runner.py` - Main benchmark runner with iterative tuning
+
+### Key Results
+| Metric | Before Tuning | After Tuning |
+|--------|--------------|--------------|
+| Precision | 17.8% | **31.1%** (+75%) |
+| FP Ratio | 81.4% | **68.9%** (-12.5%) |
+| Accuracy | 38.6% | 33.6% (-5%) |
+
+### Running Benchmarks
+```bash
+cd /home/carrot/code/stash-sense/api
+python -m benchmark.cli --num-scenes 50 --output-dir benchmark_results/
+```
 
 ---
 

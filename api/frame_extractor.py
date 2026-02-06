@@ -197,6 +197,120 @@ def _calculate_burst_timestamps(
     return timestamps
 
 
+def calculate_weighted_timestamps(
+    duration_sec: float,
+    num_frames: int = 40,
+    skip_intro_sec: float = 15.0,
+    min_duration_for_skip: float = 300.0,  # 5 minutes
+    front_weight: float = 0.40,
+    middle_weight: float = 0.45,
+    back_weight: float = 0.15,
+    front_zone_pct: float = 0.25,
+    back_zone_pct: float = 0.10,
+    end_offset_pct: float = 0.95,
+) -> list[float]:
+    """
+    Calculate timestamps with front-loaded distribution.
+
+    Scenes > min_duration_for_skip: skip first skip_intro_sec (intros/logos).
+    Otherwise use 5% offset. Distributes frames across three zones:
+    - Front zone (first 25% of usable video): 40% of frames — intros show faces
+    - Middle zone (remaining 65%): 45% of frames — evenly through action
+    - Back zone (last 10% of usable video): 15% of frames — closing shots
+
+    Args:
+        duration_sec: Total video duration in seconds
+        num_frames: Number of frames to extract
+        skip_intro_sec: Seconds to skip at start for long scenes
+        min_duration_for_skip: Minimum duration to apply intro skip
+        front_weight: Fraction of frames in front zone
+        middle_weight: Fraction of frames in middle zone
+        back_weight: Fraction of frames in back zone
+        front_zone_pct: Fraction of usable duration for front zone
+        back_zone_pct: Fraction of usable duration for back zone
+        end_offset_pct: End boundary as fraction of total duration
+
+    Returns:
+        List of timestamps in seconds
+    """
+    # Determine start boundary
+    if duration_sec >= min_duration_for_skip:
+        start_sec = skip_intro_sec
+    else:
+        start_sec = duration_sec * 0.05
+
+    end_sec = duration_sec * end_offset_pct
+
+    # Ensure valid range
+    start_sec = max(0, start_sec)
+    end_sec = min(duration_sec, end_sec)
+
+    if end_sec <= start_sec:
+        return [duration_sec / 2]
+
+    usable = end_sec - start_sec
+
+    # Zone boundaries
+    front_end = start_sec + usable * front_zone_pct
+    back_start = end_sec - usable * back_zone_pct
+
+    # Frame allocation per zone (round, ensure at least 1 per zone)
+    front_frames = max(1, round(num_frames * front_weight))
+    back_frames = max(1, round(num_frames * back_weight))
+    middle_frames = max(1, num_frames - front_frames - back_frames)
+
+    timestamps = []
+
+    # Front zone
+    if front_frames == 1:
+        timestamps.append((start_sec + front_end) / 2)
+    else:
+        interval = (front_end - start_sec) / (front_frames - 1)
+        for i in range(front_frames):
+            timestamps.append(start_sec + i * interval)
+
+    # Middle zone
+    if middle_frames == 1:
+        timestamps.append((front_end + back_start) / 2)
+    else:
+        interval = (back_start - front_end) / (middle_frames - 1)
+        for i in range(middle_frames):
+            timestamps.append(front_end + i * interval)
+
+    # Back zone
+    if back_frames == 1:
+        timestamps.append((back_start + end_sec) / 2)
+    else:
+        interval = (end_sec - back_start) / (back_frames - 1)
+        for i in range(back_frames):
+            timestamps.append(back_start + i * interval)
+
+    return sorted(timestamps)
+
+
+def score_frame_by_faces(faces: list) -> float:
+    """
+    Score a frame by quality of detected faces.
+
+    Computes sum(confidence * sqrt(width * height)) per face.
+    Favors frames with many large, high-confidence faces.
+
+    Args:
+        faces: List of DetectedFace objects with bbox dict {x, y, w, h}
+               and confidence float
+
+    Returns:
+        Score (higher is better), 0.0 if no faces
+    """
+    import math
+    score = 0.0
+    for face in faces:
+        w = face.bbox.get("w", 0) if isinstance(face.bbox, dict) else 0
+        h = face.bbox.get("h", 0) if isinstance(face.bbox, dict) else 0
+        score += face.confidence * math.sqrt(w * h)
+    return score
+
+
 def extract_frame_sync(
     stream_url: str,
     timestamp_sec: float,
