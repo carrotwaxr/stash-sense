@@ -25,6 +25,10 @@ def init_recommendations(db_path: str, stash_url: str, stash_api_key: str):
     """Initialize recommendations database and stash client."""
     global rec_db, stash_client
     rec_db = RecommendationsDB(db_path)
+    # Clean up any analysis runs left as 'running' from a previous sidecar session
+    stale = rec_db.fail_stale_analysis_runs()
+    if stale:
+        print(f"Marked {stale} stale analysis run(s) as failed")
     if stash_url:
         stash_client = StashClientUnified(stash_url, stash_api_key)
 
@@ -98,6 +102,53 @@ def save_scene_fingerprint(
     except Exception as e:
         error_msg = str(e)
         print(f"[save_scene_fingerprint] Error: {error_msg}")
+        return None, error_msg
+
+
+def save_image_fingerprint(
+    image_id: str,
+    gallery_id: Optional[str],
+    faces: list,
+    image_shape: tuple[int, int],
+    db_version: Optional[str] = None,
+) -> tuple[Optional[int], Optional[str]]:
+    """Save image identification results as a fingerprint."""
+    if rec_db is None:
+        return None, "Recommendations database not initialized"
+
+    try:
+        img_h, img_w = image_shape
+
+        fp_id = rec_db.create_image_fingerprint(
+            stash_image_id=image_id,
+            gallery_id=gallery_id,
+            faces_detected=len(faces),
+            db_version=db_version,
+        )
+
+        # Clear old face data
+        rec_db.delete_image_fingerprint_faces(image_id)
+
+        # Save each detected face's best match
+        for result in faces:
+            if result.matches:
+                best = result.matches[0]
+                box = result.face.box
+                rec_db.add_image_fingerprint_face(
+                    stash_image_id=image_id,
+                    performer_id=best.stashdb_id,
+                    confidence=max(0.0, min(1.0, 1.0 - best.combined_score)),
+                    distance=best.combined_score,
+                    bbox_x=box[0] / img_w if img_w > 0 else 0,
+                    bbox_y=box[1] / img_h if img_h > 0 else 0,
+                    bbox_w=(box[2] - box[0]) / img_w if img_w > 0 else 0,
+                    bbox_h=(box[3] - box[1]) / img_h if img_h > 0 else 0,
+                )
+
+        return fp_id, None
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[save_image_fingerprint] Error: {error_msg}")
         return None, error_msg
 
 
@@ -199,7 +250,7 @@ async def list_recommendations(
             )
             for r in recs
         ],
-        total=len(recs),
+        total=db.count_recommendations(status=status, type=type, target_type=target_type),
     )
 
 
@@ -281,7 +332,7 @@ async def list_analysis_types():
     return {"types": types}
 
 
-async def run_analysis_task(type: str, run_id: int):
+async def run_analysis_task(type: str, run_id: int, incremental: bool = True):
     """Background task to run analysis."""
     db = get_rec_db()
     stash = get_stash_client()
@@ -291,18 +342,18 @@ async def run_analysis_task(type: str, run_id: int):
         db.fail_analysis_run(run_id, f"Unknown analysis type: {type}")
         return
 
-    analyzer = analyzer_class(stash, db)
+    analyzer = analyzer_class(stash, db, run_id=run_id)
 
     try:
-        result = await analyzer.run(incremental=True)
+        result = await analyzer.run(incremental=incremental)
         db.complete_analysis_run(run_id, result.recommendations_created)
     except Exception as e:
         db.fail_analysis_run(run_id, str(e))
 
 
 @router.post("/analysis/{type}/run", response_model=RunAnalysisResponse)
-async def run_analysis(type: str, background_tasks: BackgroundTasks):
-    """Start an analysis run (async)."""
+async def run_analysis(type: str, background_tasks: BackgroundTasks, full: bool = False):
+    """Start an analysis run (async). Pass ?full=true to skip watermark and reprocess all."""
     if type not in ANALYZERS:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {type}")
 
@@ -313,7 +364,7 @@ async def run_analysis(type: str, background_tasks: BackgroundTasks):
     run_id = db.start_analysis_run(type)
 
     # Run in background
-    background_tasks.add_task(run_analysis_task, type, run_id)
+    background_tasks.add_task(run_analysis_task, type, run_id, incremental=not full)
 
     return RunAnalysisResponse(
         run_id=run_id,
@@ -640,18 +691,92 @@ class UpdatePerformerRequest(BaseModel):
 
 @router.post("/actions/update-performer")
 async def update_performer_fields(request: UpdatePerformerRequest):
-    """Apply selected upstream changes to a performer."""
+    """Apply selected upstream changes to a performer.
+
+    Translates diff-engine field names (StashBox-style) to Stash PerformerUpdateInput names.
+    Compound fields (measurements, career_length) are smart-merged with existing values.
+    """
+    from upstream_field_mapper import parse_measurements, parse_career_length
+
     stash = get_stash_client()
     fields = dict(request.fields)
     performer_id = request.performer_id
 
-    # Process _alias_add meta-key: merge new aliases into existing alias list
+    # Lazy-fetch current performer data (only when needed for smart merge)
+    current_performer = None
+
+    async def get_current():
+        nonlocal current_performer
+        if current_performer is None:
+            current_performer = await stash.get_performer(performer_id) or {}
+        return current_performer
+
+    # --- Simple field renames ---
+    FIELD_RENAME = {
+        "aliases": "alias_list",
+        "height": "height_cm",
+        "breast_type": "fake_tits",
+    }
+    for old_name, new_name in FIELD_RENAME.items():
+        if old_name in fields:
+            fields[new_name] = fields.pop(old_name)
+
+    # --- Career years → career_length (smart merge) ---
+    career_start = fields.pop("career_start_year", None)
+    career_end = fields.pop("career_end_year", None)
+    if career_start is not None or career_end is not None:
+        current = await get_current()
+        existing = parse_career_length(current.get("career_length"))
+        start_val = str(career_start) if career_start is not None else (
+            str(existing["career_start_year"]) if existing["career_start_year"] else ""
+        )
+        end_val = str(career_end) if career_end is not None else (
+            str(existing["career_end_year"]) if existing["career_end_year"] else ""
+        )
+        if start_val and end_val:
+            fields["career_length"] = f"{start_val}-{end_val}"
+        elif start_val:
+            fields["career_length"] = f"{start_val}-"
+        elif end_val:
+            fields["career_length"] = f"-{end_val}"
+
+    # --- Measurement fields → measurements string (smart merge) ---
+    cup = fields.pop("cup_size", None)
+    band = fields.pop("band_size", None)
+    waist = fields.pop("waist_size", None)
+    hip = fields.pop("hip_size", None)
+    if any(v is not None for v in [cup, band, waist, hip]):
+        current = await get_current()
+        existing = parse_measurements(current.get("measurements"))
+        # Overlay: accepted value wins, else keep existing
+        final_band = str(band) if band is not None else (
+            str(existing["band_size"]) if existing["band_size"] else ""
+        )
+        final_cup = str(cup) if cup is not None else (
+            existing["cup_size"] or ""
+        )
+        final_waist = str(waist) if waist is not None else (
+            str(existing["waist_size"]) if existing["waist_size"] else ""
+        )
+        final_hip = str(hip) if hip is not None else (
+            str(existing["hip_size"]) if existing["hip_size"] else ""
+        )
+        bust = f"{final_band}{final_cup}"
+        measurements = "-".join([bust, final_waist, final_hip])
+        fields["measurements"] = measurements.rstrip("-") or None
+
+    # --- Integer coercion ---
+    if "height_cm" in fields and isinstance(fields["height_cm"], str):
+        try:
+            fields["height_cm"] = int(fields["height_cm"])
+        except ValueError:
+            pass
+
+    # --- Alias merge (_alias_add meta-key) ---
     alias_additions = fields.pop("_alias_add", None)
     if alias_additions:
-        # Fetch current performer to get existing aliases
-        current = await stash.get_performer(performer_id)
-        existing_aliases = current.get("alias_list", []) if current else []
-        # Merge: existing + new additions (deduplicated, case-insensitive)
+        current = await get_current()
+        existing_aliases = current.get("alias_list", [])
         seen = {a.lower() for a in existing_aliases}
         merged = list(existing_aliases)
         for alias in alias_additions:
@@ -712,3 +837,34 @@ async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool]):
     db = get_rec_db()
     db.set_field_config(endpoint, "performer", field_configs)
     return {"success": True}
+
+
+# ==================== User Settings ====================
+
+@router.get("/settings")
+async def get_all_settings():
+    """Get all user settings."""
+    db = get_rec_db()
+    settings = db.get_all_user_settings()
+    return {"settings": settings}
+
+
+@router.get("/settings/{key}")
+async def get_setting(key: str):
+    """Get a single user setting."""
+    db = get_rec_db()
+    value = db.get_user_setting(key)
+    return {"key": key, "value": value}
+
+
+class SetSettingRequest(BaseModel):
+    """Request to set a user setting."""
+    value: object
+
+
+@router.post("/settings/{key}")
+async def set_setting(key: str, request: SetSettingRequest):
+    """Set a user setting."""
+    db = get_rec_db()
+    db.set_user_setting(key, request.value)
+    return {"success": True, "key": key}

@@ -42,7 +42,7 @@ from frame_extractor import (
     check_ffmpeg_available,
 )
 from matching import MatchingConfig
-from recommendations_router import router as recommendations_router, init_recommendations, save_scene_fingerprint, set_db_version
+from recommendations_router import router as recommendations_router, init_recommendations, save_scene_fingerprint, save_image_fingerprint, set_db_version
 
 
 # Pydantic models for API
@@ -89,6 +89,14 @@ class IdentifyResponse(BaseModel):
     """Response with identification results."""
     faces: list[FaceResult]
     face_count: int
+
+
+class ImageIdentifyRequest(BaseModel):
+    """Request to identify performers in a Stash image by ID."""
+    image_id: str = Field(description="Stash image ID")
+    top_k: int = Field(5, ge=1, le=20, description="Number of matches per face")
+    max_distance: float = Field(0.6, ge=0.0, le=2.0, description="Maximum distance threshold")
+    min_face_confidence: float = Field(0.5, ge=0.0, le=1.0, description="Minimum face detection confidence")
 
 
 class DatabaseInfo(BaseModel):
@@ -378,6 +386,98 @@ async def identify_from_url(
     return await identify_performers(
         IdentifyRequest(image_url=url, top_k=top_k, max_distance=max_distance)
     )
+
+
+@app.post("/identify/image", response_model=IdentifyResponse)
+async def identify_image(request: ImageIdentifyRequest):
+    """
+    Identify performers in a Stash image by image ID.
+    Fetches the image from Stash, runs face recognition, and stores fingerprint.
+    """
+    if recognizer is None:
+        raise HTTPException(status_code=503, detail="Database not loaded")
+
+    base_url = STASH_URL.rstrip("/")
+    api_key = STASH_API_KEY
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="STASH_URL env var not set")
+
+    # Fetch image info from Stash
+    from stash_client_unified import StashClientUnified
+    stash_client = StashClientUnified(base_url, api_key)
+    image_data = await stash_client.get_image_by_id(request.image_id)
+
+    if not image_data:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    image_url = image_data.get("paths", {}).get("image")
+    if not image_url:
+        raise HTTPException(status_code=400, detail="Image has no image path")
+
+    # Fetch the image
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"ApiKey": api_key} if api_key else {}
+            response = await client.get(image_url, headers=headers)
+            response.raise_for_status()
+            image = load_image(response.content)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch image: {e}")
+
+    # Run recognition
+    try:
+        results = recognizer.recognize_image(
+            image,
+            top_k=request.top_k,
+            max_distance=request.max_distance,
+            min_face_confidence=request.min_face_confidence,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
+
+    # Convert to response format (same pattern as /identify endpoint)
+    faces = []
+    img_h, img_w = image.shape[:2]
+
+    for result in results:
+        face_box = FaceBox(
+            x=int(result.face.box[0]),
+            y=int(result.face.box[1]),
+            width=int(result.face.box[2] - result.face.box[0]),
+            height=int(result.face.box[3] - result.face.box[1]),
+            confidence=result.face.confidence,
+        )
+
+        matches = [
+            PerformerMatchResponse(
+                stashdb_id=m.stashdb_id,
+                name=m.name,
+                confidence=distance_to_confidence(m.combined_score),
+                distance=m.combined_score,
+                facenet_distance=m.facenet_distance,
+                arcface_distance=m.arcface_distance,
+                country=m.country,
+                image_url=m.image_url,
+            )
+            for m in result.matches
+        ]
+
+        faces.append(FaceResult(box=face_box, matches=matches))
+
+    # Save fingerprint
+    try:
+        save_image_fingerprint(
+            image_id=request.image_id,
+            gallery_id=None,
+            faces=results,
+            image_shape=(img_h, img_w),
+            db_version=db_manifest.get("version"),
+        )
+    except Exception as e:
+        print(f"[identify_image] Failed to save fingerprint: {e}")
+
+    return IdentifyResponse(faces=faces, face_count=len(faces))
 
 
 # Scene identification models
@@ -1047,7 +1147,7 @@ async def identify_scene(request: SceneIdentifyRequest):
         persons = frequency_based_matching(
             all_results,
             top_k=request.top_k * 2,  # Get more candidates, we'll filter later
-            min_appearances=1,
+            min_appearances=2,
             max_distance=request.max_distance,
         )
         print(f"[identify_scene] [{time.time()-t_start:.1f}s] Frequency matching: {len(persons)} performers in {time.time()-t_match:.1f}s")
