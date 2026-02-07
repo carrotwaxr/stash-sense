@@ -175,18 +175,18 @@ class UpstreamPerformerAnalyzer(BaseAnalyzer):
                     local_data, normalized, snapshot, enabled_fields
                 )
 
-                self.rec_db.upsert_upstream_snapshot(
-                    entity_type="performer",
-                    local_entity_id=local_id,
-                    endpoint=endpoint,
-                    stash_box_id=stash_box_id,
-                    upstream_data=normalized,
-                    upstream_updated_at=updated_at or "",
-                )
-
                 processed += 1
 
                 if not changes:
+                    # No differences: safe to update snapshot baseline
+                    self.rec_db.upsert_upstream_snapshot(
+                        entity_type="performer",
+                        local_entity_id=local_id,
+                        endpoint=endpoint,
+                        stash_box_id=stash_box_id,
+                        upstream_data=normalized,
+                        upstream_updated_at=updated_at or "",
+                    )
                     continue
 
                 endpoint_name = get_stashbox_shortname(endpoint)
@@ -202,21 +202,17 @@ class UpstreamPerformerAnalyzer(BaseAnalyzer):
                 }
 
                 # Check for existing pending recommendation for this performer
-                existing_pending = None
-                for r in self.rec_db.get_recommendations(type=self.type, status="pending"):
-                    if r.target_id == local_id:
-                        existing_pending = r
-                        break
+                existing_pending = self.rec_db.get_recommendation_by_target(
+                    self.type, "performer", local_id, status="pending"
+                )
 
                 if existing_pending:
                     self.rec_db.update_recommendation_details(existing_pending.id, details)
                 else:
                     # Check for dismissed recommendation that can be reopened
-                    existing_dismissed = None
-                    for r in self.rec_db.get_recommendations(type=self.type, status="dismissed"):
-                        if r.target_id == local_id:
-                            existing_dismissed = r
-                            break
+                    existing_dismissed = self.rec_db.get_recommendation_by_target(
+                        self.type, "performer", local_id, status="dismissed"
+                    )
 
                     if existing_dismissed:
                         self.rec_db.undismiss(self.type, "performer", local_id)

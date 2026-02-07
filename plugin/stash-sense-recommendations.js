@@ -1188,7 +1188,7 @@
 
       if (mergeType === 'simple') {
         controlsHtml = `
-          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="simple" data-field-key="${change.field_key}">
+          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="simple" data-field-key="${change.field}">
             <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local value</label>
             <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream value</label>
             <label>
@@ -1200,7 +1200,7 @@
         `;
       } else if (mergeType === 'name') {
         controlsHtml = `
-          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="name" data-field-key="${change.field_key}">
+          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="name" data-field-key="${change.field}">
             <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local name</label>
             <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream name</label>
             <label><input type="radio" name="${fieldName}" value="accept_upstream_alias_local" /> Accept upstream name + demote local to alias</label>
@@ -1220,7 +1220,7 @@
         valuesHtml = ''; // Override - alias_list uses checkbox list instead of value comparison
 
         controlsHtml = `
-          <div class="ss-upstream-alias-list-container" data-field-index="${idx}" data-merge-type="alias_list" data-field-key="${change.field_key}">
+          <div class="ss-upstream-alias-list-container" data-field-index="${idx}" data-merge-type="alias_list" data-field-key="${change.field}">
             <div class="ss-upstream-alias-list">
               ${allAliases.map((a, ai) => `
                 <label class="ss-upstream-alias-item ${a.source}">
@@ -1235,7 +1235,7 @@
         `;
       } else if (mergeType === 'text') {
         controlsHtml = `
-          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="text" data-field-key="${change.field_key}">
+          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="text" data-field-key="${change.field}">
             <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local value</label>
             <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream value</label>
             <label><input type="radio" name="${fieldName}" value="custom" /> Custom edit</label>
@@ -1246,7 +1246,7 @@
 
       fieldRowsHtml += `
         <div class="ss-upstream-field-row">
-          <div class="ss-upstream-field-label">${escapeHtml(change.field_label || change.field_key)}</div>
+          <div class="ss-upstream-field-label">${escapeHtml(change.field_label || change.field)}</div>
           ${valuesHtml}
           ${controlsHtml}
         </div>
@@ -1490,13 +1490,19 @@
   }
 
   function buildAliasList(localAliases, upstreamAliases) {
-    const local = new Set((localAliases || []).map(String));
-    const upstream = new Set((upstreamAliases || []).map(String));
-    const all = new Set([...local, ...upstream]);
+    const localArr = (localAliases || []).map(String);
+    const upstreamArr = (upstreamAliases || []).map(String);
+    // Case-insensitive lookup maps (lowercase -> original value)
+    const localLower = new Map(localArr.map(a => [a.toLowerCase(), a]));
+    const upstreamLower = new Map(upstreamArr.map(a => [a.toLowerCase(), a]));
+    // Merge keys (deduplicated by lowercase)
+    const allKeys = new Set([...localLower.keys(), ...upstreamLower.keys()]);
     const result = [];
-    for (const alias of all) {
-      const inLocal = local.has(alias);
-      const inUpstream = upstream.has(alias);
+    for (const key of allKeys) {
+      const inLocal = localLower.has(key);
+      const inUpstream = upstreamLower.has(key);
+      // Prefer local's casing when both exist
+      const value = inLocal ? localLower.get(key) : upstreamLower.get(key);
       let source;
       if (inLocal && inUpstream) {
         source = 'both';
@@ -1505,7 +1511,7 @@
       } else {
         source = 'upstream-only';
       }
-      result.push({ value: alias, source });
+      result.push({ value, source });
     }
     return result;
   }

@@ -623,10 +623,34 @@ async def mark_all_fingerprints_for_refresh(confirm: bool = False):
 
 # ==================== Upstream Sync Actions ====================
 
+class UpdatePerformerRequest(BaseModel):
+    """Request to apply upstream changes to a performer."""
+    performer_id: str
+    fields: dict
+
+
 @router.post("/actions/update-performer")
-async def update_performer_fields(performer_id: str, fields: dict):
+async def update_performer_fields(request: UpdatePerformerRequest):
     """Apply selected upstream changes to a performer."""
     stash = get_stash_client()
+    fields = dict(request.fields)
+    performer_id = request.performer_id
+
+    # Process _alias_add meta-key: merge new aliases into existing alias list
+    alias_additions = fields.pop("_alias_add", None)
+    if alias_additions:
+        # Fetch current performer to get existing aliases
+        current = await stash.get_performer(performer_id)
+        existing_aliases = current.get("alias_list", []) if current else []
+        # Merge: existing + new additions (deduplicated, case-insensitive)
+        seen = {a.lower() for a in existing_aliases}
+        merged = list(existing_aliases)
+        for alias in alias_additions:
+            if alias.lower() not in seen:
+                merged.append(alias)
+                seen.add(alias.lower())
+        fields["alias_list"] = merged
+
     try:
         result = await stash.update_performer(performer_id, **fields)
         return {"success": True, "performer": result}

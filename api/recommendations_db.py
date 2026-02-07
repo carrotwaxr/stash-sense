@@ -392,6 +392,27 @@ class RecommendationsDB:
             rows = conn.execute(query, params).fetchall()
             return [self._row_to_recommendation(row) for row in rows]
 
+    def get_recommendation_by_target(
+        self,
+        type: str,
+        target_type: str,
+        target_id: str,
+        status: Optional[str] = None,
+    ) -> Optional[Recommendation]:
+        """Get a recommendation by target (uses idx_rec_target index). Returns first match or None."""
+        query = "SELECT * FROM recommendations WHERE type = ? AND target_type = ? AND target_id = ?"
+        params: list = [type, target_type, target_id]
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        query += " LIMIT 1"
+
+        with self._connection() as conn:
+            row = conn.execute(query, params).fetchone()
+            if row:
+                return self._row_to_recommendation(row)
+        return None
+
     def get_recommendation_counts(self) -> dict[str, dict[str, int]]:
         """Get counts by type and status."""
         with self._connection() as conn:
