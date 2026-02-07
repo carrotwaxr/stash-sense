@@ -9,6 +9,7 @@ from .base import BaseAnalyzer, AnalysisResult
 from .duplicate_performer import DuplicatePerformerAnalyzer
 from .duplicate_scene_files import DuplicateSceneFilesAnalyzer
 from .duplicate_scenes import DuplicateScenesAnalyzer
+from .upstream_performer import UpstreamPerformerAnalyzer
 
 __all__ = [
     "BaseAnalyzer",
@@ -16,4 +17,5 @@ __all__ = [
     "DuplicatePerformerAnalyzer",
     "DuplicateSceneFilesAnalyzer",
     "DuplicateScenesAnalyzer",
+    "UpstreamPerformerAnalyzer",
 ]
