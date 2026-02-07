@@ -36,13 +36,11 @@
         const settings = await SS.getSettings();
         onProgress?.('Connecting to Stash Sense...');
 
-        const maxDistance = 1 - (settings.minConfidence / 100);
-
         const result = await SS.runPluginOperation('identify_scene', {
           scene_id: sceneId,
           sidecar_url: settings.sidecarUrl,
           top_k: settings.maxResults,
-          max_distance: maxDistance,
+          // max_distance and min_face_size use tuned defaults in backend (0.6, 60px)
         });
 
         if (result.error) {
@@ -87,39 +85,111 @@
         }
       },
 
+      // Call the face recognition API for a single image
+      async identifyImage(imageId, onProgress) {
+        const settings = await SS.getSettings();
+        onProgress?.('Connecting to Stash Sense...');
+
+        const result = await SS.runPluginOperation('identify_image', {
+          image_id: imageId,
+          sidecar_url: settings.sidecarUrl,
+        });
+
+        if (result.error) {
+          throw new Error(result.error);
+        }
+
+        return result;
+      },
+
+      // Add performer to image
+      async addPerformerToImage(imageId, performerId) {
+        const getQuery = `
+          query GetImage($id: ID!) {
+            findImage(id: $id) {
+              performers { id }
+            }
+          }
+        `;
+
+        const updateQuery = `
+          mutation UpdateImage($id: ID!, $performer_ids: [ID!]) {
+            imageUpdate(input: { id: $id, performer_ids: $performer_ids }) {
+              id
+            }
+          }
+        `;
+
+        try {
+          const getResult = await SS.stashQuery(getQuery, { id: imageId });
+          const currentPerformers = getResult?.findImage?.performers || [];
+          const currentIds = currentPerformers.map(p => p.id);
+
+          if (!currentIds.includes(performerId)) {
+            currentIds.push(performerId);
+          }
+
+          await SS.stashQuery(updateQuery, { id: imageId, performer_ids: currentIds });
+          return true;
+        } catch (e) {
+          console.error('Failed to add performer to image:', e);
+          return false;
+        }
+      },
+
       // Create the results modal
       createModal() {
         const existing = document.getElementById('ss-modal');
         if (existing) existing.remove();
 
-        const modal = SS.createElement('div', {
-          id: 'ss-modal',
-          className: 'ss-modal',
-          innerHTML: `
-            <div class="ss-modal-backdrop"></div>
-            <div class="ss-modal-content">
-              <div class="ss-modal-header">
-                <h3>Stash Sense Results</h3>
-                <button class="ss-modal-close" aria-label="Close">&times;</button>
-              </div>
-              <div class="ss-modal-body">
-                <div class="ss-loading">
-                  <div class="ss-spinner"></div>
-                  <p class="ss-loading-text">Connecting to Stash Sense...</p>
-                  <p class="ss-loading-detail"></p>
-                </div>
-                <div class="ss-results" style="display: none;"></div>
-                <div class="ss-error" style="display: none;"></div>
-              </div>
-            </div>
-          `,
-        });
+        // Use inline styles to prevent Stash's Bootstrap CSS from
+        // turning this into a drawer/sheet layout
+        const modal = document.createElement('div');
+        modal.id = 'ss-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+        const backdrop = document.createElement('div');
+        backdrop.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);';
+        modal.appendChild(backdrop);
+
+        const content = document.createElement('div');
+        content.className = 'ss-modal-content';
+        content.style.cssText = 'position:relative;background:var(--bs-body-bg, #1a1a1a);border-radius:8px;width:90%;max-width:700px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--bs-border-color, #333);';
+        const title = document.createElement('h3');
+        title.style.cssText = 'margin:0;font-size:18px;font-weight:600;color:var(--bs-body-color, #fff);';
+        title.textContent = 'Stash Sense Results';
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'ss-modal-close';
+        closeBtn.style.cssText = 'background:none;border:none;font-size:24px;color:var(--bs-secondary-color, #888);cursor:pointer;padding:0;line-height:1;';
+        closeBtn.setAttribute('aria-label', 'Close');
+        closeBtn.innerHTML = '&times;';
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        content.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'ss-modal-body';
+        body.style.cssText = 'padding:20px;overflow-y:auto;flex:1;';
+        body.innerHTML = `
+          <div class="ss-loading">
+            <div class="ss-spinner"></div>
+            <p class="ss-loading-text">Connecting to Stash Sense...</p>
+            <p class="ss-loading-detail"></p>
+          </div>
+          <div class="ss-results" style="display: none;"></div>
+          <div class="ss-error" style="display: none;"></div>
+        `;
+        content.appendChild(body);
+        modal.appendChild(content);
 
         document.body.appendChild(modal);
 
         const closeModal = () => modal.remove();
-        modal.querySelector('.ss-modal-close').addEventListener('click', closeModal);
-        modal.querySelector('.ss-modal-backdrop').addEventListener('click', closeModal);
+        closeBtn.addEventListener('click', closeModal);
+        backdrop.addEventListener('click', closeModal);
 
         const escHandler = (e) => {
           if (e.key === 'Escape') {
@@ -323,6 +393,147 @@
         }
       },
 
+      async handleIdentifyImage() {
+        const route = SS.getRoute();
+        if (route.type !== 'image') return;
+
+        const imageId = route.id;
+        const modal = this.createModal();
+
+        try {
+          this.updateLoading(modal, 'Analyzing image...', 'Detecting faces');
+
+          const results = await this.identifyImage(imageId, (stage) => {
+            this.updateLoading(modal, stage);
+          });
+
+          this.updateLoading(modal, 'Processing results...');
+          await this.renderImageResults(modal, results, imageId);
+        } catch (error) {
+          console.error(`[${SS.PLUGIN_NAME}] Image analysis failed:`, error);
+          this.showError(modal, error.message);
+        }
+      },
+
+      async renderImageResults(modal, results, imageId) {
+        const loading = modal.querySelector('.ss-loading');
+        const resultsDiv = modal.querySelector('.ss-results');
+        const errorDiv = modal.querySelector('.ss-error');
+
+        loading.style.display = 'none';
+
+        if (!results.faces || results.faces.length === 0) {
+          errorDiv.innerHTML = `
+            <div class="ss-error-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+              </svg>
+            </div>
+            <p class="ss-error-title">No faces detected</p>
+            <p class="ss-error-hint">The image may not contain clear face shots.</p>
+          `;
+          errorDiv.style.display = 'block';
+          return;
+        }
+
+        resultsDiv.innerHTML = `
+          <p class="ss-summary">
+            Detected <strong>${results.face_count}</strong> face(s) in image.
+          </p>
+          <div class="ss-persons"></div>
+        `;
+
+        const personsDiv = resultsDiv.querySelector('.ss-persons');
+
+        for (let i = 0; i < results.faces.length; i++) {
+          const face = results.faces[i];
+          const personDiv = document.createElement('div');
+          personDiv.className = 'ss-person';
+
+          if (!face.matches || face.matches.length === 0) {
+            personDiv.innerHTML = `
+              <div class="ss-person-header">
+                <span class="ss-person-label">Face ${i + 1}</span>
+              </div>
+              <p class="ss-no-match">No match found in database</p>
+            `;
+          } else {
+            const match = face.matches[0];
+            const confidence = this.distanceToConfidence(match.distance);
+            const confidenceClass = SS.getConfidenceClass(confidence);
+            const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id);
+
+            personDiv.innerHTML = `
+              <div class="ss-person-header">
+                <span class="ss-person-label">Face ${i + 1}</span>
+              </div>
+              <div class="ss-match">
+                <div class="ss-match-image">
+                  ${match.image_url ? `<img src="${match.image_url}" alt="${match.name}" loading="lazy" />` : '<div class="ss-no-image">No image</div>'}
+                </div>
+                <div class="ss-match-info">
+                  <h4>${match.name}</h4>
+                  <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
+                  ${match.country ? `<div class="ss-country">${match.country}</div>` : ''}
+                  <div class="ss-links">
+                    <a href="https://stashdb.org/performers/${match.stashdb_id}" target="_blank" rel="noopener" class="ss-link">
+                      View on StashDB
+                    </a>
+                  </div>
+                  <div class="ss-actions">
+                    ${localPerformer
+                      ? `<button class="ss-btn ss-btn-add" data-performer-id="${localPerformer.id}" data-image-id="${imageId}">
+                           Add to Image
+                         </button>
+                         <span class="ss-local-status">In library as: ${localPerformer.name}</span>`
+                      : `<span class="ss-local-status ss-not-in-library">Not in library</span>`
+                    }
+                  </div>
+                </div>
+              </div>
+              ${face.matches.length > 1 ? `
+                <details class="ss-other-matches">
+                  <summary>Other possible matches (${face.matches.length - 1})</summary>
+                  <ul>
+                    ${face.matches.slice(1).map(m => {
+                      const altConf = this.distanceToConfidence(m.distance);
+                      return `<li>
+                        <a href="https://stashdb.org/performers/${m.stashdb_id}" target="_blank" rel="noopener">${m.name}</a>
+                        <span class="ss-alt-confidence">${altConf}%</span>
+                      </li>`;
+                    }).join('')}
+                  </ul>
+                </details>
+              ` : ''}
+            `;
+          }
+
+          personsDiv.appendChild(personDiv);
+        }
+
+        // Add click handlers for "Add to Image" buttons
+        resultsDiv.querySelectorAll('.ss-btn-add').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const performerId = e.target.dataset.performerId;
+            const targetImageId = e.target.dataset.imageId;
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+
+            const success = await this.addPerformerToImage(targetImageId, performerId);
+            if (success) {
+              btn.textContent = 'Added!';
+              btn.classList.add('ss-btn-success');
+            } else {
+              btn.textContent = 'Failed';
+              btn.classList.add('ss-btn-error');
+              btn.disabled = false;
+            }
+          });
+        });
+
+        resultsDiv.style.display = 'block';
+      },
+
       createButton() {
         const status = SS.getSidecarStatus();
         const btn = SS.createElement('button', {
@@ -382,6 +593,54 @@
         floatingBtn.classList.add('ss-floating-btn');
         document.body.appendChild(floatingBtn);
       },
+
+      createImageButton() {
+        const status = SS.getSidecarStatus();
+        const btn = SS.createElement('button', {
+          className: 'ss-identify-btn btn btn-secondary',
+          attrs: {
+            title: status === false ? 'Stash Sense: Not connected' : 'Identify performers using face recognition',
+          },
+          innerHTML: `
+            <span class="ss-btn-icon ${status === true ? 'ss-connected' : status === false ? 'ss-disconnected' : ''}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+              </svg>
+            </span>
+            <span class="ss-btn-text">Identify Performers</span>
+          `,
+        });
+        btn.addEventListener('click', () => this.handleIdentifyImage());
+        return btn;
+      },
+
+      injectImageButton() {
+        const route = SS.getRoute();
+        if (route.type !== 'image') return;
+        if (document.querySelector('.ss-identify-btn')) return;
+
+        const buttonContainers = [
+          '.image-toolbar .btn-group',
+          '.detail-header .ml-auto .btn-group',
+          '.image-header .btn-group',
+          '.detail-header-buttons',
+          '.ml-auto.btn-group',
+        ];
+
+        for (const selector of buttonContainers) {
+          const container = document.querySelector(selector);
+          if (container) {
+            container.appendChild(this.createImageButton());
+            console.log(`[${SS.PLUGIN_NAME}] Image button injected into ${selector}`);
+            return;
+          }
+        }
+
+        // Fallback: floating button
+        const floatingBtn = this.createImageButton();
+        floatingBtn.classList.add('ss-floating-btn');
+        document.body.appendChild(floatingBtn);
+      },
     };
 
     // ==================== Initialization ====================
@@ -402,11 +661,15 @@
 
       // Inject scene button
       setTimeout(() => FaceRecognition.injectSceneButton(), 500);
+      setTimeout(() => FaceRecognition.injectImageButton(), 500);
 
       // Watch for navigation
       SS.onNavigate((route) => {
         if (route.type === 'scene') {
           setTimeout(() => FaceRecognition.injectSceneButton(), 300);
+        }
+        if (route.type === 'image') {
+          setTimeout(() => FaceRecognition.injectImageButton(), 300);
         }
       });
 
