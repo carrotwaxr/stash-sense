@@ -137,6 +137,23 @@
     async stopFingerprintGeneration() {
       return apiCall('fp_stop');
     },
+
+    // Upstream performer sync operations
+    async updatePerformer(performerId, fields) {
+      return apiCall('rec_update_performer', { performer_id: performerId, fields });
+    },
+
+    async dismissUpstream(recId, reason, permanent) {
+      return apiCall('rec_dismiss_upstream', { rec_id: recId, reason, permanent: !!permanent });
+    },
+
+    async getFieldConfig(endpoint) {
+      return apiCall('rec_get_field_config', { endpoint });
+    },
+
+    async setFieldConfig(endpoint, fieldConfigs) {
+      return apiCall('rec_set_field_config', { endpoint, field_configs: fieldConfigs });
+    },
   };
 
   // ==================== State ====================
@@ -295,6 +312,11 @@
           icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z"/></svg>`,
           description: 'Scenes with multiple files attached',
         },
+        upstream_performer_changes: {
+          title: 'Upstream Performer Changes',
+          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 6V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>`,
+          description: 'Performer fields updated on StashDB since last sync',
+        },
       };
 
       for (const [type, typeCounts] of Object.entries(counts.counts)) {
@@ -333,7 +355,7 @@
 
       // Render analysis buttons in desired order
       const analysisButtons = container.querySelector('.ss-analysis-buttons');
-      const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files'];
+      const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files', 'upstream_performer_changes'];
       const sortedTypes = [...analysisTypes.types].sort((a, b) => {
         const aIdx = buttonOrder.indexOf(a.type);
         const bIdx = buttonOrder.indexOf(b.type);
@@ -528,6 +550,7 @@
     const typeConfigs = {
       duplicate_performer: 'Duplicate Performers',
       duplicate_scene_files: 'Duplicate Scene Files',
+      upstream_performer_changes: 'Upstream Performer Changes',
     };
 
     container.innerHTML = `
@@ -668,6 +691,27 @@
       });
     }
 
+    if (rec.type === 'upstream_performer_changes') {
+      const changeCount = (details.changes || []).length;
+      const changedFields = (details.changes || []).map(c => c.field_label).join(', ');
+
+      return SS.createElement('div', {
+        className: 'ss-rec-card ss-rec-upstream',
+        innerHTML: `
+          <div class="ss-rec-card-header">
+            <img src="${details.performer_image_path || ''}" class="ss-rec-thumb" onerror="this.style.display='none'"/>
+            <div class="ss-rec-card-info">
+              <div class="ss-rec-card-title">Upstream Changes: ${details.performer_name || 'Unknown'}</div>
+              <div class="ss-rec-card-subtitle">
+                ${changeCount} field${changeCount !== 1 ? 's' : ''} changed · ${details.endpoint_name || ''}
+              </div>
+              <div class="ss-rec-card-fields">${changedFields}</div>
+            </div>
+          </div>
+        `,
+      });
+    }
+
     // Fallback for unknown types
     return SS.createElement('div', {
       className: 'ss-rec-card',
@@ -714,6 +758,8 @@
       renderDuplicatePerformerDetail(content, rec);
     } else if (rec.type === 'duplicate_scene_files') {
       renderDuplicateSceneFilesDetail(content, rec);
+    } else if (rec.type === 'upstream_performer_changes') {
+      renderUpstreamPerformerDetail(content, rec);
     } else {
       content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
     }
@@ -929,6 +975,347 @@
         btn.disabled = false;
       }
     });
+  }
+
+  // ==================== Upstream Performer Detail ====================
+
+  function renderUpstreamPerformerDetail(container, rec) {
+    const details = rec.details;
+    const changes = details.changes || [];
+    const performerId = details.performer_id;
+
+    // Build the header
+    const headerHtml = `
+      <div class="ss-upstream-header">
+        <img src="${details.performer_image_path || ''}" alt="${details.performer_name || ''}" onerror="this.style.display='none'" />
+        <div>
+          <h2 style="margin: 0 0 4px 0;">
+            <a href="/performers/${performerId}" target="_blank">${details.performer_name || 'Unknown'}</a>
+          </h2>
+          <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
+        </div>
+      </div>
+    `;
+
+    // Build field rows
+    let fieldRowsHtml = '';
+    changes.forEach((change, idx) => {
+      const fieldName = `field_${idx}`;
+      const mergeType = change.merge_type || 'simple';
+
+      let valuesHtml = '';
+      if (mergeType !== 'alias_list') {
+        valuesHtml = `
+          <div class="ss-upstream-values">
+            <div class="ss-upstream-local-value">
+              <div class="ss-upstream-value-label">Local</div>
+              <div>${escapeHtml(formatFieldValue(change.local_value))}</div>
+            </div>
+            <div class="ss-upstream-upstream-value">
+              <div class="ss-upstream-value-label">Upstream</div>
+              <div>${escapeHtml(formatFieldValue(change.upstream_value))}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      let controlsHtml = '';
+
+      if (mergeType === 'simple') {
+        controlsHtml = `
+          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="simple" data-field-key="${change.field_key}">
+            <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local value</label>
+            <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream value</label>
+            <label>
+              <input type="radio" name="${fieldName}" value="custom" />
+              Custom edit
+              <input type="text" class="ss-upstream-custom-input" data-custom-for="${fieldName}" placeholder="Enter custom value" style="display:none" />
+            </label>
+          </div>
+        `;
+      } else if (mergeType === 'name') {
+        controlsHtml = `
+          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="name" data-field-key="${change.field_key}">
+            <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local name</label>
+            <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream name</label>
+            <label><input type="radio" name="${fieldName}" value="accept_upstream_alias_local" /> Accept upstream name + demote local to alias</label>
+            <label><input type="radio" name="${fieldName}" value="keep_local_alias_upstream" /> Keep local name + add upstream as alias</label>
+            <label>
+              <input type="radio" name="${fieldName}" value="custom" />
+              Custom edit
+              <input type="text" class="ss-upstream-custom-input" data-custom-for="${fieldName}" placeholder="Enter custom name" style="display:none" />
+            </label>
+          </div>
+        `;
+      } else if (mergeType === 'alias_list') {
+        const localAliases = change.local_value || [];
+        const upstreamAliases = change.upstream_value || [];
+        const allAliases = buildAliasList(localAliases, upstreamAliases);
+
+        valuesHtml = ''; // Override - alias_list uses checkbox list instead of value comparison
+
+        controlsHtml = `
+          <div class="ss-upstream-alias-list-container" data-field-index="${idx}" data-merge-type="alias_list" data-field-key="${change.field_key}">
+            <div class="ss-upstream-alias-list">
+              ${allAliases.map((a, ai) => `
+                <label class="ss-upstream-alias-item ${a.source}">
+                  <input type="checkbox" name="${fieldName}_alias_${ai}" value="${escapeHtml(a.value)}" ${a.source === 'both' || a.source === 'local-only' ? 'checked' : ''} />
+                  <span>${escapeHtml(a.value)}</span>
+                  <span class="ss-upstream-alias-tag">${a.source === 'both' ? 'both' : a.source === 'local-only' ? 'local' : 'upstream'}</span>
+                </label>
+              `).join('')}
+            </div>
+            <button class="ss-btn ss-btn-secondary ss-upstream-add-alias-btn" type="button" style="margin-top: 0.5rem; padding: 4px 10px; font-size: 0.8rem;">+ Add custom alias</button>
+          </div>
+        `;
+      } else if (mergeType === 'text') {
+        controlsHtml = `
+          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="text" data-field-key="${change.field_key}">
+            <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local value</label>
+            <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream value</label>
+            <label><input type="radio" name="${fieldName}" value="custom" /> Custom edit</label>
+            <textarea class="ss-upstream-textarea" data-custom-for="${fieldName}" style="display:none" placeholder="Enter custom text">${escapeHtml(String(change.local_value || ''))}</textarea>
+          </div>
+        `;
+      }
+
+      fieldRowsHtml += `
+        <div class="ss-upstream-field-row">
+          <div class="ss-upstream-field-label">${escapeHtml(change.field_label || change.field_key)}</div>
+          ${valuesHtml}
+          ${controlsHtml}
+        </div>
+      `;
+    });
+
+    // Action bar
+    const actionBarHtml = `
+      <div class="ss-upstream-action-bar">
+        <button class="ss-btn ss-upstream-apply-btn" id="ss-upstream-apply">Apply Selected Changes</button>
+        <div class="ss-upstream-dismiss-dropdown" style="position: relative;">
+          <button class="ss-btn ss-upstream-dismiss-btn" id="ss-upstream-dismiss-toggle">Dismiss</button>
+          <div class="ss-upstream-dismiss-menu" id="ss-upstream-dismiss-menu" style="display:none; position:absolute; bottom:100%; left:0; background:var(--bs-tertiary-bg, #2a2a2a); border:1px solid var(--bs-border-color, #333); border-radius:6px; padding:4px 0; min-width:220px; z-index:10;">
+            <button class="ss-upstream-dismiss-option" data-permanent="false" style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--bs-body-color, #fff); cursor:pointer; font-size:0.85rem;">Dismiss this update</button>
+            <button class="ss-upstream-dismiss-option" data-permanent="true" style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--bs-body-color, #fff); cursor:pointer; font-size:0.85rem;">Never show for this performer</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = `
+      <div class="ss-detail-upstream-performer">
+        ${headerHtml}
+        ${fieldRowsHtml}
+        ${actionBarHtml}
+      </div>
+    `;
+
+    // Wire up radio buttons to show/hide custom inputs
+    container.querySelectorAll('.ss-upstream-radio-group').forEach(group => {
+      group.addEventListener('change', (e) => {
+        if (e.target.type !== 'radio') return;
+        const customInput = group.querySelector('.ss-upstream-custom-input') || group.querySelector('.ss-upstream-textarea');
+        if (customInput) {
+          customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+          if (e.target.value === 'custom') {
+            customInput.focus();
+          }
+        }
+      });
+    });
+
+    // Wire up alias "Add custom" buttons
+    container.querySelectorAll('.ss-upstream-add-alias-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const aliasContainer = btn.closest('.ss-upstream-alias-list-container');
+        const aliasList = aliasContainer.querySelector('.ss-upstream-alias-list');
+        const fieldIndex = aliasContainer.dataset.fieldIndex;
+        const existingCount = aliasList.querySelectorAll('.ss-upstream-alias-item').length;
+
+        const newAlias = prompt('Enter new alias:');
+        if (!newAlias || !newAlias.trim()) return;
+
+        const item = document.createElement('label');
+        item.className = 'ss-upstream-alias-item both';
+        item.innerHTML = `
+          <input type="checkbox" name="field_${fieldIndex}_alias_${existingCount}" value="${escapeHtml(newAlias.trim())}" checked />
+          <span>${escapeHtml(newAlias.trim())}</span>
+          <span class="ss-upstream-alias-tag">custom</span>
+        `;
+        aliasList.appendChild(item);
+      });
+    });
+
+    // Dismiss dropdown toggle
+    const dismissToggle = container.querySelector('#ss-upstream-dismiss-toggle');
+    const dismissMenu = container.querySelector('#ss-upstream-dismiss-menu');
+
+    dismissToggle.addEventListener('click', () => {
+      dismissMenu.style.display = dismissMenu.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Close dismiss menu on outside click
+    document.addEventListener('click', function closeDismissMenu(e) {
+      if (!dismissToggle.contains(e.target) && !dismissMenu.contains(e.target)) {
+        dismissMenu.style.display = 'none';
+      }
+      // Clean up if container is removed from DOM
+      if (!document.contains(container)) {
+        document.removeEventListener('click', closeDismissMenu);
+      }
+    });
+
+    // Dismiss options
+    container.querySelectorAll('.ss-upstream-dismiss-option').forEach(option => {
+      option.addEventListener('click', async () => {
+        const permanent = option.dataset.permanent === 'true';
+        dismissMenu.style.display = 'none';
+        dismissToggle.disabled = true;
+        dismissToggle.textContent = 'Dismissing...';
+        try {
+          await RecommendationsAPI.dismissUpstream(rec.id, 'User dismissed', permanent);
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        } catch (e) {
+          dismissToggle.textContent = `Failed: ${e.message}`;
+          dismissToggle.disabled = false;
+        }
+      });
+
+      option.addEventListener('mouseenter', () => {
+        option.style.background = 'rgba(255,255,255,0.05)';
+      });
+      option.addEventListener('mouseleave', () => {
+        option.style.background = 'none';
+      });
+    });
+
+    // Apply button
+    container.querySelector('#ss-upstream-apply').addEventListener('click', async () => {
+      const btn = container.querySelector('#ss-upstream-apply');
+      const fields = {};
+
+      // Collect values from simple, name, and text merge types
+      container.querySelectorAll('.ss-upstream-radio-group').forEach(group => {
+        const fieldKey = group.dataset.fieldKey;
+        const mergeType = group.dataset.mergeType;
+        const fieldIndex = group.dataset.fieldIndex;
+        const selected = group.querySelector(`input[name="field_${fieldIndex}"]:checked`);
+        if (!selected) return;
+
+        const change = changes[parseInt(fieldIndex)];
+        const choice = selected.value;
+
+        if (choice === 'keep_local') {
+          // No change for this field
+          return;
+        } else if (choice === 'accept_upstream') {
+          fields[fieldKey] = change.upstream_value;
+        } else if (choice === 'accept_upstream_alias_local') {
+          fields[fieldKey] = change.upstream_value;
+          // Also add local name as alias
+          fields['_alias_add'] = fields['_alias_add'] || [];
+          fields['_alias_add'].push(String(change.local_value || ''));
+        } else if (choice === 'keep_local_alias_upstream') {
+          // Keep local name, add upstream as alias
+          fields['_alias_add'] = fields['_alias_add'] || [];
+          fields['_alias_add'].push(String(change.upstream_value || ''));
+        } else if (choice === 'custom') {
+          const customInput = group.querySelector('.ss-upstream-custom-input') || group.querySelector('.ss-upstream-textarea');
+          if (customInput && customInput.value.trim()) {
+            fields[fieldKey] = customInput.value.trim();
+          }
+        }
+      });
+
+      // Collect values from alias_list merge types
+      container.querySelectorAll('.ss-upstream-alias-list-container').forEach(aliasContainer => {
+        const fieldKey = aliasContainer.dataset.fieldKey;
+        const checkedAliases = [];
+        aliasContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+          checkedAliases.push(cb.value);
+        });
+        fields[fieldKey] = checkedAliases;
+      });
+
+      // Check if any changes were selected
+      const hasChanges = Object.keys(fields).length > 0;
+      if (!hasChanges) {
+        // All fields set to keep_local - just resolve without updating
+        try {
+          btn.disabled = true;
+          btn.textContent = 'Resolving...';
+          await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
+          btn.textContent = 'Done!';
+          btn.classList.add('ss-btn-success');
+          setTimeout(() => {
+            currentState.view = 'list';
+            currentState.selectedRec = null;
+            renderCurrentView(document.getElementById('ss-recommendations'));
+          }, 1500);
+        } catch (e) {
+          btn.textContent = `Failed: ${e.message}`;
+          btn.classList.add('ss-btn-error');
+          btn.disabled = false;
+        }
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Applying...';
+
+        await RecommendationsAPI.updatePerformer(performerId, fields);
+        await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
+
+        btn.textContent = 'Applied!';
+        btn.classList.add('ss-btn-success');
+
+        setTimeout(() => {
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        }, 1500);
+      } catch (e) {
+        btn.textContent = `Failed: ${e.message}`;
+        btn.classList.add('ss-btn-error');
+        btn.disabled = false;
+      }
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+  }
+
+  function formatFieldValue(val) {
+    if (val === null || val === undefined) return '(empty)';
+    if (Array.isArray(val)) return val.join(', ') || '(empty)';
+    return String(val) || '(empty)';
+  }
+
+  function buildAliasList(localAliases, upstreamAliases) {
+    const local = new Set((localAliases || []).map(String));
+    const upstream = new Set((upstreamAliases || []).map(String));
+    const all = new Set([...local, ...upstream]);
+    const result = [];
+    for (const alias of all) {
+      const inLocal = local.has(alias);
+      const inUpstream = upstream.has(alias);
+      let source;
+      if (inLocal && inUpstream) {
+        source = 'both';
+      } else if (inLocal) {
+        source = 'local-only';
+      } else {
+        source = 'upstream-only';
+      }
+      result.push({ value: alias, source });
+    }
+    return result;
   }
 
   // ==================== View Router ====================
