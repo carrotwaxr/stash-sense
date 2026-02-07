@@ -512,6 +512,21 @@ class RecommendationsDB:
             )
             return cursor.rowcount > 0
 
+    def reopen_recommendation(self, rec_id: int, details: dict) -> bool:
+        """Reopen a dismissed recommendation with new details. Returns True if updated."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE recommendations
+                SET status = 'pending', details = ?,
+                    resolution_action = NULL, resolution_details = NULL,
+                    resolved_at = NULL, updated_at = datetime('now')
+                WHERE id = ? AND status = 'dismissed'
+                """,
+                (json.dumps(details), rec_id)
+            )
+            return cursor.rowcount > 0
+
     def _row_to_recommendation(self, row: sqlite3.Row) -> Recommendation:
         """Convert a database row to a Recommendation object."""
         return Recommendation(

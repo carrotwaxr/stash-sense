@@ -202,26 +202,35 @@ class UpstreamPerformerAnalyzer(BaseAnalyzer):
                 }
 
                 # Check for existing pending recommendation for this performer
-                existing = None
+                existing_pending = None
                 for r in self.rec_db.get_recommendations(type=self.type, status="pending"):
                     if r.target_id == local_id:
-                        existing = r
+                        existing_pending = r
                         break
 
-                if existing:
-                    self.rec_db.update_recommendation_details(existing.id, details)
+                if existing_pending:
+                    self.rec_db.update_recommendation_details(existing_pending.id, details)
                 else:
-                    if self.rec_db.is_dismissed(self.type, "performer", local_id):
-                        self.rec_db.undismiss(self.type, "performer", local_id)
+                    # Check for dismissed recommendation that can be reopened
+                    existing_dismissed = None
+                    for r in self.rec_db.get_recommendations(type=self.type, status="dismissed"):
+                        if r.target_id == local_id:
+                            existing_dismissed = r
+                            break
 
-                    rec_id = self.create_recommendation(
-                        target_type="performer",
-                        target_id=local_id,
-                        details=details,
-                        confidence=1.0,
-                    )
-                    if rec_id:
+                    if existing_dismissed:
+                        self.rec_db.undismiss(self.type, "performer", local_id)
+                        self.rec_db.reopen_recommendation(existing_dismissed.id, details)
                         created += 1
+                    else:
+                        rec_id = self.create_recommendation(
+                            target_type="performer",
+                            target_id=local_id,
+                            details=details,
+                            confidence=1.0,
+                        )
+                        if rec_id:
+                            created += 1
 
             if not upstream_performers:
                 break
