@@ -391,32 +391,41 @@ async def stash_status():
 
 # ==================== Actions ====================
 
+class MergePerformersRequest(BaseModel):
+    """Request to merge duplicate performers."""
+    destination_id: str
+    source_ids: list[str]
+
+
 @router.post("/actions/merge-performers")
-async def merge_performers(destination_id: str, source_ids: list[str]):
+async def merge_performers(request: MergePerformersRequest):
     """Execute a performer merge."""
     stash = get_stash_client()
     try:
-        result = await stash.merge_performers(source_ids, destination_id)
+        result = await stash.merge_performers(request.source_ids, request.destination_id)
         return {"success": True, "merged_into": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class DeleteSceneFilesRequest(BaseModel):
+    """Request to delete duplicate scene files."""
+    scene_id: str
+    file_ids_to_delete: list[str]
+    keep_file_id: str
+    all_file_ids: list[str]
+
+
 @router.post("/actions/delete-scene-files")
-async def delete_scene_files(
-    scene_id: str,
-    file_ids_to_delete: list[str],
-    keep_file_id: str,
-    all_file_ids: list[str],
-):
+async def delete_scene_files(request: DeleteSceneFilesRequest):
     """Delete files from a scene, keeping the specified file."""
     stash = get_stash_client()
     try:
         result = await stash.delete_scene_files(
-            scene_id=scene_id,
-            file_ids_to_delete=file_ids_to_delete,
-            keep_file_id=keep_file_id,
-            all_file_ids=all_file_ids,
+            scene_id=request.scene_id,
+            file_ids_to_delete=request.file_ids_to_delete,
+            keep_file_id=request.keep_file_id,
+            all_file_ids=request.all_file_ids,
         )
         return {"success": result}
     except Exception as e:

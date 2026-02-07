@@ -768,7 +768,7 @@
           <div class="ss-rec-performers">
             ${performers.map(p => `
               <div class="ss-rec-performer-thumb ${p.is_suggested_keeper ? 'keeper' : ''}">
-                <img src="${p.image_path}" alt="${p.name}" loading="lazy" />
+                ${p.image_path ? `<img src="${p.image_path}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'" />` : ''}
                 <span class="ss-performer-name">${p.name}</span>
                 <span class="ss-performer-count">${p.scene_count} scenes</span>
               </div>
@@ -895,7 +895,7 @@
           ${performers.map(p => `
             <div class="ss-performer-option ${p.is_suggested_keeper ? 'suggested' : ''}" data-id="${p.id}">
               <div class="ss-performer-image">
-                <img src="${p.image_path}" alt="${p.name}" loading="lazy" />
+                ${p.image_path ? `<img src="${p.image_path}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="ss-no-image">No Image</div>'}
                 ${p.is_suggested_keeper ? '<span class="ss-suggested-badge">Suggested Keeper</span>' : ''}
               </div>
               <div class="ss-performer-details">
