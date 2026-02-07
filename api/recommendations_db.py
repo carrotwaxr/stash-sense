@@ -428,7 +428,7 @@ class RecommendationsDB:
             )
             return cursor.rowcount > 0
 
-    def dismiss_recommendation(self, rec_id: int, reason: Optional[str] = None) -> bool:
+    def dismiss_recommendation(self, rec_id: int, reason: Optional[str] = None, permanent: bool = False) -> bool:
         """Dismiss a recommendation and add to dismissed_targets."""
         with self._connection() as conn:
             # Get the recommendation first
@@ -454,10 +454,10 @@ class RecommendationsDB:
             try:
                 conn.execute(
                     """
-                    INSERT INTO dismissed_targets (type, target_type, target_id, reason)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO dismissed_targets (type, target_type, target_id, reason, permanent)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (row['type'], row['target_type'], row['target_id'], reason)
+                    (row['type'], row['target_type'], row['target_id'], reason, int(permanent))
                 )
             except sqlite3.IntegrityError:
                 pass  # Already dismissed
@@ -475,6 +475,42 @@ class RecommendationsDB:
                 (type, target_type, target_id)
             ).fetchone()
             return row is not None
+
+    def is_permanently_dismissed(self, type: str, target_type: str, target_id: str) -> bool:
+        """Check if a target has been permanently dismissed."""
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM dismissed_targets
+                WHERE type = ? AND target_type = ? AND target_id = ? AND permanent = 1
+                """,
+                (type, target_type, target_id)
+            ).fetchone()
+            return row is not None
+
+    def undismiss(self, type: str, target_type: str, target_id: str):
+        """Remove soft dismissals for a target (does not remove permanent dismissals)."""
+        with self._connection() as conn:
+            conn.execute(
+                """
+                DELETE FROM dismissed_targets
+                WHERE type = ? AND target_type = ? AND target_id = ? AND permanent = 0
+                """,
+                (type, target_type, target_id)
+            )
+
+    def update_recommendation_details(self, rec_id: int, details: dict) -> bool:
+        """Update details on a pending recommendation. Returns True if updated."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE recommendations
+                SET details = ?, updated_at = datetime('now')
+                WHERE id = ? AND status = 'pending'
+                """,
+                (json.dumps(details), rec_id)
+            )
+            return cursor.rowcount > 0
 
     def _row_to_recommendation(self, row: sqlite3.Row) -> Recommendation:
         """Convert a database row to a Recommendation object."""
@@ -698,6 +734,105 @@ class RecommendationsDB:
                 """,
                 (type, last_cursor, last_stash_updated_at, last_cursor, last_stash_updated_at)
             )
+
+    # ==================== Upstream Snapshots ====================
+
+    def upsert_upstream_snapshot(
+        self,
+        entity_type: str,
+        local_entity_id: str,
+        endpoint: str,
+        stash_box_id: str,
+        upstream_data: dict,
+        upstream_updated_at: str,
+    ) -> int:
+        """
+        Create or update an upstream snapshot. Returns the snapshot ID.
+        Uses upsert on the unique constraint (entity_type, endpoint, stash_box_id).
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO upstream_snapshots (
+                    entity_type, local_entity_id, endpoint, stash_box_id,
+                    upstream_data, upstream_updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(entity_type, endpoint, stash_box_id) DO UPDATE SET
+                    local_entity_id = excluded.local_entity_id,
+                    upstream_data = excluded.upstream_data,
+                    upstream_updated_at = excluded.upstream_updated_at,
+                    fetched_at = datetime('now')
+                RETURNING id
+                """,
+                (entity_type, local_entity_id, endpoint, stash_box_id,
+                 json.dumps(upstream_data), upstream_updated_at)
+            )
+            return cursor.fetchone()[0]
+
+    def get_upstream_snapshot(
+        self,
+        entity_type: str,
+        endpoint: str,
+        stash_box_id: str,
+    ) -> Optional[dict]:
+        """Get an upstream snapshot by its unique key. Returns dict with parsed upstream_data, or None."""
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM upstream_snapshots
+                WHERE entity_type = ? AND endpoint = ? AND stash_box_id = ?
+                """,
+                (entity_type, endpoint, stash_box_id)
+            ).fetchone()
+            if row:
+                result = dict(row)
+                result["upstream_data"] = json.loads(result["upstream_data"])
+                return result
+        return None
+
+    # ==================== Upstream Field Config ====================
+
+    def get_enabled_fields(self, endpoint: str, entity_type: str) -> Optional[set[str]]:
+        """
+        Get the set of enabled field names for an endpoint/entity_type.
+        Returns None if no config exists (caller should use defaults).
+        """
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT field_name, enabled FROM upstream_field_config
+                WHERE endpoint = ? AND entity_type = ?
+                """,
+                (endpoint, entity_type)
+            ).fetchall()
+            if not rows:
+                return None
+            return {row["field_name"] for row in rows if row["enabled"]}
+
+    def set_field_config(self, endpoint: str, entity_type: str, field_configs: dict[str, bool]):
+        """
+        Set field monitoring configuration for an endpoint/entity_type.
+        Replaces all existing config for this endpoint/entity_type.
+        field_configs maps field_name -> enabled bool.
+        """
+        with self._connection() as conn:
+            # Delete existing config for this endpoint/entity_type
+            conn.execute(
+                """
+                DELETE FROM upstream_field_config
+                WHERE endpoint = ? AND entity_type = ?
+                """,
+                (endpoint, entity_type)
+            )
+            # Insert new config rows
+            for field_name, enabled in field_configs.items():
+                conn.execute(
+                    """
+                    INSERT INTO upstream_field_config (endpoint, entity_type, field_name, enabled)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (endpoint, entity_type, field_name, int(enabled))
+                )
 
     # ==================== Scene Fingerprints ====================
 
