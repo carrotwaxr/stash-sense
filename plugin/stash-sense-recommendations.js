@@ -977,6 +977,59 @@
     });
   }
 
+  // ==================== Upstream Performer Validation ====================
+
+  async function validatePerformerMerge(performerId, proposedName, proposedDisambig, proposedAliases) {
+    const errors = [];
+
+    // 1. Name uniqueness - query all performers with this name
+    if (proposedName) {
+      try {
+        const nameCheck = await SS.stashQuery(`
+          query FindPerformersByName($name: String!) {
+            findPerformers(performer_filter: { name: { value: $name, modifier: EQUALS } }) {
+              performers { id name disambiguation }
+            }
+          }
+        `, { name: proposedName });
+        const conflicts = (nameCheck?.findPerformers?.performers || [])
+          .filter(p => p.id !== performerId);
+        if (conflicts.length > 0) {
+          const c = conflicts[0];
+          const disambigNote = proposedDisambig ? '' : ' (add a disambiguation to make it unique)';
+          errors.push(`Name "${proposedName}" already used by performer "${c.name}"${disambigNote}`);
+        }
+      } catch (e) {
+        // Name check failed - don't block, just warn
+        console.warn('[Stash Sense] Name uniqueness check failed:', e);
+      }
+    }
+
+    // 2. Alias can't match performer's own name
+    if (proposedName && proposedAliases) {
+      const nameLower = proposedName.toLowerCase();
+      for (const alias of proposedAliases) {
+        if (alias.toLowerCase() === nameLower) {
+          errors.push(`Alias "${alias}" matches the performer's name`);
+        }
+      }
+    }
+
+    // 3. No duplicate aliases
+    if (proposedAliases) {
+      const seen = new Set();
+      for (const alias of proposedAliases) {
+        const lower = alias.toLowerCase();
+        if (seen.has(lower)) {
+          errors.push(`Duplicate alias: "${alias}"`);
+        }
+        seen.add(lower);
+      }
+    }
+
+    return errors;
+  }
+
   // ==================== Upstream Performer Detail ====================
 
   function renderUpstreamPerformerDetail(container, rec) {
@@ -1090,6 +1143,7 @@
 
     // Action bar
     const actionBarHtml = `
+      <div id="ss-upstream-validation-errors" class="ss-upstream-validation-error" style="display:none"></div>
       <div class="ss-upstream-action-bar">
         <button class="ss-btn ss-upstream-apply-btn" id="ss-upstream-apply">Apply Selected Changes</button>
         <div class="ss-upstream-dismiss-dropdown" style="position: relative;">
@@ -1194,6 +1248,9 @@
     // Apply button
     container.querySelector('#ss-upstream-apply').addEventListener('click', async () => {
       const btn = container.querySelector('#ss-upstream-apply');
+      const errorDiv = container.querySelector('#ss-upstream-validation-errors');
+      errorDiv.style.display = 'none';
+      errorDiv.innerHTML = '';
       const fields = {};
 
       // Collect values from simple, name, and text merge types
@@ -1208,17 +1265,14 @@
         const choice = selected.value;
 
         if (choice === 'keep_local') {
-          // No change for this field
           return;
         } else if (choice === 'accept_upstream') {
           fields[fieldKey] = change.upstream_value;
         } else if (choice === 'accept_upstream_alias_local') {
           fields[fieldKey] = change.upstream_value;
-          // Also add local name as alias
           fields['_alias_add'] = fields['_alias_add'] || [];
           fields['_alias_add'].push(String(change.local_value || ''));
         } else if (choice === 'keep_local_alias_upstream') {
-          // Keep local name, add upstream as alias
           fields['_alias_add'] = fields['_alias_add'] || [];
           fields['_alias_add'].push(String(change.upstream_value || ''));
         } else if (choice === 'custom') {
@@ -1242,7 +1296,6 @@
       // Check if any changes were selected
       const hasChanges = Object.keys(fields).length > 0;
       if (!hasChanges) {
-        // All fields set to keep_local - just resolve without updating
         try {
           btn.disabled = true;
           btn.textContent = 'Resolving...';
@@ -1262,10 +1315,28 @@
         return;
       }
 
-      try {
-        btn.disabled = true;
-        btn.textContent = 'Applying...';
+      // Run validation before applying
+      btn.disabled = true;
+      btn.textContent = 'Validating...';
 
+      const proposedName = fields.name || details.performer_name;
+      const proposedDisambig = fields.disambiguation || null;
+      const proposedAliases = fields.aliases || fields._alias_add || [];
+
+      const validationErrors = await validatePerformerMerge(
+        performerId, proposedName, proposedDisambig, proposedAliases
+      );
+
+      if (validationErrors.length > 0) {
+        errorDiv.innerHTML = validationErrors.map(e => `<div>${escapeHtml(e)}</div>`).join('');
+        errorDiv.style.display = 'block';
+        btn.textContent = 'Apply Selected Changes';
+        btn.disabled = false;
+        return;
+      }
+
+      try {
+        btn.textContent = 'Applying...';
         await RecommendationsAPI.updatePerformer(performerId, fields);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
@@ -1278,8 +1349,17 @@
           renderCurrentView(document.getElementById('ss-recommendations'));
         }, 1500);
       } catch (e) {
-        btn.textContent = `Failed: ${e.message}`;
-        btn.classList.add('ss-btn-error');
+        // Server-side error handling
+        let errorMsg = e.message;
+        if (errorMsg.includes('already exists') || errorMsg.includes('name')) {
+          errorMsg = `Name conflict: ${errorMsg}. Try adding a disambiguation.`;
+        } else if (errorMsg.includes('duplicate') || errorMsg.includes('alias')) {
+          errorMsg = `Alias conflict: ${errorMsg}. Try removing duplicate aliases.`;
+        }
+        errorDiv.innerHTML = `<div>${escapeHtml(errorMsg)}</div>`;
+        errorDiv.style.display = 'block';
+        btn.textContent = 'Apply Selected Changes';
+        btn.classList.remove('ss-btn-error');
         btn.disabled = false;
       }
     });
