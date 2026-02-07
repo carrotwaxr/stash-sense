@@ -1142,39 +1142,57 @@
       return;
     }
 
-    const overlay = SS.createElement('div', {
-      className: 'ss-modal-overlay',
-      innerHTML: `
-        <div class="ss-modal">
-          <div class="ss-modal-body">${message}</div>
-          ${showDontAsk ? `
-            <label class="ss-modal-dont-ask">
-              <input type="checkbox" id="ss-dont-ask-again" />
-              Don't ask again
-            </label>
-          ` : ''}
-          <div class="ss-modal-actions">
-            <button class="ss-btn ss-btn-danger" id="ss-modal-confirm">Confirm</button>
-            <button class="ss-btn ss-btn-secondary" id="ss-modal-cancel">Cancel</button>
-          </div>
-        </div>
-      `,
-    });
+    // Use raw DOM to avoid Stash CSS interference
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000;';
 
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#2a2a2a;border:1px solid #444;border-radius:10px;padding:1.5rem;max-width:420px;width:auto;min-width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.4);';
+
+    const body = document.createElement('div');
+    body.style.cssText = 'font-size:0.95rem;line-height:1.5;margin-bottom:1rem;color:#fff;';
+    body.textContent = message;
+    modal.appendChild(body);
+
+    let dontAskCheckbox = null;
+    if (showDontAsk) {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#888;margin-bottom:1rem;cursor:pointer;';
+      dontAskCheckbox = document.createElement('input');
+      dontAskCheckbox.type = 'checkbox';
+      label.appendChild(dontAskCheckbox);
+      label.appendChild(document.createTextNode("Don't ask again"));
+      modal.appendChild(label);
+    }
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:0.75rem;justify-content:flex-end;';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'ss-btn ss-btn-danger';
+    confirmBtn.style.cssText = 'padding:8px 18px;border-radius:6px;font-size:0.9rem;';
+    confirmBtn.textContent = 'Confirm';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'ss-btn ss-btn-secondary';
+    cancelBtn.style.cssText = 'padding:8px 18px;border-radius:6px;font-size:0.9rem;';
+    cancelBtn.textContent = 'Cancel';
+
+    actions.appendChild(confirmBtn);
+    actions.appendChild(cancelBtn);
+    modal.appendChild(actions);
+    overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    overlay.querySelector('#ss-modal-confirm').addEventListener('click', () => {
-      if (storageKey) {
-        const dontAsk = overlay.querySelector('#ss-dont-ask-again');
-        if (dontAsk && dontAsk.checked) {
-          localStorage.setItem(`ss-skip-confirm-${storageKey}`, '1');
-        }
+    confirmBtn.addEventListener('click', () => {
+      if (storageKey && dontAskCheckbox && dontAskCheckbox.checked) {
+        localStorage.setItem(`ss-skip-confirm-${storageKey}`, '1');
       }
       overlay.remove();
       onConfirm();
     });
 
-    overlay.querySelector('#ss-modal-cancel').addEventListener('click', () => {
+    cancelBtn.addEventListener('click', () => {
       overlay.remove();
     });
 
