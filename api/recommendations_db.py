@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
 
 
 @dataclass
@@ -209,6 +209,32 @@ class RecommendationsDB:
             CREATE INDEX idx_scene_fp_faces_fingerprint ON scene_fingerprint_faces(fingerprint_id);
             CREATE INDEX idx_scene_fp_faces_performer ON scene_fingerprint_faces(performer_id);
 
+            -- Image fingerprints for gallery/image identification
+            CREATE TABLE image_fingerprints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stash_image_id TEXT NOT NULL UNIQUE,
+                gallery_id TEXT,
+                faces_detected INTEGER NOT NULL DEFAULT 0,
+                db_version TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX idx_image_fp_gallery ON image_fingerprints(gallery_id);
+
+            -- Face entries within image fingerprints
+            CREATE TABLE image_fingerprint_faces (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stash_image_id TEXT NOT NULL REFERENCES image_fingerprints(stash_image_id) ON DELETE CASCADE,
+                performer_id TEXT NOT NULL,
+                confidence REAL,
+                distance REAL,
+                bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(stash_image_id, performer_id)
+            );
+            CREATE INDEX idx_image_fp_faces_image ON image_fingerprint_faces(stash_image_id);
+            CREATE INDEX idx_image_fp_faces_performer ON image_fingerprint_faces(performer_id);
+
             -- Upstream sync snapshots
             CREATE TABLE upstream_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,6 +258,16 @@ class RecommendationsDB:
                 enabled INTEGER DEFAULT 1,
                 PRIMARY KEY (endpoint, entity_type, field_name)
             );
+
+            -- User settings (key-value store)
+            CREATE TABLE user_settings (
+                key TEXT PRIMARY KEY,
+                value JSON NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            -- Seed default settings
+            INSERT INTO user_settings (key, value) VALUES ('normalize_enum_display', 'true');
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
@@ -307,6 +343,48 @@ class RecommendationsDB:
                 ALTER TABLE dismissed_targets ADD COLUMN permanent INTEGER DEFAULT 0;
 
                 UPDATE schema_version SET version = 4;
+            """)
+
+        if from_version < 5:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    key TEXT PRIMARY KEY,
+                    value JSON NOT NULL,
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+
+                INSERT OR IGNORE INTO user_settings (key, value) VALUES ('normalize_enum_display', 'true');
+
+                UPDATE schema_version SET version = 5;
+            """)
+
+        if from_version < 6:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS image_fingerprints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stash_image_id TEXT NOT NULL UNIQUE,
+                    gallery_id TEXT,
+                    faces_detected INTEGER NOT NULL DEFAULT 0,
+                    db_version TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_image_fp_gallery ON image_fingerprints(gallery_id);
+
+                CREATE TABLE IF NOT EXISTS image_fingerprint_faces (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stash_image_id TEXT NOT NULL REFERENCES image_fingerprints(stash_image_id) ON DELETE CASCADE,
+                    performer_id TEXT NOT NULL,
+                    confidence REAL,
+                    distance REAL,
+                    bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(stash_image_id, performer_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_image_fp_faces_image ON image_fingerprint_faces(stash_image_id);
+                CREATE INDEX IF NOT EXISTS idx_image_fp_faces_performer ON image_fingerprint_faces(performer_id);
+
+                UPDATE schema_version SET version = 6;
             """)
 
     @contextmanager
@@ -391,6 +469,22 @@ class RecommendationsDB:
         with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
             return [self._row_to_recommendation(row) for row in rows]
+
+    def count_recommendations(self, status=None, type=None, target_type=None) -> int:
+        """Count recommendations with optional filtering (for pagination totals)."""
+        query = "SELECT COUNT(*) FROM recommendations WHERE 1=1"
+        params = []
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if type:
+            query += " AND type = ?"
+            params.append(type)
+        if target_type:
+            query += " AND target_type = ?"
+            params.append(target_type)
+        with self._connection() as conn:
+            return conn.execute(query, params).fetchone()[0]
 
     def get_recommendation_by_target(
         self,
@@ -596,6 +690,27 @@ class RecommendationsDB:
                 WHERE id = ?
                 """,
                 (items_processed, recommendations_created, cursor, run_id)
+            )
+
+    def fail_stale_analysis_runs(self) -> int:
+        """Mark any 'running' analysis runs as failed (e.g. after sidecar restart). Returns count."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE analysis_runs
+                SET status = 'failed', completed_at = datetime('now'),
+                    error_message = 'Sidecar restarted while analysis was running'
+                WHERE status = 'running'
+                """
+            )
+            return cursor.rowcount
+
+    def update_analysis_items_total(self, run_id: int, items_total: int):
+        """Update the total items count for an analysis run."""
+        with self._connection() as conn:
+            conn.execute(
+                "UPDATE analysis_runs SET items_total = ? WHERE id = ?",
+                (items_total, run_id)
             )
 
     def complete_analysis_run(self, run_id: int, recommendations_created: int):
@@ -870,6 +985,38 @@ class RecommendationsDB:
                     (endpoint, entity_type, field_name, int(enabled))
                 )
 
+    # ==================== User Settings ====================
+
+    def get_user_setting(self, key: str) -> Optional[Any]:
+        """Get a user setting by key. Returns the parsed JSON value, or None if not found."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT value FROM user_settings WHERE key = ?", (key,)
+            ).fetchone()
+            if row:
+                return json.loads(row["value"])
+        return None
+
+    def set_user_setting(self, key: str, value: Any):
+        """Set a user setting. Creates or updates."""
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_settings (key, value, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = datetime('now')
+                """,
+                (key, json.dumps(value))
+            )
+
+    def get_all_user_settings(self) -> dict[str, Any]:
+        """Get all user settings as a dict."""
+        with self._connection() as conn:
+            rows = conn.execute("SELECT key, value FROM user_settings").fetchall()
+            return {row["key"]: json.loads(row["value"]) for row in rows}
+
     # ==================== Scene Fingerprints ====================
 
     def create_scene_fingerprint(
@@ -1052,6 +1199,112 @@ class RecommendationsDB:
                     """,
                     scene_ids
                 )
+            return cursor.rowcount
+
+    # ==================== Image Fingerprints ====================
+
+    def create_image_fingerprint(
+        self,
+        stash_image_id: str,
+        gallery_id: Optional[str] = None,
+        faces_detected: int = 0,
+        db_version: Optional[str] = None,
+    ) -> int:
+        """
+        Create or update an image fingerprint. Returns the fingerprint ID.
+        Uses upsert - if fingerprint exists for image, updates it.
+
+        Args:
+            stash_image_id: The Stash image ID
+            gallery_id: The gallery this image belongs to (optional)
+            faces_detected: Number of faces detected in the image
+            db_version: Face recognition DB version used for this fingerprint
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO image_fingerprints (stash_image_id, gallery_id, faces_detected, db_version)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(stash_image_id) DO UPDATE SET
+                    gallery_id = excluded.gallery_id,
+                    faces_detected = excluded.faces_detected,
+                    db_version = excluded.db_version,
+                    updated_at = datetime('now')
+                RETURNING id
+                """,
+                (stash_image_id, gallery_id, faces_detected, db_version)
+            )
+            return cursor.fetchone()[0]
+
+    def get_image_fingerprint(self, stash_image_id: str) -> Optional[dict]:
+        """Get an image fingerprint by stash image ID."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM image_fingerprints WHERE stash_image_id = ?",
+                (stash_image_id,)
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
+    def get_gallery_image_fingerprints(self, gallery_id: str) -> list[dict]:
+        """Get all image fingerprints for a gallery."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM image_fingerprints WHERE gallery_id = ?",
+                (gallery_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def add_image_fingerprint_face(
+        self,
+        stash_image_id: str,
+        performer_id: str,
+        confidence: Optional[float] = None,
+        distance: Optional[float] = None,
+        bbox_x: Optional[float] = None,
+        bbox_y: Optional[float] = None,
+        bbox_w: Optional[float] = None,
+        bbox_h: Optional[float] = None,
+    ) -> int:
+        """Add or update a face entry in an image fingerprint. Returns the face entry ID."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO image_fingerprint_faces (
+                    stash_image_id, performer_id, confidence, distance,
+                    bbox_x, bbox_y, bbox_w, bbox_h
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(stash_image_id, performer_id) DO UPDATE SET
+                    confidence = excluded.confidence,
+                    distance = excluded.distance,
+                    bbox_x = excluded.bbox_x,
+                    bbox_y = excluded.bbox_y,
+                    bbox_w = excluded.bbox_w,
+                    bbox_h = excluded.bbox_h
+                RETURNING id
+                """,
+                (stash_image_id, performer_id, confidence, distance,
+                 bbox_x, bbox_y, bbox_w, bbox_h)
+            )
+            return cursor.fetchone()[0]
+
+    def get_image_fingerprint_faces(self, stash_image_id: str) -> list[dict]:
+        """Get all face entries for an image fingerprint."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM image_fingerprint_faces WHERE stash_image_id = ?",
+                (stash_image_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_image_fingerprint_faces(self, stash_image_id: str) -> int:
+        """Delete all face entries for an image fingerprint. Returns count deleted."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM image_fingerprint_faces WHERE stash_image_id = ?",
+                (stash_image_id,)
+            )
             return cursor.rowcount
 
     # ==================== Statistics ====================
