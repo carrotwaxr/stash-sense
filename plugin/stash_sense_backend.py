@@ -341,6 +341,44 @@ def handle_recommendations(mode, args, sidecar_url):
             return {"error": "scene_id and keep_file_id required"}
         return rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, all_file_ids)
 
+    elif mode == "rec_update_performer":
+        performer_id = args.get("performer_id")
+        fields = args.get("fields", {})
+        if not performer_id:
+            return {"error": "performer_id required"}
+        return sidecar_post(
+            sidecar_url,
+            "/recommendations/actions/update-performer",
+            {"performer_id": performer_id, "fields": fields},
+            timeout=60,
+        )
+
+    elif mode == "rec_dismiss_upstream":
+        rec_id = args.get("rec_id")
+        if not rec_id:
+            return {"error": "No rec_id provided"}
+        return sidecar_post(
+            sidecar_url,
+            f"/recommendations/{rec_id}/dismiss-upstream",
+            {"reason": args.get("reason"), "permanent": args.get("permanent", False)},
+        )
+
+    elif mode == "rec_get_field_config":
+        import base64
+        endpoint = args.get("endpoint", "")
+        endpoint_b64 = base64.b64encode(endpoint.encode()).decode()
+        return sidecar_get(sidecar_url, f"/recommendations/upstream/field-config/{endpoint_b64}")
+
+    elif mode == "rec_set_field_config":
+        import base64
+        endpoint = args.get("endpoint", "")
+        endpoint_b64 = base64.b64encode(endpoint.encode()).decode()
+        return sidecar_post(
+            sidecar_url,
+            f"/recommendations/upstream/field-config/{endpoint_b64}",
+            args.get("field_configs", {}),
+        )
+
     # Fingerprint operations
     elif mode == "fp_status":
         return fp_status(sidecar_url)

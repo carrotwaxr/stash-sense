@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from recommendations_db import RecommendationsDB, Recommendation, AnalysisRun
 from stash_client_unified import StashClientUnified
-from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer
+from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -262,6 +262,7 @@ ANALYZERS = {
     "duplicate_performer": DuplicatePerformerAnalyzer,
     "duplicate_scene_files": DuplicateSceneFilesAnalyzer,
     "duplicate_scenes": DuplicateScenesAnalyzer,
+    "upstream_performer_changes": UpstreamPerformerAnalyzer,
 }
 
 
@@ -618,3 +619,63 @@ async def mark_all_fingerprints_for_refresh(confirm: bool = False):
         "marked_for_refresh": count,
         "message": f"All {count} fingerprints marked for refresh",
     }
+
+
+# ==================== Upstream Sync Actions ====================
+
+@router.post("/actions/update-performer")
+async def update_performer_fields(performer_id: str, fields: dict):
+    """Apply selected upstream changes to a performer."""
+    stash = get_stash_client()
+    try:
+        result = await stash.update_performer(performer_id, **fields)
+        return {"success": True, "performer": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpstreamDismissRequest(BaseModel):
+    """Request to dismiss an upstream recommendation."""
+    reason: Optional[str] = Field(None)
+    permanent: bool = Field(False, description="If true, never show updates for this entity again")
+
+
+@router.post("/{rec_id}/dismiss-upstream")
+async def dismiss_upstream_recommendation(rec_id: int, request: UpstreamDismissRequest = None):
+    """Dismiss an upstream recommendation with permanent option."""
+    db = get_rec_db()
+    permanent = request.permanent if request else False
+    reason = request.reason if request else None
+    success = db.dismiss_recommendation(rec_id, reason=reason, permanent=permanent)
+    if not success:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+    return {"success": True, "permanent": permanent}
+
+
+@router.get("/upstream/field-config/{endpoint_b64}")
+async def get_field_config(endpoint_b64: str):
+    """Get field monitoring config for an endpoint. Endpoint is base64-encoded."""
+    import base64
+    endpoint = base64.b64decode(endpoint_b64).decode()
+    db = get_rec_db()
+    fields = db.get_enabled_fields(endpoint, "performer")
+    from upstream_field_mapper import DEFAULT_PERFORMER_FIELDS, FIELD_LABELS
+    if fields is None:
+        return {
+            "endpoint": endpoint,
+            "fields": {f: {"enabled": True, "label": FIELD_LABELS.get(f, f)} for f in DEFAULT_PERFORMER_FIELDS},
+        }
+    return {
+        "endpoint": endpoint,
+        "fields": {f: {"enabled": f in fields, "label": FIELD_LABELS.get(f, f)} for f in DEFAULT_PERFORMER_FIELDS},
+    }
+
+
+@router.post("/upstream/field-config/{endpoint_b64}")
+async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool]):
+    """Set field monitoring config for an endpoint."""
+    import base64
+    endpoint = base64.b64decode(endpoint_b64).decode()
+    db = get_rec_db()
+    db.set_field_config(endpoint, "performer", field_configs)
+    return {"success": True}
