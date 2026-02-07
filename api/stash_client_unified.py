@@ -268,6 +268,74 @@ class StashClientUnified:
         """
         await self._execute(query, {"id": performer_id, "alias_list": aliases}, priority=Priority.CRITICAL)
 
+    async def get_performers_for_endpoint(self, endpoint: str) -> list[dict]:
+        """Query local Stash for all performers linked to a specific stash-box endpoint."""
+        query = """
+        query PerformersForEndpoint($performer_filter: PerformerFilterType) {
+          findPerformers(performer_filter: $performer_filter, filter: { per_page: -1 }) {
+            performers {
+              id
+              name
+              disambiguation
+              alias_list
+              gender
+              birthdate
+              death_date
+              ethnicity
+              country
+              eye_color
+              hair_color
+              height_cm
+              measurements
+              fake_tits
+              career_length
+              tattoos
+              piercings
+              details
+              urls
+              favorite
+              image_path
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            "performer_filter": {
+                "stash_id_endpoint": {
+                    "endpoint": endpoint,
+                    "modifier": "NOT_NULL",
+                }
+            }
+        }
+        data = await self._execute(query, variables)
+        return data["findPerformers"]["performers"]
+
+    async def update_performer(self, performer_id: str, **fields) -> dict:
+        """
+        Generic performer update via PerformerUpdateInput mutation.
+
+        Args:
+            performer_id: The ID of the performer to update.
+            **fields: Arbitrary performer fields to update (e.g. name, height_cm, country).
+
+        Returns:
+            The performerUpdate result dict.
+        """
+        query = """
+        mutation PerformerUpdate($input: PerformerUpdateInput!) {
+          performerUpdate(input: $input) {
+            id
+          }
+        }
+        """
+        input_dict = {"id": performer_id, **fields}
+        data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
+        return data["performerUpdate"]
+
     # ==================== Scenes ====================
 
     async def get_multi_file_scenes(self, exclude_tag_ids: list[str] | None = None) -> list[dict]:
