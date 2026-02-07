@@ -81,7 +81,16 @@ class StashClientUnified:
         """Execute the actual HTTP request."""
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(self.graphql_url, json=payload, headers=self.headers)
-            response.raise_for_status()
+
+            if not response.is_success:
+                # Include response body in error for debugging
+                try:
+                    body = response.json()
+                except Exception:
+                    body = response.text
+                raise RuntimeError(
+                    f"Stash API error (HTTP {response.status_code}): {body}"
+                )
 
             result = response.json()
             if "errors" in result:
@@ -636,3 +645,60 @@ class StashClientUnified:
         """
         data = await self._execute(query, {"id": scene_id})
         return data.get("findScene")
+
+    # ==================== Images ====================
+
+    async def get_image_by_id(self, image_id: str) -> Optional[dict]:
+        """Get an image by ID with paths and performers."""
+        query = """
+        query GetImage($id: ID!) {
+          findImage(id: $id) {
+            id
+            title
+            paths {
+              image
+              thumbnail
+            }
+            performers {
+              id
+              name
+              image_path
+            }
+          }
+        }
+        """
+        data = await self._execute(query, {"id": image_id})
+        return data.get("findImage")
+
+    # ==================== Galleries ====================
+
+    async def get_gallery_by_id(self, gallery_id: str) -> Optional[dict]:
+        """Get a gallery by ID with all images and performers."""
+        query = """
+        query GetGallery($id: ID!) {
+          findGallery(id: $id) {
+            id
+            title
+            image_count
+            performers {
+              id
+              name
+              image_path
+            }
+            images {
+              id
+              title
+              paths {
+                image
+                thumbnail
+              }
+              performers {
+                id
+                name
+              }
+            }
+          }
+        }
+        """
+        data = await self._execute(query, {"id": gallery_id})
+        return data.get("findGallery")
