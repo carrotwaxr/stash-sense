@@ -256,6 +256,53 @@
     return data?.findScene;
   }
 
+  /**
+   * Get image details by ID
+   */
+  async function getImage(id) {
+    const query = `
+      query GetImage($id: ID!) {
+        findImage(id: $id) {
+          id
+          title
+          paths {
+            image
+            thumbnail
+          }
+          performers {
+            id
+            name
+            image_path
+          }
+        }
+      }
+    `;
+    const data = await stashQuery(query, { id });
+    return data?.findImage;
+  }
+
+  /**
+   * Get gallery details by ID
+   */
+  async function getGallery(id) {
+    const query = `
+      query GetGallery($id: ID!) {
+        findGallery(id: $id) {
+          id
+          title
+          image_count
+          performers {
+            id
+            name
+            image_path
+          }
+        }
+      }
+    `;
+    const data = await stashQuery(query, { id });
+    return data?.findGallery;
+  }
+
   // ==================== URL Routing ====================
 
   /**
@@ -268,6 +315,18 @@
     const sceneMatch = path.match(/\/scenes\/(\d+)/);
     if (sceneMatch) {
       return { type: 'scene', id: sceneMatch[1] };
+    }
+
+    // Image page
+    const imageMatch = path.match(/\/images\/(\d+)/);
+    if (imageMatch) {
+      return { type: 'image', id: imageMatch[1] };
+    }
+
+    // Gallery page
+    const galleryMatch = path.match(/\/galleries\/(\d+)/);
+    if (galleryMatch) {
+      return { type: 'gallery', id: galleryMatch[1] };
     }
 
     // Performer page
@@ -422,6 +481,8 @@
     findPerformerByStashDBId,
     getPerformer,
     getScene,
+    getImage,
+    getGallery,
 
     // Routing
     getRoute,
