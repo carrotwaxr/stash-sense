@@ -1600,3 +1600,47 @@
     flex-direction: column;
   }
 }
+
+/* Upstream Sync Settings */
+.ss-upstream-endpoint-settings {
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border: 1px solid var(--bs-border-color, #333);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.ss-upstream-ep-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+}
+
+.ss-upstream-ep-url {
+  font-size: 0.8rem;
+  color: var(--bs-secondary-color, #888);
+}
+
+.ss-upstream-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+
+.ss-upstream-field-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.ss-upstream-field-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ss-upstream-fields-actions {
+  display: flex;
+  align-items: center;
+}

@@ -292,6 +292,15 @@
           <h2>Action Runner</h2>
           <div class="ss-analysis-buttons"></div>
         </div>
+
+        <div class="ss-dashboard-settings" id="ss-upstream-settings">
+          <h2>Upstream Sync Settings</h2>
+          <p class="ss-dashboard-subtitle">Configure which stash-box endpoints and fields to monitor for upstream changes.</p>
+          <div id="ss-upstream-endpoints-loading">
+            <div class="ss-spinner-small"></div> Loading endpoints...
+          </div>
+          <div id="ss-upstream-endpoints-list" style="display:none"></div>
+        </div>
       `;
 
       // Render type cards
@@ -523,6 +532,109 @@
           }
         }
       });
+
+      // Load upstream sync settings
+      (async () => {
+        const loadingEl = container.querySelector('#ss-upstream-endpoints-loading');
+        const listEl = container.querySelector('#ss-upstream-endpoints-list');
+        try {
+          const configResult = await SS.stashQuery(`
+            query { configuration { general { stashBoxes { endpoint name } } } }
+          `);
+          const endpoints = configResult?.configuration?.general?.stashBoxes || [];
+
+          if (endpoints.length === 0) {
+            loadingEl.innerHTML = '<p>No stash-box endpoints configured in Stash. Configure them in Stash Settings > Metadata Providers.</p>';
+            return;
+          }
+
+          loadingEl.style.display = 'none';
+          listEl.style.display = 'block';
+
+          for (const ep of endpoints) {
+            const epDiv = document.createElement('div');
+            epDiv.className = 'ss-upstream-endpoint-settings';
+            const displayName = ep.name || new URL(ep.endpoint).hostname;
+
+            epDiv.innerHTML = `
+              <div class="ss-upstream-ep-header">
+                <h3>${escapeHtml(displayName)}</h3>
+                <span class="ss-upstream-ep-url">${escapeHtml(ep.endpoint)}</span>
+              </div>
+              <div class="ss-upstream-fields-container" style="display:none">
+                <div class="ss-upstream-fields-loading"><div class="ss-spinner-small"></div> Loading field config...</div>
+                <div class="ss-upstream-fields-grid" style="display:none"></div>
+                <div class="ss-upstream-fields-actions" style="display:none; margin-top: 0.75rem;">
+                  <button class="ss-btn ss-btn-primary ss-upstream-save-fields" style="padding: 6px 14px; font-size: 0.85rem;">Save Field Config</button>
+                  <span class="ss-upstream-save-status" style="margin-left: 8px; font-size: 0.85rem;"></span>
+                </div>
+              </div>
+              <button class="ss-btn ss-btn-secondary ss-upstream-toggle-fields" style="margin-top: 0.5rem; padding: 4px 12px; font-size: 0.8rem;">Show Monitored Fields</button>
+            `;
+
+            const toggleBtn = epDiv.querySelector('.ss-upstream-toggle-fields');
+            const fieldsContainer = epDiv.querySelector('.ss-upstream-fields-container');
+            let fieldsLoaded = false;
+
+            toggleBtn.addEventListener('click', async () => {
+              const isHidden = fieldsContainer.style.display === 'none';
+              fieldsContainer.style.display = isHidden ? 'block' : 'none';
+              toggleBtn.textContent = isHidden ? 'Hide Monitored Fields' : 'Show Monitored Fields';
+
+              if (isHidden && !fieldsLoaded) {
+                fieldsLoaded = true;
+                try {
+                  const fieldConfig = await RecommendationsAPI.getFieldConfig(ep.endpoint);
+                  const fieldsGrid = epDiv.querySelector('.ss-upstream-fields-grid');
+                  const fieldsLoading = epDiv.querySelector('.ss-upstream-fields-loading');
+                  const fieldsActions = epDiv.querySelector('.ss-upstream-fields-actions');
+
+                  const sortedFields = Object.entries(fieldConfig.fields).sort(([, a], [, b]) => a.label.localeCompare(b.label));
+
+                  fieldsGrid.innerHTML = sortedFields.map(([fieldName, config]) => `
+                    <label class="ss-upstream-field-toggle">
+                      <input type="checkbox" data-field="${escapeHtml(fieldName)}" ${config.enabled ? 'checked' : ''} />
+                      <span>${escapeHtml(config.label)}</span>
+                    </label>
+                  `).join('');
+
+                  fieldsLoading.style.display = 'none';
+                  fieldsGrid.style.display = 'grid';
+                  fieldsActions.style.display = 'flex';
+
+                  // Save button
+                  const saveBtn = epDiv.querySelector('.ss-upstream-save-fields');
+                  const saveStatus = epDiv.querySelector('.ss-upstream-save-status');
+                  saveBtn.addEventListener('click', async () => {
+                    saveBtn.disabled = true;
+                    saveStatus.textContent = 'Saving...';
+                    const configs = {};
+                    fieldsGrid.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                      configs[cb.dataset.field] = cb.checked;
+                    });
+                    try {
+                      await RecommendationsAPI.setFieldConfig(ep.endpoint, configs);
+                      saveStatus.textContent = 'Saved!';
+                      saveStatus.style.color = '#22c55e';
+                      setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+                    } catch (e) {
+                      saveStatus.textContent = `Error: ${e.message}`;
+                      saveStatus.style.color = '#ef4444';
+                    }
+                    saveBtn.disabled = false;
+                  });
+                } catch (e) {
+                  epDiv.querySelector('.ss-upstream-fields-loading').innerHTML = `Error loading field config: ${escapeHtml(e.message)}`;
+                }
+              }
+            });
+
+            listEl.appendChild(epDiv);
+          }
+        } catch (e) {
+          loadingEl.innerHTML = `<p>Could not load stash-box endpoints: ${escapeHtml(e.message)}</p>`;
+        }
+      })();
 
     } catch (e) {
       container.innerHTML = `
