@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -168,6 +168,7 @@ class RecommendationsDB:
                 target_id TEXT NOT NULL,
                 dismissed_at TEXT DEFAULT (datetime('now')),
                 reason TEXT,
+                permanent INTEGER DEFAULT 0,
                 PRIMARY KEY (type, target_type, target_id)
             );
 
@@ -207,6 +208,30 @@ class RecommendationsDB:
             );
             CREATE INDEX idx_scene_fp_faces_fingerprint ON scene_fingerprint_faces(fingerprint_id);
             CREATE INDEX idx_scene_fp_faces_performer ON scene_fingerprint_faces(performer_id);
+
+            -- Upstream sync snapshots
+            CREATE TABLE upstream_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                local_entity_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                stash_box_id TEXT NOT NULL,
+                upstream_data JSON NOT NULL,
+                upstream_updated_at TEXT NOT NULL,
+                fetched_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(entity_type, endpoint, stash_box_id)
+            );
+            CREATE INDEX idx_upstream_entity ON upstream_snapshots(entity_type, endpoint);
+            CREATE INDEX idx_upstream_stash_box_id ON upstream_snapshots(stash_box_id);
+
+            -- Per-field monitoring configuration
+            CREATE TABLE upstream_field_config (
+                endpoint TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                field_name TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                PRIMARY KEY (endpoint, entity_type, field_name)
+            );
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
@@ -253,6 +278,35 @@ class RecommendationsDB:
                 ALTER TABLE scene_fingerprints ADD COLUMN db_version TEXT;
                 CREATE INDEX IF NOT EXISTS idx_scene_fp_db_version ON scene_fingerprints(db_version);
                 UPDATE schema_version SET version = 3;
+            """)
+
+        if from_version < 4:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS upstream_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_type TEXT NOT NULL,
+                    local_entity_id TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    stash_box_id TEXT NOT NULL,
+                    upstream_data JSON NOT NULL,
+                    upstream_updated_at TEXT NOT NULL,
+                    fetched_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(entity_type, endpoint, stash_box_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_upstream_entity ON upstream_snapshots(entity_type, endpoint);
+                CREATE INDEX IF NOT EXISTS idx_upstream_stash_box_id ON upstream_snapshots(stash_box_id);
+
+                CREATE TABLE IF NOT EXISTS upstream_field_config (
+                    endpoint TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    field_name TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    PRIMARY KEY (endpoint, entity_type, field_name)
+                );
+
+                ALTER TABLE dismissed_targets ADD COLUMN permanent INTEGER DEFAULT 0;
+
+                UPDATE schema_version SET version = 4;
             """)
 
     @contextmanager
