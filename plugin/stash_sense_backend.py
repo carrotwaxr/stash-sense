@@ -27,14 +27,21 @@ def main():
         scene_id = args.get("scene_id")
         max_frames = int(args.get("max_frames", 40))  # 40 frames optimal per tuning
         top_k = int(args.get("top_k", 3))
-        max_distance = float(args.get("max_distance", 0.7))  # 0.7 optimal per tuning
+        max_distance = float(args.get("max_distance", 0.6))  # 0.6 optimal per benchmark
+        min_face_size = int(args.get("min_face_size", 60))  # 60px optimal per benchmark
 
         result = identify_scene(
-            sidecar_url, scene_id, max_frames, top_k, max_distance
+            sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size
         )
+    elif mode == "identify_image":
+        image_id = args.get("image_id")
+        result = identify_image(sidecar_url, image_id)
+    elif mode == "identify_gallery":
+        gallery_id = args.get("gallery_id")
+        result = identify_gallery(sidecar_url, gallery_id)
     elif mode == "database_info":
         result = database_info(sidecar_url)
-    elif mode.startswith("rec_") or mode.startswith("fp_"):
+    elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
             result = {"error": f"Unknown recommendations mode: {mode}"}
@@ -77,7 +84,7 @@ def database_info(sidecar_url):
         return {"error": f"Request failed: {e}"}
 
 
-def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance):
+def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size):
     """Identify performers in a scene."""
     if not scene_id:
         return {"error": "No scene_id provided"}
@@ -88,10 +95,10 @@ def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance):
             "num_frames": max_frames,
             "top_k": top_k,
             "max_distance": max_distance,
-            # Let API use its default min_face_size (40px)
+            "min_face_size": min_face_size,
         }
 
-        log(f"Identifying scene {scene_id} with max_distance={max_distance}")
+        log(f"Identifying scene {scene_id} with max_distance={max_distance}, min_face_size={min_face_size}")
 
         response = requests.post(
             f"{sidecar_url}/identify/scene",
@@ -116,6 +123,75 @@ def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance):
         return {"error": "Connection refused - is Stash Sense running?"}
     except requests.Timeout:
         return {"error": "Request timed out - scene may be too long or sidecar is overloaded"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+
+
+def identify_image(sidecar_url, image_id):
+    """Identify performers in a single image."""
+    if not image_id:
+        return {"error": "No image_id provided"}
+
+    try:
+        payload = {"image_id": str(image_id)}
+        log(f"Identifying image {image_id}")
+
+        response = requests.post(
+            f"{sidecar_url}/identify/image",
+            json=payload,
+            timeout=30,
+        )
+
+        if response.ok:
+            result = response.json()
+            log(f"Image {image_id}: {result.get('face_count', 0)} faces")
+            return result
+
+        try:
+            error_detail = response.json().get("detail", response.text)
+        except Exception:
+            error_detail = response.text or f"HTTP {response.status_code}"
+        return {"error": f"Identification failed: {error_detail}"}
+
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Request timed out"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+
+
+def identify_gallery(sidecar_url, gallery_id):
+    """Identify performers across an entire gallery."""
+    if not gallery_id:
+        return {"error": "No gallery_id provided"}
+
+    try:
+        payload = {"gallery_id": str(gallery_id)}
+        log(f"Identifying gallery {gallery_id}")
+
+        response = requests.post(
+            f"{sidecar_url}/identify/gallery",
+            json=payload,
+            timeout=300,
+        )
+
+        if response.ok:
+            result = response.json()
+            log(f"Gallery {gallery_id}: {result.get('images_processed', 0)} images, "
+                f"{len(result.get('performers', []))} performers")
+            return result
+
+        try:
+            error_detail = response.json().get("detail", response.text)
+        except Exception:
+            error_detail = response.text or f"HTTP {response.status_code}"
+        return {"error": f"Identification failed: {error_detail}"}
+
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Gallery identification timed out - gallery may be too large"}
     except requests.RequestException as e:
         return {"error": f"Request failed: {e}"}
 
@@ -377,6 +453,22 @@ def handle_recommendations(mode, args, sidecar_url):
             sidecar_url,
             f"/recommendations/upstream/field-config/{endpoint_b64}",
             args.get("field_configs", {}),
+        )
+
+    elif mode == "user_get_all_settings":
+        return sidecar_get(sidecar_url, "/recommendations/settings")
+
+    elif mode == "user_get_setting":
+        key = args.get("key", "")
+        return sidecar_get(sidecar_url, f"/recommendations/settings/{key}")
+
+    elif mode == "user_set_setting":
+        key = args.get("key", "")
+        value = args.get("value")
+        return sidecar_post(
+            sidecar_url,
+            f"/recommendations/settings/{key}",
+            {"value": value},
         )
 
     # Fingerprint operations
