@@ -528,7 +528,7 @@
             fpActionBtn.className = 'ss-btn ss-btn-primary';
             fpActionBtn.disabled = false;
             console.error('[Stash Sense] Error starting generation:', e);
-            alert('Failed to start fingerprint generation: ' + e.message);
+            showConfirmModal('Failed to start fingerprint generation: ' + e.message, () => {});
           }
         }
       });
@@ -927,11 +927,21 @@
       </div>
     `;
 
+    // Click anywhere on card to select radio (except links)
+    container.querySelectorAll('.ss-performer-option').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return;
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+      });
+    });
+
     // Merge action
     container.querySelector('#ss-merge-btn').addEventListener('click', async () => {
       const keeperId = container.querySelector('input[name="keeper"]:checked')?.value;
       if (!keeperId) {
-        alert('Please select a performer to keep');
+        showConfirmModal('Please select a performer to keep.', () => {});
         return;
       }
 
@@ -1026,50 +1036,82 @@
       </div>
     `;
 
+    // Click anywhere on file card to select radio (except links)
+    container.querySelectorAll('.ss-file-option').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return;
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+      });
+    });
+
     // Delete action
     container.querySelector('#ss-delete-btn').addEventListener('click', async () => {
       const keeperId = container.querySelector('input[name="keeper"]:checked')?.value;
       if (!keeperId) {
-        alert('Please select a file to keep');
+        showConfirmModal('Please select a file to keep.', () => {});
         return;
       }
 
       const fileIdsToDelete = files.filter(f => f.id !== keeperId).map(f => f.id);
       const allFileIds = files.map(f => f.id);
 
-      const confirmMsg = `Delete ${fileIdsToDelete.length} file(s)? This cannot be undone.`;
-      if (!confirm(confirmMsg)) return;
+      showConfirmModal(
+        `Delete ${fileIdsToDelete.length} file(s)? This cannot be undone.`,
+        async () => {
+          const btn = container.querySelector('#ss-delete-btn');
 
-      const btn = container.querySelector('#ss-delete-btn');
+          try {
+            btn.disabled = true;
+            btn.textContent = 'Deleting...';
 
-      try {
-        btn.disabled = true;
-        btn.textContent = 'Deleting...';
+            await RecommendationsAPI.deleteSceneFiles(
+              rec.target_id,
+              fileIdsToDelete,
+              keeperId,
+              allFileIds
+            );
+            await RecommendationsAPI.resolve(rec.id, 'deleted', {
+              kept_file_id: keeperId,
+              deleted_file_ids: fileIdsToDelete,
+            });
 
-        await RecommendationsAPI.deleteSceneFiles(
-          rec.target_id,
-          fileIdsToDelete,
-          keeperId,
-          allFileIds
-        );
-        await RecommendationsAPI.resolve(rec.id, 'deleted', {
-          kept_file_id: keeperId,
-          deleted_file_ids: fileIdsToDelete,
-        });
+            btn.textContent = 'Deleted!';
+            btn.classList.add('ss-btn-success');
 
-        btn.textContent = 'Deleted!';
-        btn.classList.add('ss-btn-success');
-
-        setTimeout(() => {
-          currentState.view = 'list';
-          currentState.selectedRec = null;
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
-      } catch (e) {
-        btn.textContent = `Failed: ${e.message}`;
-        btn.classList.add('ss-btn-error');
-        btn.disabled = false;
-      }
+            setTimeout(() => {
+              currentState.view = 'list';
+              currentState.selectedRec = null;
+              renderCurrentView(document.getElementById('ss-recommendations'));
+            }, 1500);
+          } catch (e) {
+            const errMsg = e.message || '';
+            // If file already deleted, resolve the recommendation anyway
+            if (errMsg.includes('no rows in result set') || errMsg.includes('not found')) {
+              try {
+                await RecommendationsAPI.resolve(rec.id, 'deleted', {
+                  kept_file_id: keeperId,
+                  deleted_file_ids: fileIdsToDelete,
+                  note: 'Files already deleted',
+                });
+                btn.textContent = 'Already deleted - resolved';
+                btn.classList.add('ss-btn-success');
+                setTimeout(() => {
+                  currentState.view = 'list';
+                  currentState.selectedRec = null;
+                  renderCurrentView(document.getElementById('ss-recommendations'));
+                }, 1500);
+                return;
+              } catch (_) { /* fall through to error display */ }
+            }
+            btn.textContent = `Failed: ${errMsg}`;
+            btn.classList.add('ss-btn-error');
+            btn.disabled = false;
+          }
+        },
+        { showDontAsk: true, storageKey: 'delete-scene-files' }
+      );
     });
 
     // Dismiss action
@@ -1086,6 +1128,58 @@
         btn.textContent = `Failed: ${e.message}`;
         btn.disabled = false;
       }
+    });
+  }
+
+  // ==================== Confirmation Modal ====================
+
+  function showConfirmModal(message, onConfirm, options = {}) {
+    const { showDontAsk = false, storageKey = null } = options;
+
+    // Check "don't ask again"
+    if (storageKey && localStorage.getItem(`ss-skip-confirm-${storageKey}`) === '1') {
+      onConfirm();
+      return;
+    }
+
+    const overlay = SS.createElement('div', {
+      className: 'ss-modal-overlay',
+      innerHTML: `
+        <div class="ss-modal">
+          <div class="ss-modal-body">${message}</div>
+          ${showDontAsk ? `
+            <label class="ss-modal-dont-ask">
+              <input type="checkbox" id="ss-dont-ask-again" />
+              Don't ask again
+            </label>
+          ` : ''}
+          <div class="ss-modal-actions">
+            <button class="ss-btn ss-btn-danger" id="ss-modal-confirm">Confirm</button>
+            <button class="ss-btn ss-btn-secondary" id="ss-modal-cancel">Cancel</button>
+          </div>
+        </div>
+      `,
+    });
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#ss-modal-confirm').addEventListener('click', () => {
+      if (storageKey) {
+        const dontAsk = overlay.querySelector('#ss-dont-ask-again');
+        if (dontAsk && dontAsk.checked) {
+          localStorage.setItem(`ss-skip-confirm-${storageKey}`, '1');
+        }
+      }
+      overlay.remove();
+      onConfirm();
+    });
+
+    overlay.querySelector('#ss-modal-cancel').addEventListener('click', () => {
+      overlay.remove();
+    });
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
     });
   }
 
