@@ -99,6 +99,37 @@ class ImageIdentifyRequest(BaseModel):
     min_face_confidence: float = Field(0.5, ge=0.0, le=1.0, description="Minimum face detection confidence")
 
 
+class GalleryPerformerResult(BaseModel):
+    """A performer identified across a gallery."""
+    performer_id: str = Field(description="StashDB performer UUID")
+    name: str
+    best_distance: float
+    avg_distance: float
+    confidence: float = Field(description="Best match confidence (0-1)")
+    image_count: int = Field(description="Number of images this performer appeared in")
+    image_ids: list[str] = Field(description="Stash image IDs where performer was found")
+    country: Optional[str] = None
+    image_url: Optional[str] = Field(None, description="StashDB profile image URL")
+
+
+class GalleryIdentifyRequest(BaseModel):
+    """Request to identify performers in a Stash gallery."""
+    gallery_id: str = Field(description="Stash gallery ID")
+    top_k: int = Field(5, ge=1, le=20, description="Number of matches per face")
+    max_distance: float = Field(0.6, ge=0.0, le=2.0, description="Maximum distance threshold")
+    min_face_confidence: float = Field(0.5, ge=0.0, le=1.0, description="Minimum face detection confidence")
+
+
+class GalleryIdentifyResponse(BaseModel):
+    """Response with gallery identification results."""
+    gallery_id: str
+    total_images: int
+    images_processed: int
+    faces_detected: int
+    performers: list[GalleryPerformerResult]
+    errors: list[str] = []
+
+
 class DatabaseInfo(BaseModel):
     """Information about the loaded database."""
     version: str
@@ -478,6 +509,161 @@ async def identify_image(request: ImageIdentifyRequest):
         print(f"[identify_image] Failed to save fingerprint: {e}")
 
     return IdentifyResponse(faces=faces, face_count=len(faces))
+
+
+@app.post("/identify/gallery", response_model=GalleryIdentifyResponse)
+async def identify_gallery(request: GalleryIdentifyRequest):
+    """
+    Identify all performers across a gallery.
+    Processes each image, aggregates results per-performer, and stores fingerprints.
+    """
+    import time
+    t_start = time.time()
+
+    if recognizer is None:
+        raise HTTPException(status_code=503, detail="Database not loaded")
+
+    base_url = STASH_URL.rstrip("/")
+    api_key = STASH_API_KEY
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="STASH_URL env var not set")
+
+    # Fetch gallery info from Stash
+    from stash_client_unified import StashClientUnified
+    stash_client = StashClientUnified(base_url, api_key)
+    gallery_data = await stash_client.get_gallery_by_id(request.gallery_id)
+
+    if not gallery_data:
+        raise HTTPException(status_code=404, detail="Gallery not found")
+
+    images = gallery_data.get("images", [])
+    if not images:
+        return GalleryIdentifyResponse(
+            gallery_id=request.gallery_id,
+            total_images=0,
+            images_processed=0,
+            faces_detected=0,
+            performers=[],
+        )
+
+    total_images = len(images)
+    print(f"[identify_gallery] === START gallery_id={request.gallery_id}, {total_images} images ===")
+
+    # Process each image
+    performer_appearances: dict[str, list[dict]] = defaultdict(list)
+    performer_info: dict[str, dict] = {}
+    total_faces = 0
+    images_processed = 0
+    errors = []
+
+    for i, img in enumerate(images):
+        img_id = img["id"]
+        img_url = img.get("paths", {}).get("image")
+
+        if not img_url:
+            errors.append(f"Image {img_id} has no URL")
+            continue
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                headers = {"ApiKey": api_key} if api_key else {}
+                resp = await client.get(img_url, headers=headers)
+                resp.raise_for_status()
+                image = load_image(resp.content)
+
+            results = recognizer.recognize_image(
+                image,
+                top_k=request.top_k,
+                max_distance=request.max_distance,
+                min_face_confidence=request.min_face_confidence,
+            )
+
+            img_h, img_w = image.shape[:2]
+            total_faces += len(results)
+            images_processed += 1
+
+            # Save per-image fingerprint
+            try:
+                save_image_fingerprint(
+                    image_id=img_id,
+                    gallery_id=request.gallery_id,
+                    faces=results,
+                    image_shape=(img_h, img_w),
+                    db_version=db_manifest.get("version"),
+                )
+            except Exception as e:
+                print(f"[identify_gallery] Failed to save fingerprint for image {img_id}: {e}")
+
+            # Collect per-performer data
+            for result in results:
+                if result.matches:
+                    best = result.matches[0]
+                    pid = best.stashdb_id
+
+                    performer_appearances[pid].append({
+                        "image_id": img_id,
+                        "distance": best.combined_score,
+                    })
+
+                    # Keep best info
+                    if pid not in performer_info or best.combined_score < performer_info[pid]["distance"]:
+                        performer_info[pid] = {
+                            "name": best.name,
+                            "distance": best.combined_score,
+                            "country": best.country,
+                            "image_url": best.image_url,
+                        }
+
+            if (i + 1) % 10 == 0:
+                print(f"[identify_gallery] [{time.time()-t_start:.1f}s] Processed {i+1}/{total_images} images")
+
+        except Exception as e:
+            errors.append(f"Image {img_id}: {str(e)[:100]}")
+            print(f"[identify_gallery] Error processing image {img_id}: {e}")
+
+    # Aggregate results
+    performers = []
+    for pid, appearances in performer_appearances.items():
+        distances = [a["distance"] for a in appearances]
+        image_ids = list(set(a["image_id"] for a in appearances))
+        image_count = len(image_ids)
+        best_distance = min(distances)
+        avg_distance = sum(distances) / len(distances)
+
+        # Filter: 2+ appearances OR single match with distance < 0.4
+        if image_count < 2 and best_distance >= 0.4:
+            continue
+
+        info = performer_info[pid]
+        performers.append(GalleryPerformerResult(
+            performer_id=pid,
+            name=info["name"],
+            best_distance=best_distance,
+            avg_distance=avg_distance,
+            confidence=max(0.0, min(1.0, 1.0 - best_distance)),
+            image_count=image_count,
+            image_ids=image_ids,
+            country=info.get("country"),
+            image_url=info.get("image_url"),
+        ))
+
+    # Sort by image count desc, then best distance asc
+    performers.sort(key=lambda p: (-p.image_count, p.best_distance))
+
+    top_names = [p.name for p in performers[:3]]
+    print(f"[identify_gallery] [{time.time()-t_start:.1f}s] === DONE === "
+          f"{images_processed}/{total_images} images, {total_faces} faces, "
+          f"{len(performers)} performers: {', '.join(top_names)}")
+
+    return GalleryIdentifyResponse(
+        gallery_id=request.gallery_id,
+        total_images=total_images,
+        images_processed=images_processed,
+        faces_detected=total_faces,
+        performers=performers,
+        errors=errors[:10],
+    )
 
 
 # Scene identification models
