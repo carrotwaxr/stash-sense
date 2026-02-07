@@ -641,6 +641,274 @@
         floatingBtn.classList.add('ss-floating-btn');
         document.body.appendChild(floatingBtn);
       },
+
+      // Call the gallery identification API
+      async identifyGallery(galleryId, onProgress) {
+        const settings = await SS.getSettings();
+        onProgress?.('Connecting to Stash Sense...');
+
+        const result = await SS.runPluginOperation('identify_gallery', {
+          gallery_id: galleryId,
+          sidecar_url: settings.sidecarUrl,
+        });
+
+        if (result.error) {
+          throw new Error(result.error);
+        }
+
+        return result;
+      },
+
+      // Add performer to gallery
+      async addPerformerToGallery(galleryId, performerId) {
+        const getQuery = `
+          query GetGallery($id: ID!) {
+            findGallery(id: $id) {
+              performers { id }
+            }
+          }
+        `;
+
+        const updateQuery = `
+          mutation UpdateGallery($id: ID!, $performer_ids: [ID!]) {
+            galleryUpdate(input: { id: $id, performer_ids: $performer_ids }) {
+              id
+            }
+          }
+        `;
+
+        try {
+          const getResult = await SS.stashQuery(getQuery, { id: galleryId });
+          const currentPerformers = getResult?.findGallery?.performers || [];
+          const currentIds = currentPerformers.map(p => p.id);
+
+          if (!currentIds.includes(performerId)) {
+            currentIds.push(performerId);
+          }
+
+          await SS.stashQuery(updateQuery, { id: galleryId, performer_ids: currentIds });
+          return true;
+        } catch (e) {
+          console.error('Failed to add performer to gallery:', e);
+          return false;
+        }
+      },
+
+      async handleIdentifyGallery() {
+        const route = SS.getRoute();
+        if (route.type !== 'gallery') return;
+
+        const galleryId = route.id;
+        const modal = this.createModal();
+
+        try {
+          this.updateLoading(modal, 'Identifying performers in gallery...', 'This may take a while for large galleries');
+
+          const results = await this.identifyGallery(galleryId, (stage) => {
+            this.updateLoading(modal, stage);
+          });
+
+          this.updateLoading(modal, 'Processing results...');
+          await this.renderGalleryResults(modal, results, galleryId);
+        } catch (error) {
+          console.error(`[${SS.PLUGIN_NAME}] Gallery analysis failed:`, error);
+          this.showError(modal, error.message);
+        }
+      },
+
+      async renderGalleryResults(modal, results, galleryId) {
+        const loading = modal.querySelector('.ss-loading');
+        const resultsDiv = modal.querySelector('.ss-results');
+        const errorDiv = modal.querySelector('.ss-error');
+
+        loading.style.display = 'none';
+
+        if (!results.performers || results.performers.length === 0) {
+          errorDiv.innerHTML = `
+            <div class="ss-error-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+              </svg>
+            </div>
+            <p class="ss-error-title">No performers identified</p>
+            <p class="ss-error-hint">
+              Processed ${results.images_processed || 0}/${results.total_images || 0} images
+              but no confident matches were found.
+            </p>
+          `;
+          errorDiv.style.display = 'block';
+          return;
+        }
+
+        resultsDiv.innerHTML = `
+          <p class="ss-summary">
+            Processed <strong>${results.images_processed}</strong>/${results.total_images} images,
+            detected <strong>${results.faces_detected}</strong> faces,
+            identified <strong>${results.performers.length}</strong> performer(s).
+          </p>
+          <div class="ss-gallery-actions-bar">
+            <button class="ss-btn ss-btn-primary ss-accept-all-btn">Accept All</button>
+          </div>
+          <div class="ss-persons"></div>
+        `;
+
+        const personsDiv = resultsDiv.querySelector('.ss-persons');
+
+        for (const performer of results.performers) {
+          const personDiv = document.createElement('div');
+          personDiv.className = 'ss-person';
+
+          const confidence = this.distanceToConfidence(performer.best_distance);
+          const confidenceClass = SS.getConfidenceClass(confidence);
+
+          const localPerformer = await SS.findPerformerByStashDBId(performer.performer_id);
+
+          personDiv.innerHTML = `
+            <div class="ss-person-header">
+              <span class="ss-person-label">${performer.name}</span>
+              <span class="ss-person-frames">Found in ${performer.image_count}/${results.total_images} images</span>
+            </div>
+            <div class="ss-match">
+              <div class="ss-match-image">
+                ${performer.image_url ? `<img src="${performer.image_url}" alt="${performer.name}" loading="lazy" />` : '<div class="ss-no-image">No image</div>'}
+              </div>
+              <div class="ss-match-info">
+                <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
+                ${performer.country ? `<div class="ss-country">${performer.country}</div>` : ''}
+                <div class="ss-links">
+                  <a href="https://stashdb.org/performers/${performer.performer_id}" target="_blank" rel="noopener" class="ss-link">
+                    View on StashDB
+                  </a>
+                </div>
+                ${localPerformer ? `
+                  <div class="ss-gallery-performer-actions" data-performer-id="${localPerformer.id}" data-stashdb-id="${performer.performer_id}">
+                    <div class="ss-gallery-tag-toggle">
+                      <label class="ss-toggle-label">
+                        <input type="checkbox" class="ss-tag-images-toggle" />
+                        <span>Also tag individual images</span>
+                      </label>
+                    </div>
+                    <div class="ss-actions">
+                      <button class="ss-btn ss-btn-add ss-gallery-accept-btn"
+                              data-performer-id="${localPerformer.id}"
+                              data-gallery-id="${galleryId}"
+                              data-image-ids='${JSON.stringify(performer.image_ids)}'>
+                        Add to Gallery
+                      </button>
+                      <span class="ss-local-status">In library as: ${localPerformer.name}</span>
+                    </div>
+                  </div>
+                ` : `
+                  <div class="ss-actions">
+                    <span class="ss-local-status ss-not-in-library">Not in library</span>
+                  </div>
+                `}
+              </div>
+            </div>
+          `;
+
+          personsDiv.appendChild(personDiv);
+        }
+
+        // Click handlers for individual accept buttons
+        resultsDiv.querySelectorAll('.ss-gallery-accept-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const performerId = btn.dataset.performerId;
+            const targetGalleryId = btn.dataset.galleryId;
+            const imageIds = JSON.parse(btn.dataset.imageIds);
+            const tagImages = btn.closest('.ss-gallery-performer-actions')
+              ?.querySelector('.ss-tag-images-toggle')?.checked || false;
+
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+
+            let success = await this.addPerformerToGallery(targetGalleryId, performerId);
+
+            if (success && tagImages) {
+              btn.textContent = `Tagging images...`;
+              for (const imgId of imageIds) {
+                await this.addPerformerToImage(imgId, performerId);
+              }
+            }
+
+            if (success) {
+              btn.textContent = tagImages ? `Added to gallery + ${imageIds.length} images` : 'Added to gallery!';
+              btn.classList.add('ss-btn-success');
+            } else {
+              btn.textContent = 'Failed';
+              btn.classList.add('ss-btn-error');
+              btn.disabled = false;
+            }
+          });
+        });
+
+        // Accept All handler
+        resultsDiv.querySelector('.ss-accept-all-btn')?.addEventListener('click', async (e) => {
+          const acceptAllBtn = e.target;
+          acceptAllBtn.disabled = true;
+          acceptAllBtn.textContent = 'Accepting...';
+
+          const buttons = resultsDiv.querySelectorAll('.ss-gallery-accept-btn:not(:disabled)');
+          for (const btn of buttons) {
+            btn.click();
+            // Small delay between operations
+            await new Promise(r => setTimeout(r, 200));
+          }
+
+          acceptAllBtn.textContent = 'All accepted!';
+          acceptAllBtn.classList.add('ss-btn-success');
+        });
+
+        resultsDiv.style.display = 'block';
+      },
+
+      createGalleryButton() {
+        const status = SS.getSidecarStatus();
+        const btn = SS.createElement('button', {
+          className: 'ss-identify-btn btn btn-secondary',
+          attrs: {
+            title: status === false ? 'Stash Sense: Not connected' : 'Identify all performers in this gallery',
+          },
+          innerHTML: `
+            <span class="ss-btn-icon ${status === true ? 'ss-connected' : status === false ? 'ss-disconnected' : ''}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+              </svg>
+            </span>
+            <span class="ss-btn-text">Identify Performers</span>
+          `,
+        });
+        btn.addEventListener('click', () => this.handleIdentifyGallery());
+        return btn;
+      },
+
+      injectGalleryButton() {
+        const route = SS.getRoute();
+        if (route.type !== 'gallery') return;
+        if (document.querySelector('.ss-identify-btn')) return;
+
+        const buttonContainers = [
+          '.gallery-toolbar .btn-group',
+          '.detail-header .ml-auto .btn-group',
+          '.gallery-header .btn-group',
+          '.detail-header-buttons',
+          '.ml-auto.btn-group',
+        ];
+
+        for (const selector of buttonContainers) {
+          const container = document.querySelector(selector);
+          if (container) {
+            container.appendChild(this.createGalleryButton());
+            console.log(`[${SS.PLUGIN_NAME}] Gallery button injected into ${selector}`);
+            return;
+          }
+        }
+
+        // Fallback: floating button
+        const floatingBtn = this.createGalleryButton();
+        floatingBtn.classList.add('ss-floating-btn');
+        document.body.appendChild(floatingBtn);
+      },
     };
 
     // ==================== Initialization ====================
@@ -662,6 +930,7 @@
       // Inject scene button
       setTimeout(() => FaceRecognition.injectSceneButton(), 500);
       setTimeout(() => FaceRecognition.injectImageButton(), 500);
+      setTimeout(() => FaceRecognition.injectGalleryButton(), 500);
 
       // Watch for navigation
       SS.onNavigate((route) => {
@@ -670,6 +939,9 @@
         }
         if (route.type === 'image') {
           setTimeout(() => FaceRecognition.injectImageButton(), 300);
+        }
+        if (route.type === 'gallery') {
+          setTimeout(() => FaceRecognition.injectGalleryButton(), 300);
         }
       });
 
