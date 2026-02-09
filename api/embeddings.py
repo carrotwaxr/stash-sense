@@ -6,6 +6,7 @@ Uses:
 """
 import io
 import os
+import cv2
 import numpy as np
 from PIL import Image
 from typing import Optional
@@ -22,6 +23,7 @@ tf.config.set_visible_devices([], 'GPU')  # Hide all GPUs from TensorFlow
 
 # InsightFace for RetinaFace detection (uses ONNX Runtime with GPU)
 from insightface.app import FaceAnalysis
+from insightface.utils.face_align import norm_crop
 
 # Import DeepFace modules (will use TensorFlow on CPU)
 from deepface.modules import modeling
@@ -34,6 +36,7 @@ class DetectedFace:
     bbox: dict  # {x, y, w, h}
     confidence: float
     landmarks: Optional[np.ndarray] = None  # 5-point facial landmarks
+    yaw: Optional[float] = None    # Estimated yaw in degrees (-90 to +90)
 
 
 @dataclass
@@ -140,24 +143,41 @@ class FaceEmbeddingGenerator:
             x1, y1, x2, y2 = bbox
             w, h = x2 - x1, y2 - y1
 
-            # Ensure bounds are within image
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-            x2 = min(image.shape[1], x2)
-            y2 = min(image.shape[0], y2)
+            # Get 5-point landmarks
+            kps = face.kps if hasattr(face, 'kps') else None
 
-            # Crop face from image
-            face_img = image[y1:y2, x1:x2]
+            # Align face using InsightFace's norm_crop (5-point similarity transform)
+            # This produces a 112x112 aligned face matching ArcFace's training preprocessing
+            if kps is not None and len(kps) >= 5:
+                face_img = norm_crop(image, kps, image_size=112)
+            else:
+                # Fallback: raw bbox crop (shouldn't happen with RetinaFace)
+                cx1 = max(0, x1)
+                cy1 = max(0, y1)
+                cx2 = min(image.shape[1], x2)
+                cy2 = min(image.shape[0], y2)
+                face_img = image[cy1:cy2, cx1:cx2]
 
             # Skip if crop is too small
             if face_img.shape[0] < 10 or face_img.shape[1] < 10:
                 continue
 
+            # Estimate yaw from 5-point landmarks
+            yaw_estimate = None
+            if kps is not None and len(kps) >= 3:
+                left_eye, right_eye, nose = kps[0], kps[1], kps[2]
+                eye_center_x = (left_eye[0] + right_eye[0]) / 2
+                eye_width = np.linalg.norm(right_eye - left_eye)
+                if eye_width > 0:
+                    nose_offset = nose[0] - eye_center_x
+                    yaw_estimate = float(np.degrees(np.arctan2(nose_offset, eye_width / 2)))
+
             faces.append(DetectedFace(
                 image=face_img,
                 bbox={"x": int(x1), "y": int(y1), "w": int(w), "h": int(h)},
                 confidence=conf,
-                landmarks=face.kps if hasattr(face, 'kps') else None,
+                landmarks=kps,
+                yaw=yaw_estimate,
             ))
 
         return faces
@@ -167,23 +187,36 @@ class FaceEmbeddingGenerator:
         face: np.ndarray,
         target_size: tuple[int, int],
     ) -> np.ndarray:
-        """Preprocess a face image for model inference."""
-        # Resize to target size
-        pil_img = Image.fromarray(face)
-        pil_img = pil_img.resize(target_size, Image.Resampling.BILINEAR)
-        resized = np.array(pil_img)
+        """Preprocess a face image for model inference.
 
-        # Expand dims for batch
-        resized = np.expand_dims(resized, axis=0)
+        Uses aspect-ratio-preserving resize with black padding,
+        matching DeepFace's preprocessing pipeline.
+        """
+        target_h, target_w = target_size
+        face_h, face_w = face.shape[:2]
 
-        # Normalize to [-1, 1] for FaceNet, [0, 1] for ArcFace handled by model
-        resized = resized.astype(np.float32)
+        # Scale to fit within target while preserving aspect ratio
+        factor = min(target_h / face_h, target_w / face_w)
+        new_h = int(face_h * factor)
+        new_w = int(face_w * factor)
 
-        return resized
+        resized = cv2.resize(face, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        # Create black canvas and paste centered
+        canvas = np.zeros((target_h, target_w, 3), dtype=np.uint8)
+        y_off = (target_h - new_h) // 2
+        x_off = (target_w - new_w) // 2
+        canvas[y_off:y_off + new_h, x_off:x_off + new_w] = resized
+
+        # Expand dims for batch and cast to float32
+        return np.expand_dims(canvas, axis=0).astype(np.float32)
 
     def get_embedding(self, face: np.ndarray) -> FaceEmbedding:
         """
         Generate embeddings for a single face image.
+
+        Uses flip-averaging: generates embeddings for both the original and
+        horizontally flipped face, then averages them for more stable results.
 
         Args:
             face: RGB face image as numpy array (cropped face from detect_faces)
@@ -191,23 +224,36 @@ class FaceEmbeddingGenerator:
         Returns:
             FaceEmbedding with FaceNet and ArcFace embeddings
         """
+        # Create flipped version for flip-averaging
+        flipped = face[:, ::-1, :]
+
         # Get model input shapes
         facenet_size = self.facenet_model.input_shape
         arcface_size = self.arcface_model.input_shape
 
-        # Preprocess for each model
-        facenet_input = self._preprocess_face(face, facenet_size)
-        arcface_input = self._preprocess_face(face, arcface_size)
+        # Preprocess both original and flipped for each model
+        facenet_orig = self._preprocess_face(face, facenet_size)
+        facenet_flip = self._preprocess_face(flipped, facenet_size)
+        arcface_orig = self._preprocess_face(face, arcface_size)
+        arcface_flip = self._preprocess_face(flipped, arcface_size)
 
         # Normalize for FaceNet (expects [-1, 1])
-        facenet_input = (facenet_input - 127.5) / 127.5
+        facenet_orig = (facenet_orig - 127.5) / 127.5
+        facenet_flip = (facenet_flip - 127.5) / 127.5
 
-        # Normalize for ArcFace (expects [0, 1])
-        arcface_input = arcface_input / 255.0
+        # Normalize for ArcFace (expects [-1, 1] per ArcFace paper: (x-127.5)/128)
+        arcface_orig = (arcface_orig - 127.5) / 128.0
+        arcface_flip = (arcface_flip - 127.5) / 128.0
 
-        # Get embeddings
-        facenet_emb = self.facenet_model.model(facenet_input, training=False).numpy()[0]
-        arcface_emb = self.arcface_model.model(arcface_input, training=False).numpy()[0]
+        # Get embeddings for both orientations
+        facenet_emb_orig = self.facenet_model.model(facenet_orig, training=False).numpy()[0]
+        facenet_emb_flip = self.facenet_model.model(facenet_flip, training=False).numpy()[0]
+        arcface_emb_orig = self.arcface_model.model(arcface_orig, training=False).numpy()[0]
+        arcface_emb_flip = self.arcface_model.model(arcface_flip, training=False).numpy()[0]
+
+        # Average original + flipped embeddings for more canonical representation
+        facenet_emb = (facenet_emb_orig + facenet_emb_flip) / 2.0
+        arcface_emb = (arcface_emb_orig + arcface_emb_flip) / 2.0
 
         return FaceEmbedding(facenet=facenet_emb, arcface=arcface_emb)
 
