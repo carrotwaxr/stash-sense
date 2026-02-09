@@ -154,7 +154,61 @@
     async setFieldConfig(endpoint, fieldConfigs) {
       return apiCall('rec_set_field_config', { endpoint, field_configs: fieldConfigs });
     },
+
+    // User settings
+    async getUserSetting(key) {
+      const result = await apiCall('user_get_setting', { key });
+      return result.value;
+    },
+
+    async setUserSetting(key, value) {
+      return apiCall('user_set_setting', { key, value });
+    },
+
+    async getAllUserSettings() {
+      const result = await apiCall('user_get_all_settings');
+      return result.settings || {};
+    },
   };
+
+  /**
+   * Convert ALL_CAPS enum values to Title Case for display.
+   * e.g. "BROWN" -> "Brown", "EYE_COLOR" -> "Eye Color", "NATURAL" -> "Natural"
+   * Returns original value if not an ALL_CAPS string.
+   */
+  function normalizeEnumValue(val) {
+    if (typeof val !== 'string') return val;
+    // Only transform if the string is ALL_CAPS (with optional underscores)
+    if (!/^[A-Z][A-Z0-9_]*$/.test(val)) return val;
+    return val
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  // Filter out false-positive changes where values are effectively equal
+  function filterRealChanges(changes) {
+    return (changes || []).filter(change => {
+      const local = change.local_value;
+      const upstream = change.upstream_value;
+      // Both null/undefined/empty string/zero
+      const isEmptyVal = v => v === null || v === undefined || v === '' || v === 0;
+      if (isEmptyVal(local) && isEmptyVal(upstream)) return false;
+      // String case-insensitive comparison
+      if (typeof local === 'string' && typeof upstream === 'string') {
+        if (local.toLowerCase() === upstream.toLowerCase()) return false;
+      }
+      // List comparison (alias_list, urls) - case-insensitive set equality
+      if (Array.isArray(local) && Array.isArray(upstream)) {
+        const localSet = new Set(local.map(v => String(v).toLowerCase()));
+        const upstreamSet = new Set(upstream.map(v => String(v).toLowerCase()));
+        if (localSet.size === upstreamSet.size && [...localSet].every(v => upstreamSet.has(v))) return false;
+      }
+      // Strict equality for other types
+      if (local === upstream) return false;
+      return true;
+    });
+  }
 
   // ==================== State ====================
 
@@ -212,9 +266,12 @@
       const fpNeedsRefresh = fpStatus.needs_refresh_count || 0;
 
       container.innerHTML = `
-        <div class="ss-dashboard-header">
-          <h1>Stash Sense Recommendations</h1>
-          <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
+        <div class="ss-dashboard-header" style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <h1>Stash Sense Recommendations</h1>
+            <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
+          </div>
+          <div id="ss-dashboard-gear"></div>
         </div>
 
         <div class="ss-stash-status ${sidecarStatus.connected ? 'connected' : 'disconnected'}">
@@ -292,16 +349,13 @@
           <h2>Action Runner</h2>
           <div class="ss-analysis-buttons"></div>
         </div>
+      `
 
-        <div class="ss-dashboard-settings" id="ss-upstream-settings">
-          <h2>Upstream Sync Settings</h2>
-          <p class="ss-dashboard-subtitle">Configure which stash-box endpoints and fields to monitor for upstream changes.</p>
-          <div id="ss-upstream-endpoints-loading">
-            <div class="ss-spinner-small"></div> Loading endpoints...
-          </div>
-          <div id="ss-upstream-endpoints-list" style="display:none"></div>
-        </div>
-      `;
+      // Add gear icon to dashboard header
+      const gearSlot = container.querySelector('#ss-dashboard-gear');
+      if (gearSlot) {
+        gearSlot.appendChild(createSettingsGearButton(() => showSettingsModal()));
+      }
 
       // Render type cards
       const typeCards = container.querySelector('.ss-type-cards');
@@ -362,7 +416,7 @@
         typeCards.appendChild(card);
       }
 
-      // Render analysis buttons in desired order
+      // Render analysis buttons with progress support
       const analysisButtons = container.querySelector('.ss-analysis-buttons');
       const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files', 'upstream_performer_changes'];
       const sortedTypes = [...analysisTypes.types].sort((a, b) => {
@@ -370,26 +424,111 @@
         const bIdx = buttonOrder.indexOf(b.type);
         return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
       });
+
+      // Track polling intervals for analysis progress
+      const analysisPollers = {};
+
+      function renderAnalysisProgress(cardEl, run) {
+        const processed = run.items_processed || 0;
+        const total = run.items_total || 0;
+        const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+        const label = total > 0
+          ? `Processing ${processed} / ${total} items...`
+          : 'Starting analysis...';
+
+        cardEl.querySelector('.ss-analysis-progress').innerHTML = `
+          <div class="ss-progress-bar-container" style="margin:8px 0 4px;">
+            <div class="ss-progress-bar" style="width:${pct}%;">
+              <span class="ss-progress-pct">${pct}%</span>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--ss-text-secondary,#aaa);">${label}</div>
+        `;
+      }
+
+      function startAnalysisPolling(type, runId, cardEl) {
+        if (analysisPollers[type]) clearInterval(analysisPollers[type]);
+        analysisPollers[type] = setInterval(async () => {
+          try {
+            const runs = await RecommendationsAPI.getAnalysisRuns(type, 1);
+            if (!runs || !runs.length) return;
+            const run = runs[0];
+            if (run.status === 'running') {
+              renderAnalysisProgress(cardEl, run);
+            } else {
+              // Completed or failed
+              clearInterval(analysisPollers[type]);
+              delete analysisPollers[type];
+              const progressEl = cardEl.querySelector('.ss-analysis-progress');
+              if (run.status === 'completed') {
+                progressEl.innerHTML = `
+                  <div style="font-size:13px;color:var(--ss-color-success,#4caf50);padding:4px 0;">
+                    Completed \u2014 ${run.recommendations_created} recommendation${run.recommendations_created !== 1 ? 's' : ''} created
+                  </div>
+                `;
+              } else {
+                progressEl.innerHTML = `
+                  <div style="font-size:13px;color:var(--ss-color-error,#f44336);padding:4px 0;">
+                    Failed: ${run.error_message || 'Unknown error'}
+                  </div>
+                `;
+              }
+              // Refresh dashboard after a brief pause
+              setTimeout(() => renderDashboard(container), 3000);
+            }
+          } catch (e) {
+            console.error('[Stash Sense] Error polling analysis progress:', e);
+          }
+        }, 5000);
+      }
+
+      // Fetch latest run for each type to detect already-running analyses
+      const latestRuns = {};
+      await Promise.all(sortedTypes.map(async (analysis) => {
+        try {
+          const runs = await RecommendationsAPI.getAnalysisRuns(analysis.type, 1);
+          if (runs && runs.length) latestRuns[analysis.type] = runs[0];
+        } catch (_) { /* ignore */ }
+      }));
+
       for (const analysis of sortedTypes) {
-        const btn = SS.createElement('button', {
-          className: 'ss-btn ss-btn-secondary ss-analysis-btn',
+        const latestRun = latestRuns[analysis.type];
+        const isRunning = latestRun && latestRun.status === 'running';
+
+        const card = SS.createElement('div', {
+          className: 'ss-analysis-card',
           innerHTML: `
-            <span class="ss-analysis-icon">
-              ${typeConfigs[analysis.type]?.icon || ''}
-            </span>
-            <span>Check ${typeConfigs[analysis.type]?.title || analysis.type}</span>
+            <button class="ss-btn ss-btn-secondary ss-analysis-btn" ${isRunning ? 'disabled' : ''}>
+              <span class="ss-analysis-icon">
+                ${typeConfigs[analysis.type]?.icon || ''}
+              </span>
+              <span>Check ${typeConfigs[analysis.type]?.title || analysis.type}</span>
+            </button>
+            <div class="ss-analysis-progress"></div>
           `,
         });
 
+        const btn = card.querySelector('.ss-analysis-btn');
+
+        // If already running, show progress and start polling
+        if (isRunning) {
+          renderAnalysisProgress(card, latestRun);
+          startAnalysisPolling(analysis.type, latestRun.id, card);
+        }
+
         btn.addEventListener('click', async () => {
           btn.disabled = true;
-          btn.innerHTML = '<span class="ss-spinner-small"></span> Running...';
+          btn.innerHTML = '<span class="ss-spinner-small"></span> Starting...';
           try {
             const result = await RecommendationsAPI.runAnalysis(analysis.type);
-            btn.innerHTML = `Started! Run ID: ${result.run_id}`;
-            btn.classList.add('ss-btn-success');
-            // Refresh counts after a delay
-            setTimeout(() => renderDashboard(container), 3000);
+            btn.innerHTML = `
+              <span class="ss-analysis-icon">
+                ${typeConfigs[analysis.type]?.icon || ''}
+              </span>
+              <span>Check ${typeConfigs[analysis.type]?.title || analysis.type}</span>
+            `;
+            renderAnalysisProgress(card, { items_processed: 0, items_total: 0 });
+            startAnalysisPolling(analysis.type, result.run_id, card);
           } catch (e) {
             btn.innerHTML = `Failed: ${e.message}`;
             btn.classList.add('ss-btn-error');
@@ -397,7 +536,7 @@
           }
         });
 
-        analysisButtons.appendChild(btn);
+        analysisButtons.appendChild(card);
       }
 
       // Fingerprint generation button handler
@@ -533,109 +672,6 @@
         }
       });
 
-      // Load upstream sync settings
-      (async () => {
-        const loadingEl = container.querySelector('#ss-upstream-endpoints-loading');
-        const listEl = container.querySelector('#ss-upstream-endpoints-list');
-        try {
-          const configResult = await SS.stashQuery(`
-            query { configuration { general { stashBoxes { endpoint name } } } }
-          `);
-          const endpoints = configResult?.configuration?.general?.stashBoxes || [];
-
-          if (endpoints.length === 0) {
-            loadingEl.innerHTML = '<p>No stash-box endpoints configured in Stash. Configure them in Stash Settings > Metadata Providers.</p>';
-            return;
-          }
-
-          loadingEl.style.display = 'none';
-          listEl.style.display = 'block';
-
-          for (const ep of endpoints) {
-            const epDiv = document.createElement('div');
-            epDiv.className = 'ss-upstream-endpoint-settings';
-            const displayName = ep.name || new URL(ep.endpoint).hostname;
-
-            epDiv.innerHTML = `
-              <div class="ss-upstream-ep-header">
-                <h3>${escapeHtml(displayName)}</h3>
-                <span class="ss-upstream-ep-url">${escapeHtml(ep.endpoint)}</span>
-              </div>
-              <div class="ss-upstream-fields-container" style="display:none">
-                <div class="ss-upstream-fields-loading"><div class="ss-spinner-small"></div> Loading field config...</div>
-                <div class="ss-upstream-fields-grid" style="display:none"></div>
-                <div class="ss-upstream-fields-actions" style="display:none; margin-top: 0.75rem;">
-                  <button class="ss-btn ss-btn-primary ss-upstream-save-fields" style="padding: 6px 14px; font-size: 0.85rem;">Save Field Config</button>
-                  <span class="ss-upstream-save-status" style="margin-left: 8px; font-size: 0.85rem;"></span>
-                </div>
-              </div>
-              <button class="ss-btn ss-btn-secondary ss-upstream-toggle-fields" style="margin-top: 0.5rem; padding: 4px 12px; font-size: 0.8rem;">Show Monitored Fields</button>
-            `;
-
-            const toggleBtn = epDiv.querySelector('.ss-upstream-toggle-fields');
-            const fieldsContainer = epDiv.querySelector('.ss-upstream-fields-container');
-            let fieldsLoaded = false;
-
-            toggleBtn.addEventListener('click', async () => {
-              const isHidden = fieldsContainer.style.display === 'none';
-              fieldsContainer.style.display = isHidden ? 'block' : 'none';
-              toggleBtn.textContent = isHidden ? 'Hide Monitored Fields' : 'Show Monitored Fields';
-
-              if (isHidden && !fieldsLoaded) {
-                fieldsLoaded = true;
-                try {
-                  const fieldConfig = await RecommendationsAPI.getFieldConfig(ep.endpoint);
-                  const fieldsGrid = epDiv.querySelector('.ss-upstream-fields-grid');
-                  const fieldsLoading = epDiv.querySelector('.ss-upstream-fields-loading');
-                  const fieldsActions = epDiv.querySelector('.ss-upstream-fields-actions');
-
-                  const sortedFields = Object.entries(fieldConfig.fields).sort(([, a], [, b]) => a.label.localeCompare(b.label));
-
-                  fieldsGrid.innerHTML = sortedFields.map(([fieldName, config]) => `
-                    <label class="ss-upstream-field-toggle">
-                      <input type="checkbox" data-field="${escapeHtml(fieldName)}" ${config.enabled ? 'checked' : ''} />
-                      <span>${escapeHtml(config.label)}</span>
-                    </label>
-                  `).join('');
-
-                  fieldsLoading.style.display = 'none';
-                  fieldsGrid.style.display = 'grid';
-                  fieldsActions.style.display = 'flex';
-
-                  // Save button
-                  const saveBtn = epDiv.querySelector('.ss-upstream-save-fields');
-                  const saveStatus = epDiv.querySelector('.ss-upstream-save-status');
-                  saveBtn.addEventListener('click', async () => {
-                    saveBtn.disabled = true;
-                    saveStatus.textContent = 'Saving...';
-                    const configs = {};
-                    fieldsGrid.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                      configs[cb.dataset.field] = cb.checked;
-                    });
-                    try {
-                      await RecommendationsAPI.setFieldConfig(ep.endpoint, configs);
-                      saveStatus.textContent = 'Saved!';
-                      saveStatus.style.color = '#22c55e';
-                      setTimeout(() => { saveStatus.textContent = ''; }, 2000);
-                    } catch (e) {
-                      saveStatus.textContent = `Error: ${e.message}`;
-                      saveStatus.style.color = '#ef4444';
-                    }
-                    saveBtn.disabled = false;
-                  });
-                } catch (e) {
-                  epDiv.querySelector('.ss-upstream-fields-loading').innerHTML = `Error loading field config: ${escapeHtml(e.message)}`;
-                }
-              }
-            });
-
-            listEl.appendChild(epDiv);
-          }
-        } catch (e) {
-          loadingEl.innerHTML = `<p>Could not load stash-box endpoints: ${escapeHtml(e.message)}</p>`;
-        }
-      })();
-
     } catch (e) {
       container.innerHTML = `
         <div class="ss-dashboard-header">
@@ -715,11 +751,12 @@
 
     // Load recommendations
     try {
+      const PAGE_SIZE = 25;
       const result = await RecommendationsAPI.getList({
         type: currentState.type,
         status: currentState.status,
-        limit: 50,
-        offset: currentState.page * 50,
+        limit: PAGE_SIZE,
+        offset: currentState.page * PAGE_SIZE,
       });
 
       const listContent = container.querySelector('.ss-list-content');
@@ -743,6 +780,42 @@
           renderCurrentView(container);
         });
         listContent.appendChild(card);
+      }
+
+      // Pagination controls
+      const totalPages = Math.ceil(result.total / PAGE_SIZE);
+      if (totalPages > 1) {
+        const pagination = document.createElement('div');
+        pagination.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 0;';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'ss-btn ss-btn-secondary';
+        prevBtn.textContent = '\u2190 Prev';
+        prevBtn.disabled = currentState.page === 0;
+        prevBtn.style.cssText = 'min-width:80px;';
+        prevBtn.addEventListener('click', () => {
+          currentState.page--;
+          renderCurrentView(container);
+        });
+
+        const pageText = document.createElement('span');
+        pageText.style.cssText = 'color:var(--ss-text-secondary, #aaa);font-size:14px;';
+        pageText.textContent = `Page ${currentState.page + 1} of ${totalPages}`;
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'ss-btn ss-btn-secondary';
+        nextBtn.textContent = 'Next \u2192';
+        nextBtn.disabled = currentState.page >= totalPages - 1;
+        nextBtn.style.cssText = 'min-width:80px;';
+        nextBtn.addEventListener('click', () => {
+          currentState.page++;
+          renderCurrentView(container);
+        });
+
+        pagination.appendChild(prevBtn);
+        pagination.appendChild(pageText);
+        pagination.appendChild(nextBtn);
+        listContent.appendChild(pagination);
       }
 
     } catch (e) {
@@ -804,8 +877,9 @@
     }
 
     if (rec.type === 'upstream_performer_changes') {
-      const changeCount = (details.changes || []).length;
-      const changedFields = (details.changes || []).map(c => c.field_label).join(', ');
+      const realChanges = filterRealChanges(details.changes);
+      const changeCount = realChanges.length;
+      const changedFields = realChanges.map(c => c.field_label).join(', ');
 
       return SS.createElement('div', {
         className: 'ss-rec-card ss-rec-upstream',
@@ -871,7 +945,7 @@
     } else if (rec.type === 'duplicate_scene_files') {
       renderDuplicateSceneFilesDetail(content, rec);
     } else if (rec.type === 'upstream_performer_changes') {
-      renderUpstreamPerformerDetail(content, rec);
+      await renderUpstreamPerformerDetail(content, rec);
     } else {
       content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
     }
@@ -1201,6 +1275,282 @@
     });
   }
 
+  // ==================== Settings Modal ====================
+
+  function createGearIcon() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.setAttribute('fill', 'currentColor');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function createSettingsGearButton(onClick) {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'background:none;border:none;color:var(--bs-secondary-color,#888);cursor:pointer;padding:4px;display:flex;align-items:center;transition:color 0.15s;';
+    btn.title = 'Settings';
+    btn.appendChild(createGearIcon());
+    btn.addEventListener('mouseenter', () => { btn.style.color = 'var(--bs-body-color, #fff)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.color = 'var(--bs-secondary-color, #888)'; });
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  async function showSettingsModal() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#2a2a2a;border:1px solid #444;border-radius:10px;max-width:600px;width:90%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #444;';
+    const title = document.createElement('h3');
+    title.style.cssText = 'margin:0;font-size:1.1rem;font-weight:600;color:#fff;';
+    title.textContent = 'Settings';
+    const closeBtn = document.createElement('button');
+    closeBtn.style.cssText = 'background:none;border:none;font-size:1.5rem;color:#888;cursor:pointer;padding:0;line-height:1;';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    // Tabs
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid #444;padding:0 1.25rem;';
+
+    const tabs = ['General', 'Upstream Sync'];
+    const tabBtns = [];
+    const tabPanels = [];
+
+    tabs.forEach((tabName, i) => {
+      const btn = document.createElement('button');
+      btn.style.cssText = 'padding:0.6rem 1rem;background:none;border:none;border-bottom:2px solid transparent;color:#888;cursor:pointer;font-size:0.9rem;transition:color 0.15s,border-color 0.15s;';
+      btn.textContent = tabName;
+      if (i === 0) {
+        btn.style.color = '#fff';
+        btn.style.borderBottomColor = '#0d6efd';
+      }
+      btn.addEventListener('click', () => {
+        tabBtns.forEach((b, j) => {
+          b.style.color = j === i ? '#fff' : '#888';
+          b.style.borderBottomColor = j === i ? '#0d6efd' : 'transparent';
+        });
+        tabPanels.forEach((p, j) => {
+          p.style.display = j === i ? 'block' : 'none';
+        });
+      });
+      tabBar.appendChild(btn);
+      tabBtns.push(btn);
+    });
+
+    // Body (scrollable)
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:1.25rem;overflow-y:auto;flex:1;';
+
+    // === General Tab ===
+    const generalPanel = document.createElement('div');
+    generalPanel.style.cssText = 'display:block;';
+
+    const enumToggleContainer = document.createElement('div');
+    enumToggleContainer.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:0.75rem;background:#333;border-radius:6px;';
+
+    const enumLabel = document.createElement('div');
+    enumLabel.style.cssText = 'flex:1;';
+    const enumTitle = document.createElement('div');
+    enumTitle.style.cssText = 'font-size:0.9rem;font-weight:600;color:#fff;margin-bottom:2px;';
+    enumTitle.textContent = 'Normalize Enum Display';
+    const enumDesc = document.createElement('div');
+    enumDesc.style.cssText = 'font-size:0.8rem;color:#888;';
+    enumDesc.textContent = 'Show ALL_CAPS values as Title Case (e.g. BROWN \u2192 Brown)';
+    enumLabel.appendChild(enumTitle);
+    enumLabel.appendChild(enumDesc);
+
+    const enumCheckbox = document.createElement('input');
+    enumCheckbox.type = 'checkbox';
+    enumCheckbox.style.cssText = 'width:18px;height:18px;accent-color:#0d6efd;cursor:pointer;';
+
+    enumToggleContainer.appendChild(enumLabel);
+    enumToggleContainer.appendChild(enumCheckbox);
+    generalPanel.appendChild(enumToggleContainer);
+
+    // Load current setting
+    try {
+      const val = await RecommendationsAPI.getUserSetting('normalize_enum_display');
+      enumCheckbox.checked = val !== false; // default to true
+    } catch (_) {
+      enumCheckbox.checked = true;
+    }
+
+    // Save on toggle
+    enumCheckbox.addEventListener('change', async () => {
+      try {
+        await RecommendationsAPI.setUserSetting('normalize_enum_display', enumCheckbox.checked);
+      } catch (e) {
+        console.error('[Stash Sense] Failed to save setting:', e);
+      }
+    });
+
+    tabPanels.push(generalPanel);
+
+    // === Upstream Sync Tab ===
+    const upstreamPanel = document.createElement('div');
+    upstreamPanel.style.cssText = 'display:none;';
+    tabPanels.push(upstreamPanel);
+
+    // Render upstream sync settings into the panel
+    renderUpstreamSyncSettingsTab(upstreamPanel);
+
+    body.appendChild(generalPanel);
+    body.appendChild(upstreamPanel);
+
+    modal.appendChild(header);
+    modal.appendChild(tabBar);
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+  }
+
+  async function renderUpstreamSyncSettingsTab(container) {
+    const loadingDiv = document.createElement('div');
+    loadingDiv.style.cssText = 'padding:1rem;color:#888;font-size:0.9rem;';
+    loadingDiv.textContent = 'Loading stash-box endpoints...';
+    container.appendChild(loadingDiv);
+
+    try {
+      const configResult = await SS.stashQuery(`
+        query { configuration { general { stashBoxes { endpoint name } } } }
+      `);
+      const endpoints = configResult?.configuration?.general?.stashBoxes || [];
+
+      if (endpoints.length === 0) {
+        loadingDiv.textContent = 'No stash-box endpoints configured in Stash. Configure them in Stash Settings > Metadata Providers.';
+        return;
+      }
+
+      loadingDiv.remove();
+
+      for (const ep of endpoints) {
+        const epDiv = document.createElement('div');
+        epDiv.style.cssText = 'background:#333;border:1px solid #444;border-radius:8px;padding:1rem;margin-bottom:0.75rem;';
+        const displayName = ep.name || new URL(ep.endpoint).hostname;
+
+        // Header
+        const epHeader = document.createElement('div');
+        const epTitle = document.createElement('h4');
+        epTitle.style.cssText = 'margin:0 0 4px 0;font-size:0.95rem;color:#fff;';
+        epTitle.textContent = displayName;
+        const epUrl = document.createElement('div');
+        epUrl.style.cssText = 'font-size:0.8rem;color:#888;margin-bottom:0.5rem;';
+        epUrl.textContent = ep.endpoint;
+        epHeader.appendChild(epTitle);
+        epHeader.appendChild(epUrl);
+        epDiv.appendChild(epHeader);
+
+        // Fields container (hidden initially)
+        const fieldsWrapper = document.createElement('div');
+        fieldsWrapper.style.cssText = 'display:none;';
+        epDiv.appendChild(fieldsWrapper);
+
+        // Toggle button
+        const toggleBtn = document.createElement('button');
+        toggleBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#fff;font-size:0.8rem;cursor:pointer;';
+        toggleBtn.textContent = 'Show Monitored Fields';
+        let fieldsLoaded = false;
+
+        toggleBtn.addEventListener('click', async () => {
+          const isHidden = fieldsWrapper.style.display === 'none';
+          fieldsWrapper.style.display = isHidden ? 'block' : 'none';
+          toggleBtn.textContent = isHidden ? 'Hide Monitored Fields' : 'Show Monitored Fields';
+
+          if (isHidden && !fieldsLoaded) {
+            fieldsLoaded = true;
+            const fieldsLoading = document.createElement('div');
+            fieldsLoading.style.cssText = 'padding:0.5rem;color:#888;font-size:0.85rem;';
+            fieldsLoading.textContent = 'Loading field config...';
+            fieldsWrapper.appendChild(fieldsLoading);
+
+            try {
+              const fieldConfig = await RecommendationsAPI.getFieldConfig(ep.endpoint);
+              fieldsLoading.remove();
+
+              const fieldsGrid = document.createElement('div');
+              fieldsGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;';
+
+              const sortedFields = Object.entries(fieldConfig.fields).sort(([, a], [, b]) => a.label.localeCompare(b.label));
+
+              for (const [fieldName, config] of sortedFields) {
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#fff;';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.field = fieldName;
+                cb.checked = config.enabled;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(config.label));
+                label.addEventListener('mouseenter', () => { label.style.background = 'rgba(255,255,255,0.05)'; });
+                label.addEventListener('mouseleave', () => { label.style.background = 'none'; });
+                fieldsGrid.appendChild(label);
+              }
+              fieldsWrapper.appendChild(fieldsGrid);
+
+              // Save button
+              const actionsDiv = document.createElement('div');
+              actionsDiv.style.cssText = 'display:flex;align-items:center;margin-top:0.75rem;';
+              const saveBtn = document.createElement('button');
+              saveBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:none;background:#0d6efd;color:white;font-size:0.85rem;cursor:pointer;';
+              saveBtn.textContent = 'Save Field Config';
+              const saveStatus = document.createElement('span');
+              saveStatus.style.cssText = 'margin-left:8px;font-size:0.85rem;';
+
+              saveBtn.addEventListener('click', async () => {
+                saveBtn.disabled = true;
+                saveStatus.textContent = 'Saving...';
+                saveStatus.style.color = '#888';
+                const configs = {};
+                fieldsGrid.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                  configs[cb.dataset.field] = cb.checked;
+                });
+                try {
+                  await RecommendationsAPI.setFieldConfig(ep.endpoint, configs);
+                  saveStatus.textContent = 'Saved!';
+                  saveStatus.style.color = '#22c55e';
+                  setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+                } catch (e) {
+                  saveStatus.textContent = `Error: ${e.message}`;
+                  saveStatus.style.color = '#ef4444';
+                }
+                saveBtn.disabled = false;
+              });
+
+              actionsDiv.appendChild(saveBtn);
+              actionsDiv.appendChild(saveStatus);
+              fieldsWrapper.appendChild(actionsDiv);
+
+            } catch (e) {
+              fieldsLoading.textContent = `Error loading field config: ${e.message}`;
+            }
+          }
+        });
+
+        epDiv.appendChild(toggleBtn);
+        container.appendChild(epDiv);
+      }
+    } catch (e) {
+      loadingDiv.textContent = `Could not load stash-box endpoints: ${e.message}`;
+    }
+  }
+
   // ==================== Upstream Performer Validation ====================
 
   async function validatePerformerMerge(performerId, proposedName, proposedDisambig, proposedAliases) {
@@ -1256,202 +1606,141 @@
 
   // ==================== Upstream Performer Detail ====================
 
-  function renderUpstreamPerformerDetail(container, rec) {
+  async function renderUpstreamPerformerDetail(container, rec) {
     const details = rec.details;
-    const changes = details.changes || [];
+    const rawChanges = details.changes || [];
     const performerId = details.performer_id;
 
-    // Build the header
-    const headerHtml = `
-      <div class="ss-upstream-header">
-        <img src="${details.performer_image_path || ''}" alt="${details.performer_name || ''}" onerror="this.style.display='none'" />
-        <div>
-          <h2 style="margin: 0 0 4px 0;">
-            <a href="/performers/${performerId}" target="_blank">${details.performer_name || 'Unknown'}</a>
-          </h2>
-          <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
-        </div>
+    const changes = filterRealChanges(rawChanges);
+
+    // If all changes were filtered out, auto-resolve and go back
+    if (changes.length === 0) {
+      try {
+        await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', { note: 'All differences were cosmetic' });
+      } catch (_) {}
+      currentState.view = 'list';
+      currentState.selectedRec = null;
+      renderCurrentView(document.getElementById('ss-recommendations'));
+      return;
+    }
+
+    // Load normalize setting
+    let normalizeEnum = true;
+    try {
+      const val = await RecommendationsAPI.getUserSetting('normalize_enum_display');
+      normalizeEnum = val !== false;
+    } catch (_) {}
+
+    // Display value helper - applies enum normalization if enabled
+    function displayValue(val) {
+      const formatted = formatFieldValue(val);
+      return normalizeEnum ? normalizeEnumValue(formatted) : formatted;
+    }
+
+    // Smart default: prefer upstream (stash-box is source of truth)
+    function smartDefault(localVal, upstreamVal) {
+      const upstreamEmpty = upstreamVal === null || upstreamVal === undefined || upstreamVal === '';
+      if (!upstreamEmpty) return 'upstream';
+      return 'local';
+    }
+
+    // Build the header with gear icon
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ss-detail-upstream-performer';
+
+    // Header
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'ss-upstream-header';
+    headerDiv.innerHTML = `
+      <img src="${details.performer_image_path || ''}" alt="${details.performer_name || ''}" onerror="this.style.display='none'" />
+      <div style="flex:1;">
+        <h2 style="margin: 0 0 4px 0;">
+          <a href="/performers/${performerId}" target="_blank">${details.performer_name || 'Unknown'}</a>
+        </h2>
+        <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
       </div>
     `;
+    headerDiv.appendChild(createSettingsGearButton(() => showSettingsModal()));
+    wrapper.appendChild(headerDiv);
+
+    // Quick select buttons
+    const quickActions = document.createElement('div');
+    quickActions.className = 'ss-upstream-quick-actions';
+    const keepAllBtn = document.createElement('button');
+    keepAllBtn.textContent = 'Keep All Local';
+    const acceptAllBtn = document.createElement('button');
+    acceptAllBtn.textContent = 'Accept All Upstream';
+    quickActions.appendChild(keepAllBtn);
+    quickActions.appendChild(acceptAllBtn);
+    wrapper.appendChild(quickActions);
 
     // Build field rows
-    let fieldRowsHtml = '';
     changes.forEach((change, idx) => {
-      const fieldName = `field_${idx}`;
       const mergeType = change.merge_type || 'simple';
+      const fieldRow = document.createElement('div');
+      fieldRow.className = 'ss-upstream-field-row';
+      fieldRow.dataset.fieldIndex = idx;
+      fieldRow.dataset.fieldKey = change.field;
+      fieldRow.dataset.mergeType = mergeType;
 
-      let valuesHtml = '';
-      if (mergeType !== 'alias_list') {
-        valuesHtml = `
-          <div class="ss-upstream-values">
-            <div class="ss-upstream-local-value">
-              <div class="ss-upstream-value-label">Local</div>
-              <div>${escapeHtml(formatFieldValue(change.local_value))}</div>
-            </div>
-            <div class="ss-upstream-upstream-value">
-              <div class="ss-upstream-value-label">Upstream</div>
-              <div>${escapeHtml(formatFieldValue(change.upstream_value))}</div>
-            </div>
-          </div>
-        `;
+      // Field label
+      const label = document.createElement('div');
+      label.className = 'ss-upstream-field-label';
+      label.textContent = change.field_label || change.field;
+      fieldRow.appendChild(label);
+
+      if (mergeType === 'alias_list') {
+        // Alias list: 2-column sub-layout (items on left, result summary on right)
+        renderAliasListField(fieldRow, change, idx);
+      } else {
+        // Simple, name, text: 3-column layout
+        renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault);
       }
 
-      let controlsHtml = '';
-
-      if (mergeType === 'simple') {
-        controlsHtml = `
-          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="simple" data-field-key="${change.field}">
-            <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local value</label>
-            <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream value</label>
-            <label>
-              <input type="radio" name="${fieldName}" value="custom" />
-              Custom edit
-              <input type="text" class="ss-upstream-custom-input" data-custom-for="${fieldName}" placeholder="Enter custom value" style="display:none" />
-            </label>
-          </div>
-        `;
-      } else if (mergeType === 'name') {
-        controlsHtml = `
-          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="name" data-field-key="${change.field}">
-            <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local name</label>
-            <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream name</label>
-            <label><input type="radio" name="${fieldName}" value="accept_upstream_alias_local" /> Accept upstream name + demote local to alias</label>
-            <label><input type="radio" name="${fieldName}" value="keep_local_alias_upstream" /> Keep local name + add upstream as alias</label>
-            <label>
-              <input type="radio" name="${fieldName}" value="custom" />
-              Custom edit
-              <input type="text" class="ss-upstream-custom-input" data-custom-for="${fieldName}" placeholder="Enter custom name" style="display:none" />
-            </label>
-          </div>
-        `;
-      } else if (mergeType === 'alias_list') {
-        const localAliases = change.local_value || [];
-        const upstreamAliases = change.upstream_value || [];
-        const allAliases = buildAliasList(localAliases, upstreamAliases);
-
-        valuesHtml = ''; // Override - alias_list uses checkbox list instead of value comparison
-
-        controlsHtml = `
-          <div class="ss-upstream-alias-list-container" data-field-index="${idx}" data-merge-type="alias_list" data-field-key="${change.field}">
-            <div class="ss-upstream-alias-list">
-              ${allAliases.map((a, ai) => `
-                <label class="ss-upstream-alias-item ${a.source}">
-                  <input type="checkbox" name="${fieldName}_alias_${ai}" value="${escapeHtml(a.value)}" ${a.source === 'both' || a.source === 'local-only' ? 'checked' : ''} />
-                  <span>${escapeHtml(a.value)}</span>
-                  <span class="ss-upstream-alias-tag">${a.source === 'both' ? 'both' : a.source === 'local-only' ? 'local' : 'upstream'}</span>
-                </label>
-              `).join('')}
-            </div>
-            <button class="ss-btn ss-btn-secondary ss-upstream-add-alias-btn" type="button" style="margin-top: 0.5rem; padding: 4px 10px; font-size: 0.8rem;">+ Add custom alias</button>
-          </div>
-        `;
-      } else if (mergeType === 'text') {
-        controlsHtml = `
-          <div class="ss-upstream-radio-group" data-field-index="${idx}" data-merge-type="text" data-field-key="${change.field}">
-            <label><input type="radio" name="${fieldName}" value="keep_local" checked /> Keep local value</label>
-            <label><input type="radio" name="${fieldName}" value="accept_upstream" /> Accept upstream value</label>
-            <label><input type="radio" name="${fieldName}" value="custom" /> Custom edit</label>
-            <textarea class="ss-upstream-textarea" data-custom-for="${fieldName}" style="display:none" placeholder="Enter custom text">${escapeHtml(String(change.local_value || ''))}</textarea>
-          </div>
-        `;
-      }
-
-      fieldRowsHtml += `
-        <div class="ss-upstream-field-row">
-          <div class="ss-upstream-field-label">${escapeHtml(change.field_label || change.field)}</div>
-          ${valuesHtml}
-          ${controlsHtml}
-        </div>
-      `;
+      wrapper.appendChild(fieldRow);
     });
+
+    // Validation errors
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'ss-upstream-validation-errors';
+    errorDiv.className = 'ss-upstream-validation-error';
+    errorDiv.style.display = 'none';
+    wrapper.appendChild(errorDiv);
 
     // Action bar
-    const actionBarHtml = `
-      <div id="ss-upstream-validation-errors" class="ss-upstream-validation-error" style="display:none"></div>
-      <div class="ss-upstream-action-bar">
-        <button class="ss-btn ss-upstream-apply-btn" id="ss-upstream-apply">Apply Selected Changes</button>
-        <div class="ss-upstream-dismiss-dropdown" style="position: relative;">
-          <button class="ss-btn ss-upstream-dismiss-btn" id="ss-upstream-dismiss-toggle">Dismiss</button>
-          <div class="ss-upstream-dismiss-menu" id="ss-upstream-dismiss-menu" style="display:none; position:absolute; bottom:100%; left:0; background:var(--bs-tertiary-bg, #2a2a2a); border:1px solid var(--bs-border-color, #333); border-radius:6px; padding:4px 0; min-width:220px; z-index:10;">
-            <button class="ss-upstream-dismiss-option" data-permanent="false" style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--bs-body-color, #fff); cursor:pointer; font-size:0.85rem;">Dismiss this update</button>
-            <button class="ss-upstream-dismiss-option" data-permanent="true" style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--bs-body-color, #fff); cursor:pointer; font-size:0.85rem;">Never show for this performer</button>
-          </div>
-        </div>
-      </div>
-    `;
+    const actionBar = document.createElement('div');
+    actionBar.className = 'ss-upstream-action-bar';
 
-    container.innerHTML = `
-      <div class="ss-detail-upstream-performer">
-        ${headerHtml}
-        ${fieldRowsHtml}
-        ${actionBarHtml}
-      </div>
-    `;
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'ss-btn ss-upstream-apply-btn';
+    applyBtn.id = 'ss-upstream-apply';
+    applyBtn.textContent = 'Apply Selected Changes';
 
-    // Wire up radio buttons to show/hide custom inputs
-    container.querySelectorAll('.ss-upstream-radio-group').forEach(group => {
-      group.addEventListener('change', (e) => {
-        if (e.target.type !== 'radio') return;
-        const customInput = group.querySelector('.ss-upstream-custom-input') || group.querySelector('.ss-upstream-textarea');
-        if (customInput) {
-          customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
-          if (e.target.value === 'custom') {
-            customInput.focus();
-          }
-        }
-      });
-    });
+    const dismissDropdown = document.createElement('div');
+    dismissDropdown.style.cssText = 'position:relative;';
+    const dismissToggle = document.createElement('button');
+    dismissToggle.className = 'ss-btn ss-upstream-dismiss-btn';
+    dismissToggle.textContent = 'Dismiss';
+    const dismissMenu = document.createElement('div');
+    dismissMenu.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px 0;min-width:220px;z-index:10;';
 
-    // Wire up alias "Add custom" buttons
-    container.querySelectorAll('.ss-upstream-add-alias-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const aliasContainer = btn.closest('.ss-upstream-alias-list-container');
-        const aliasList = aliasContainer.querySelector('.ss-upstream-alias-list');
-        const fieldIndex = aliasContainer.dataset.fieldIndex;
-        const existingCount = aliasList.querySelectorAll('.ss-upstream-alias-item').length;
+    const dismissOptions = [
+      { label: 'Dismiss this update', permanent: false },
+      { label: 'Never show for this performer', permanent: true },
+    ];
 
-        const newAlias = prompt('Enter new alias:');
-        if (!newAlias || !newAlias.trim()) return;
-
-        const item = document.createElement('label');
-        item.className = 'ss-upstream-alias-item both';
-        item.innerHTML = `
-          <input type="checkbox" name="field_${fieldIndex}_alias_${existingCount}" value="${escapeHtml(newAlias.trim())}" checked />
-          <span>${escapeHtml(newAlias.trim())}</span>
-          <span class="ss-upstream-alias-tag">custom</span>
-        `;
-        aliasList.appendChild(item);
-      });
-    });
-
-    // Dismiss dropdown toggle
-    const dismissToggle = container.querySelector('#ss-upstream-dismiss-toggle');
-    const dismissMenu = container.querySelector('#ss-upstream-dismiss-menu');
-
-    dismissToggle.addEventListener('click', () => {
-      dismissMenu.style.display = dismissMenu.style.display === 'none' ? 'block' : 'none';
-    });
-
-    // Close dismiss menu on outside click
-    document.addEventListener('click', function closeDismissMenu(e) {
-      if (!dismissToggle.contains(e.target) && !dismissMenu.contains(e.target)) {
-        dismissMenu.style.display = 'none';
-      }
-      // Clean up if container is removed from DOM
-      if (!document.contains(container)) {
-        document.removeEventListener('click', closeDismissMenu);
-      }
-    });
-
-    // Dismiss options
-    container.querySelectorAll('.ss-upstream-dismiss-option').forEach(option => {
-      option.addEventListener('click', async () => {
-        const permanent = option.dataset.permanent === 'true';
+    dismissOptions.forEach(opt => {
+      const optBtn = document.createElement('button');
+      optBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:#fff;cursor:pointer;font-size:0.85rem;';
+      optBtn.textContent = opt.label;
+      optBtn.addEventListener('mouseenter', () => { optBtn.style.background = 'rgba(255,255,255,0.05)'; });
+      optBtn.addEventListener('mouseleave', () => { optBtn.style.background = 'none'; });
+      optBtn.addEventListener('click', async () => {
         dismissMenu.style.display = 'none';
         dismissToggle.disabled = true;
         dismissToggle.textContent = 'Dismissing...';
         try {
-          await RecommendationsAPI.dismissUpstream(rec.id, 'User dismissed', permanent);
+          await RecommendationsAPI.dismissUpstream(rec.id, 'User dismissed', opt.permanent);
           currentState.view = 'list';
           currentState.selectedRec = null;
           renderCurrentView(document.getElementById('ss-recommendations'));
@@ -1460,88 +1749,165 @@
           dismissToggle.disabled = false;
         }
       });
+      dismissMenu.appendChild(optBtn);
+    });
 
-      option.addEventListener('mouseenter', () => {
-        option.style.background = 'rgba(255,255,255,0.05)';
-      });
-      option.addEventListener('mouseleave', () => {
-        option.style.background = 'none';
+    dismissToggle.addEventListener('click', () => {
+      dismissMenu.style.display = dismissMenu.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.addEventListener('click', function closeDismissMenu(e) {
+      if (!dismissToggle.contains(e.target) && !dismissMenu.contains(e.target)) {
+        dismissMenu.style.display = 'none';
+      }
+      if (!document.contains(container)) {
+        document.removeEventListener('click', closeDismissMenu);
+      }
+    });
+
+    dismissDropdown.appendChild(dismissToggle);
+    dismissDropdown.appendChild(dismissMenu);
+    actionBar.appendChild(applyBtn);
+    actionBar.appendChild(dismissDropdown);
+    wrapper.appendChild(actionBar);
+
+    container.innerHTML = '';
+    container.appendChild(wrapper);
+
+    // === Quick select wiring ===
+    keepAllBtn.addEventListener('click', () => {
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const mt = row.dataset.mergeType;
+        if (mt === 'alias_list') {
+          // Check all local/both items, uncheck upstream-only
+          row.querySelectorAll('.ss-upstream-alias-item').forEach(item => {
+            const cb = item.querySelector('input[type="checkbox"]');
+            cb.checked = item.classList.contains('local-only') || item.classList.contains('both');
+          });
+          updateAliasResultSummary(row);
+        } else {
+          const localCb = row.querySelector('.ss-upstream-cb-local');
+          const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (localCb && upstreamCb && resultInput) {
+            localCb.checked = true;
+            upstreamCb.checked = false;
+            const change = changes[parseInt(row.dataset.fieldIndex)];
+            resultInput.value = formatFieldValue(change.local_value) === '(empty)' ? '' : formatFieldValue(change.local_value);
+          }
+        }
       });
     });
 
-    // Apply button
-    container.querySelector('#ss-upstream-apply').addEventListener('click', async () => {
-      const btn = container.querySelector('#ss-upstream-apply');
-      const errorDiv = container.querySelector('#ss-upstream-validation-errors');
+    acceptAllBtn.addEventListener('click', () => {
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const mt = row.dataset.mergeType;
+        if (mt === 'alias_list') {
+          // Check all items (merge all)
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+          updateAliasResultSummary(row);
+        } else {
+          const localCb = row.querySelector('.ss-upstream-cb-local');
+          const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (localCb && upstreamCb && resultInput) {
+            localCb.checked = false;
+            upstreamCb.checked = true;
+            const change = changes[parseInt(row.dataset.fieldIndex)];
+            resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : formatFieldValue(change.upstream_value);
+          }
+          // For name type: also check "add old name as alias" when switching to upstream
+          const aliasOpt = row.querySelector('.ss-upstream-name-alias-cb');
+          if (aliasOpt) aliasOpt.checked = true;
+        }
+      });
+    });
+
+    // === Apply handler ===
+    applyBtn.addEventListener('click', async () => {
       errorDiv.style.display = 'none';
       errorDiv.innerHTML = '';
       const fields = {};
 
-      // Collect values from simple, name, and text merge types
-      container.querySelectorAll('.ss-upstream-radio-group').forEach(group => {
-        const fieldKey = group.dataset.fieldKey;
-        const mergeType = group.dataset.mergeType;
-        const fieldIndex = group.dataset.fieldIndex;
-        const selected = group.querySelector(`input[name="field_${fieldIndex}"]:checked`);
-        if (!selected) return;
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const fieldKey = row.dataset.fieldKey;
+        const mergeType = row.dataset.mergeType;
+        const fieldIndex = parseInt(row.dataset.fieldIndex);
+        const change = changes[fieldIndex];
 
-        const change = changes[parseInt(fieldIndex)];
-        const choice = selected.value;
+        if (mergeType === 'alias_list') {
+          const checkedAliases = [];
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]:checked').forEach(cb => {
+            checkedAliases.push(cb.value);
+          });
+          fields[fieldKey] = checkedAliases;
+        } else {
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (!resultInput) return;
 
-        if (choice === 'keep_local') {
-          return;
-        } else if (choice === 'accept_upstream') {
-          fields[fieldKey] = change.upstream_value;
-        } else if (choice === 'accept_upstream_alias_local') {
-          fields[fieldKey] = change.upstream_value;
-          fields['_alias_add'] = fields['_alias_add'] || [];
-          fields['_alias_add'].push(String(change.local_value || ''));
-        } else if (choice === 'keep_local_alias_upstream') {
-          fields['_alias_add'] = fields['_alias_add'] || [];
-          fields['_alias_add'].push(String(change.upstream_value || ''));
-        } else if (choice === 'custom') {
-          const customInput = group.querySelector('.ss-upstream-custom-input') || group.querySelector('.ss-upstream-textarea');
-          if (customInput && customInput.value.trim()) {
-            fields[fieldKey] = customInput.value.trim();
+          const resultVal = resultInput.value.trim();
+          const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+
+          // Skip if result equals local (no change)
+          if (resultVal === localStr) {
+            // But check if name type has alias add
+            if (mergeType === 'name') {
+              const aliasCb = row.querySelector('.ss-upstream-name-alias-cb');
+              if (aliasCb && aliasCb.checked) {
+                const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+                if (upstreamCb && !upstreamCb.checked) {
+                  // Keeping local name, add upstream as alias
+                  fields['_alias_add'] = fields['_alias_add'] || [];
+                  fields['_alias_add'].push(String(change.upstream_value || ''));
+                }
+              }
+            }
+            return;
+          }
+
+          // Result differs from local -> apply change
+          fields[fieldKey] = resultVal;
+
+          // Handle name merge alias addition
+          if (mergeType === 'name') {
+            const aliasCb = row.querySelector('.ss-upstream-name-alias-cb');
+            if (aliasCb && aliasCb.checked) {
+              const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+              if (upstreamCb && upstreamCb.checked) {
+                // Accepting upstream name, demote local to alias
+                fields['_alias_add'] = fields['_alias_add'] || [];
+                fields['_alias_add'].push(String(change.local_value || ''));
+              }
+            }
           }
         }
-      });
-
-      // Collect values from alias_list merge types
-      container.querySelectorAll('.ss-upstream-alias-list-container').forEach(aliasContainer => {
-        const fieldKey = aliasContainer.dataset.fieldKey;
-        const checkedAliases = [];
-        aliasContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-          checkedAliases.push(cb.value);
-        });
-        fields[fieldKey] = checkedAliases;
       });
 
       // Check if any changes were selected
       const hasChanges = Object.keys(fields).length > 0;
       if (!hasChanges) {
         try {
-          btn.disabled = true;
-          btn.textContent = 'Resolving...';
+          applyBtn.disabled = true;
+          applyBtn.textContent = 'Resolving...';
           await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
-          btn.textContent = 'Done!';
-          btn.classList.add('ss-btn-success');
+          applyBtn.textContent = 'Done!';
+          applyBtn.classList.add('ss-btn-success');
           setTimeout(() => {
             currentState.view = 'list';
             currentState.selectedRec = null;
             renderCurrentView(document.getElementById('ss-recommendations'));
           }, 1500);
         } catch (e) {
-          btn.textContent = `Failed: ${e.message}`;
-          btn.classList.add('ss-btn-error');
-          btn.disabled = false;
+          applyBtn.textContent = `Failed: ${e.message}`;
+          applyBtn.classList.add('ss-btn-error');
+          applyBtn.disabled = false;
         }
         return;
       }
 
       // Run validation before applying
-      btn.disabled = true;
-      btn.textContent = 'Validating...';
+      applyBtn.disabled = true;
+      applyBtn.textContent = 'Validating...';
 
       const proposedName = fields.name || details.performer_name;
       const proposedDisambig = fields.disambiguation || null;
@@ -1554,18 +1920,18 @@
       if (validationErrors.length > 0) {
         errorDiv.innerHTML = validationErrors.map(e => `<div>${escapeHtml(e)}</div>`).join('');
         errorDiv.style.display = 'block';
-        btn.textContent = 'Apply Selected Changes';
-        btn.disabled = false;
+        applyBtn.textContent = 'Apply Selected Changes';
+        applyBtn.disabled = false;
         return;
       }
 
       try {
-        btn.textContent = 'Applying...';
+        applyBtn.textContent = 'Applying...';
         await RecommendationsAPI.updatePerformer(performerId, fields);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
-        btn.textContent = 'Applied!';
-        btn.classList.add('ss-btn-success');
+        applyBtn.textContent = 'Applied!';
+        applyBtn.classList.add('ss-btn-success');
 
         setTimeout(() => {
           currentState.view = 'list';
@@ -1573,7 +1939,6 @@
           renderCurrentView(document.getElementById('ss-recommendations'));
         }, 1500);
       } catch (e) {
-        // Server-side error handling
         let errorMsg = e.message;
         if (errorMsg.includes('already exists') || errorMsg.includes('name')) {
           errorMsg = `Name conflict: ${errorMsg}. Try adding a disambiguation.`;
@@ -1582,11 +1947,224 @@
         }
         errorDiv.innerHTML = `<div>${escapeHtml(errorMsg)}</div>`;
         errorDiv.style.display = 'block';
-        btn.textContent = 'Apply Selected Changes';
-        btn.classList.remove('ss-btn-error');
-        btn.disabled = false;
+        applyBtn.textContent = 'Apply Selected Changes';
+        applyBtn.classList.remove('ss-btn-error');
+        applyBtn.disabled = false;
       }
     });
+  }
+
+  /**
+   * Render a 3-column compare field row (simple, name, text merge types).
+   * Layout: [x] Local value | [ ] Upstream value | Result: [editable input]
+   */
+  function renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault) {
+    const compareRow = document.createElement('div');
+    compareRow.className = 'ss-upstream-compare-row';
+
+    const defaultChoice = smartDefault(change.local_value, change.upstream_value);
+
+    // Local cell
+    const localCell = document.createElement('div');
+    localCell.className = 'ss-upstream-value-cell local';
+    const localLabel = document.createElement('div');
+    localLabel.className = 'ss-upstream-value-label';
+    localLabel.textContent = 'Local';
+    const localCheckLabel = document.createElement('label');
+    const localCb = document.createElement('input');
+    localCb.type = 'checkbox';
+    localCb.className = 'ss-upstream-cb-local';
+    localCb.checked = defaultChoice === 'local';
+    localCheckLabel.appendChild(localCb);
+    localCheckLabel.appendChild(document.createTextNode(' ' + displayValue(change.local_value)));
+    localCell.appendChild(localLabel);
+    localCell.appendChild(localCheckLabel);
+
+    // Upstream cell
+    const upstreamCell = document.createElement('div');
+    upstreamCell.className = 'ss-upstream-value-cell upstream';
+    const upstreamLabel = document.createElement('div');
+    upstreamLabel.className = 'ss-upstream-value-label';
+    upstreamLabel.textContent = 'Upstream';
+    const upstreamCheckLabel = document.createElement('label');
+    const upstreamCb = document.createElement('input');
+    upstreamCb.type = 'checkbox';
+    upstreamCb.className = 'ss-upstream-cb-upstream';
+    upstreamCb.checked = defaultChoice === 'upstream';
+    upstreamCheckLabel.appendChild(upstreamCb);
+    upstreamCheckLabel.appendChild(document.createTextNode(' ' + displayValue(change.upstream_value)));
+    upstreamCell.appendChild(upstreamLabel);
+    upstreamCell.appendChild(upstreamCheckLabel);
+
+    // Result cell
+    const resultCell = document.createElement('div');
+    resultCell.className = 'ss-upstream-value-cell result';
+    const resultLabel = document.createElement('div');
+    resultLabel.className = 'ss-upstream-value-label';
+    resultLabel.textContent = 'Result';
+
+    let resultInput;
+    if (mergeType === 'text') {
+      resultInput = document.createElement('textarea');
+      resultInput.className = 'ss-upstream-textarea';
+    } else {
+      resultInput = document.createElement('input');
+      resultInput.type = 'text';
+      resultInput.className = 'ss-upstream-result-input';
+    }
+
+    // Set initial result value based on smart default
+    const defaultVal = defaultChoice === 'upstream' ? change.upstream_value : change.local_value;
+    resultInput.value = formatFieldValue(defaultVal) === '(empty)' ? '' : String(defaultVal || '');
+
+    resultCell.appendChild(resultLabel);
+    resultCell.appendChild(resultInput);
+
+    compareRow.appendChild(localCell);
+    compareRow.appendChild(upstreamCell);
+    compareRow.appendChild(resultCell);
+    fieldRow.appendChild(compareRow);
+
+    // Paired checkbox logic: clicking local unchecks upstream (and vice versa)
+    localCb.addEventListener('change', () => {
+      if (localCb.checked) {
+        upstreamCb.checked = false;
+        resultInput.value = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+      }
+    });
+
+    upstreamCb.addEventListener('change', () => {
+      if (upstreamCb.checked) {
+        localCb.checked = false;
+        resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : String(change.upstream_value || '');
+      }
+    });
+
+    // Editing result directly unchecks both checkboxes
+    resultInput.addEventListener('input', () => {
+      localCb.checked = false;
+      upstreamCb.checked = false;
+    });
+
+    // Name merge type: add "Add old name as alias" checkbox
+    if (mergeType === 'name') {
+      const aliasOption = document.createElement('div');
+      aliasOption.className = 'ss-upstream-name-alias-option';
+      const aliasLabel = document.createElement('label');
+      const aliasCb = document.createElement('input');
+      aliasCb.type = 'checkbox';
+      aliasCb.className = 'ss-upstream-name-alias-cb';
+      aliasCb.checked = false;
+      aliasLabel.appendChild(aliasCb);
+      aliasLabel.appendChild(document.createTextNode(' Add old name as alias when switching'));
+      aliasOption.appendChild(aliasLabel);
+      fieldRow.appendChild(aliasOption);
+    }
+  }
+
+  /**
+   * Render alias list field: vertical stacked items with per-item checkbox,
+   * all items checked by default (merge behavior), with result summary.
+   */
+  function renderAliasListField(fieldRow, change, idx) {
+    const localAliases = change.local_value || [];
+    const upstreamAliases = change.upstream_value || [];
+    const allAliases = buildAliasList(localAliases, upstreamAliases);
+
+    const aliasContainer = document.createElement('div');
+    aliasContainer.className = 'ss-upstream-alias-list-container';
+    aliasContainer.dataset.fieldIndex = idx;
+    aliasContainer.dataset.mergeType = 'alias_list';
+    aliasContainer.dataset.fieldKey = change.field;
+
+    // Two-column sub-layout
+    const subLayout = document.createElement('div');
+    subLayout.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;align-items:start;';
+
+    // Left: item checkboxes
+    const itemsCol = document.createElement('div');
+    const aliasList = document.createElement('div');
+    aliasList.className = 'ss-upstream-alias-list';
+
+    allAliases.forEach((a, ai) => {
+      const item = document.createElement('label');
+      item.className = `ss-upstream-alias-item ${a.source}`;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.name = `field_${idx}_alias_${ai}`;
+      cb.value = a.value;
+      cb.checked = true; // All checked by default (merge behavior)
+      item.appendChild(cb);
+      const span = document.createElement('span');
+      span.textContent = a.value;
+      item.appendChild(span);
+      const tag = document.createElement('span');
+      tag.className = 'ss-upstream-alias-tag';
+      tag.textContent = a.source === 'both' ? 'both' : a.source === 'local-only' ? 'local' : 'upstream';
+      item.appendChild(tag);
+      aliasList.appendChild(item);
+
+      cb.addEventListener('change', () => updateAliasResultSummary(fieldRow));
+    });
+
+    itemsCol.appendChild(aliasList);
+
+    // Add custom alias button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'ss-btn ss-btn-secondary';
+    addBtn.style.cssText = 'margin-top:0.5rem;padding:4px 10px;font-size:0.8rem;';
+    addBtn.textContent = '+ Add custom alias';
+    addBtn.addEventListener('click', () => {
+      const newAlias = prompt('Enter new alias:');
+      if (!newAlias || !newAlias.trim()) return;
+      const existingCount = aliasList.querySelectorAll('.ss-upstream-alias-item').length;
+      const item = document.createElement('label');
+      item.className = 'ss-upstream-alias-item both';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.name = `field_${idx}_alias_${existingCount}`;
+      cb.value = newAlias.trim();
+      cb.checked = true;
+      item.appendChild(cb);
+      const span = document.createElement('span');
+      span.textContent = newAlias.trim();
+      item.appendChild(span);
+      const tag = document.createElement('span');
+      tag.className = 'ss-upstream-alias-tag';
+      tag.textContent = 'custom';
+      item.appendChild(tag);
+      aliasList.appendChild(item);
+      cb.addEventListener('change', () => updateAliasResultSummary(fieldRow));
+      updateAliasResultSummary(fieldRow);
+    });
+    itemsCol.appendChild(addBtn);
+
+    // Right: result summary
+    const resultCol = document.createElement('div');
+    resultCol.className = 'ss-upstream-alias-result';
+    resultCol.innerHTML = '<div class="ss-upstream-value-label">Result</div><div class="ss-upstream-alias-result-content"></div>';
+
+    subLayout.appendChild(itemsCol);
+    subLayout.appendChild(resultCol);
+    aliasContainer.appendChild(subLayout);
+    fieldRow.appendChild(aliasContainer);
+
+    // Initial result summary
+    updateAliasResultSummary(fieldRow);
+  }
+
+  function updateAliasResultSummary(fieldRow) {
+    const resultContent = fieldRow.querySelector('.ss-upstream-alias-result-content');
+    if (!resultContent) return;
+    const checkedAliases = [];
+    fieldRow.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]:checked').forEach(cb => {
+      checkedAliases.push(cb.value);
+    });
+    if (checkedAliases.length === 0) {
+      resultContent.innerHTML = '<span class="ss-upstream-alias-result-count">0</span> items';
+    } else {
+      resultContent.innerHTML = `<span class="ss-upstream-alias-result-count">${checkedAliases.length}</span> items<ul style="margin:0.25rem 0 0 1.25rem;padding:0;list-style:disc;">${checkedAliases.map(a => `<li style="font-size:0.8rem;color:#fff;margin-bottom:2px;">${escapeHtml(a)}</li>`).join('')}</ul>`;
+    }
   }
 
   function escapeHtml(str) {

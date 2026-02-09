@@ -913,6 +913,41 @@
 
     // ==================== Initialization ====================
 
+    // Wait for a DOM element to appear, retrying with increasing delays
+    function waitForElement(selector, callback, maxAttempts = 20) {
+      let attempts = 0;
+      function check() {
+        const el = document.querySelector(selector);
+        if (el) {
+          callback(el);
+        } else if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(check, 250);
+        }
+      }
+      setTimeout(check, 300);
+    }
+
+    // Inject button into the appropriate toolbar for the current page type
+    function injectButton(route) {
+      if (document.querySelector('.ss-identify-btn')) return;
+
+      const toolbarMap = {
+        scene:   { selector: '.scene-toolbar-group:last-child',   create: () => FaceRecognition.createButton() },
+        image:   { selector: '.image-toolbar-group:last-child',   create: () => FaceRecognition.createImageButton() },
+        gallery: { selector: '.gallery-toolbar-group:last-child', create: () => FaceRecognition.createGalleryButton() },
+      };
+
+      const config = toolbarMap[route.type];
+      if (!config) return;
+
+      waitForElement(config.selector, (container) => {
+        if (document.querySelector('.ss-identify-btn')) return; // re-check after wait
+        container.appendChild(config.create());
+        console.log(`[${SS.PLUGIN_NAME}] Button injected into ${config.selector}`);
+      });
+    }
+
     async function init() {
       console.log(`[${SS.PLUGIN_NAME}] Initializing...`);
 
@@ -927,22 +962,12 @@
       // Initialize navigation watcher
       SS.initNavigationWatcher();
 
-      // Inject scene button
-      setTimeout(() => FaceRecognition.injectSceneButton(), 500);
-      setTimeout(() => FaceRecognition.injectImageButton(), 500);
-      setTimeout(() => FaceRecognition.injectGalleryButton(), 500);
+      // Inject button for current page
+      injectButton(SS.getRoute());
 
       // Watch for navigation
       SS.onNavigate((route) => {
-        if (route.type === 'scene') {
-          setTimeout(() => FaceRecognition.injectSceneButton(), 300);
-        }
-        if (route.type === 'image') {
-          setTimeout(() => FaceRecognition.injectImageButton(), 300);
-        }
-        if (route.type === 'gallery') {
-          setTimeout(() => FaceRecognition.injectGalleryButton(), 300);
-        }
+        injectButton(route);
       });
 
       // Periodic health check
