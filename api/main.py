@@ -380,11 +380,12 @@ async def identify_performers(request: IdentifyRequest):
     # Convert to response format
     faces = []
     for result in results:
+        bbox = result.face.bbox  # dict with x, y, w, h in pixels
         face_box = FaceBox(
-            x=int(result.face.box[0]),
-            y=int(result.face.box[1]),
-            width=int(result.face.box[2] - result.face.box[0]),
-            height=int(result.face.box[3] - result.face.box[1]),
+            x=int(bbox["x"]),
+            y=int(bbox["y"]),
+            width=int(bbox["w"]),
+            height=int(bbox["h"]),
             confidence=result.face.confidence,
         )
 
@@ -472,11 +473,12 @@ async def identify_image(request: ImageIdentifyRequest):
     img_h, img_w = image.shape[:2]
 
     for result in results:
+        bbox = result.face.bbox  # dict with x, y, w, h in pixels
         face_box = FaceBox(
-            x=int(result.face.box[0]),
-            y=int(result.face.box[1]),
-            width=int(result.face.box[2] - result.face.box[0]),
-            height=int(result.face.box[3] - result.face.box[1]),
+            x=int(bbox["x"]),
+            y=int(bbox["y"]),
+            width=int(bbox["w"]),
+            height=int(bbox["h"]),
             confidence=result.face.confidence,
         )
 
@@ -557,70 +559,70 @@ async def identify_gallery(request: GalleryIdentifyRequest):
     images_processed = 0
     errors = []
 
-    for i, img in enumerate(images):
-        img_id = img["id"]
-        img_url = img.get("paths", {}).get("image")
+    headers = {"ApiKey": api_key} if api_key else {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for i, img in enumerate(images):
+            img_id = img["id"]
+            img_url = img.get("paths", {}).get("image")
 
-        if not img_url:
-            errors.append(f"Image {img_id} has no URL")
-            continue
+            if not img_url:
+                errors.append(f"Image {img_id} has no URL")
+                continue
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                headers = {"ApiKey": api_key} if api_key else {}
+            try:
                 resp = await client.get(img_url, headers=headers)
                 resp.raise_for_status()
                 image = load_image(resp.content)
 
-            results = recognizer.recognize_image(
-                image,
-                top_k=request.top_k,
-                max_distance=request.max_distance,
-                min_face_confidence=request.min_face_confidence,
-            )
-
-            img_h, img_w = image.shape[:2]
-            total_faces += len(results)
-            images_processed += 1
-
-            # Save per-image fingerprint
-            try:
-                save_image_fingerprint(
-                    image_id=img_id,
-                    gallery_id=request.gallery_id,
-                    faces=results,
-                    image_shape=(img_h, img_w),
-                    db_version=db_manifest.get("version"),
+                results = recognizer.recognize_image(
+                    image,
+                    top_k=request.top_k,
+                    max_distance=request.max_distance,
+                    min_face_confidence=request.min_face_confidence,
                 )
-            except Exception as e:
-                print(f"[identify_gallery] Failed to save fingerprint for image {img_id}: {e}")
 
-            # Collect per-performer data
-            for result in results:
-                if result.matches:
-                    best = result.matches[0]
-                    pid = best.stashdb_id
+                img_h, img_w = image.shape[:2]
+                total_faces += len(results)
+                images_processed += 1
 
-                    performer_appearances[pid].append({
-                        "image_id": img_id,
-                        "distance": best.combined_score,
-                    })
+                # Save per-image fingerprint
+                try:
+                    save_image_fingerprint(
+                        image_id=img_id,
+                        gallery_id=request.gallery_id,
+                        faces=results,
+                        image_shape=(img_h, img_w),
+                        db_version=db_manifest.get("version"),
+                    )
+                except Exception as e:
+                    print(f"[identify_gallery] Failed to save fingerprint for image {img_id}: {e}")
 
-                    # Keep best info
-                    if pid not in performer_info or best.combined_score < performer_info[pid]["distance"]:
-                        performer_info[pid] = {
-                            "name": best.name,
+                # Collect per-performer data
+                for result in results:
+                    if result.matches:
+                        best = result.matches[0]
+                        pid = best.stashdb_id
+
+                        performer_appearances[pid].append({
+                            "image_id": img_id,
                             "distance": best.combined_score,
-                            "country": best.country,
-                            "image_url": best.image_url,
-                        }
+                        })
 
-            if (i + 1) % 10 == 0:
-                print(f"[identify_gallery] [{time.time()-t_start:.1f}s] Processed {i+1}/{total_images} images")
+                        # Keep best info
+                        if pid not in performer_info or best.combined_score < performer_info[pid]["distance"]:
+                            performer_info[pid] = {
+                                "name": best.name,
+                                "distance": best.combined_score,
+                                "country": best.country,
+                                "image_url": best.image_url,
+                            }
 
-        except Exception as e:
-            errors.append(f"Image {img_id}: {str(e)[:100]}")
-            print(f"[identify_gallery] Error processing image {img_id}: {e}")
+                if (i + 1) % 10 == 0:
+                    print(f"[identify_gallery] [{time.time()-t_start:.1f}s] Processed {i+1}/{total_images} images")
+
+            except Exception as e:
+                errors.append(f"Image {img_id}: {str(e)[:100]}")
+                print(f"[identify_gallery] Error processing image {img_id}: {e}")
 
     # Aggregate results
     performers = []
