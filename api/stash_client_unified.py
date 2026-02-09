@@ -674,7 +674,8 @@ class StashClientUnified:
 
     async def get_gallery_by_id(self, gallery_id: str) -> Optional[dict]:
         """Get a gallery by ID with all images and performers."""
-        query = """
+        # Gallery metadata
+        gallery_query = """
         query GetGallery($id: ID!) {
           findGallery(id: $id) {
             id
@@ -685,6 +686,22 @@ class StashClientUnified:
               name
               image_path
             }
+          }
+        }
+        """
+        data = await self._execute(gallery_query, {"id": gallery_id})
+        gallery = data.get("findGallery")
+        if not gallery:
+            return None
+
+        # Fetch all images in this gallery via findImages with gallery filter
+        image_count = gallery.get("image_count", 0)
+        images_query = """
+        query GetGalleryImages($gallery_id: [ID!]!, $per_page: Int!) {
+          findImages(
+            image_filter: { galleries: { value: $gallery_id, modifier: INCLUDES } }
+            filter: { per_page: $per_page }
+          ) {
             images {
               id
               title
@@ -700,5 +717,9 @@ class StashClientUnified:
           }
         }
         """
-        data = await self._execute(query, {"id": gallery_id})
-        return data.get("findGallery")
+        images_data = await self._execute(
+            images_query,
+            {"gallery_id": [gallery_id], "per_page": max(image_count, 100)},
+        )
+        gallery["images"] = images_data.get("findImages", {}).get("images", [])
+        return gallery

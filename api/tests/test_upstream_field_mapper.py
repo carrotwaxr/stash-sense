@@ -5,6 +5,7 @@ from upstream_field_mapper import (
     DEFAULT_PERFORMER_FIELDS,
     FIELD_LABELS,
     FIELD_MERGE_TYPES,
+    _values_equal,
     diff_performer_fields,
     normalize_upstream_performer,
 )
@@ -193,6 +194,57 @@ class TestDiffPerformerFields:
         changes = diff_performer_fields(local, upstream, snapshot, enabled)
         assert len(changes) == 1
         assert changes[0]["merge_type"] == "alias_list"
+
+
+class TestValuesEqual:
+    def test_string_case_insensitive(self):
+        assert _values_equal("BROWN", "Brown", "simple") is True
+        assert _values_equal("NATURAL", "Natural", "simple") is True
+        assert _values_equal("female", "FEMALE", "simple") is True
+
+    def test_string_different_values(self):
+        assert _values_equal("BROWN", "BLACK", "simple") is False
+
+    def test_int_strict_equality(self):
+        assert _values_equal(165, 165, "simple") is True
+        assert _values_equal(165, 170, "simple") is False
+
+    def test_none_handling(self):
+        assert _values_equal(None, None, "simple") is True
+        assert _values_equal(None, "BROWN", "simple") is False
+        assert _values_equal("BROWN", None, "simple") is False
+
+    def test_none_vs_empty_string(self):
+        assert _values_equal(None, "", "simple") is False
+
+    def test_alias_list_case_insensitive(self):
+        assert _values_equal(["Jane", "JD"], ["jane", "jd"], "alias_list") is True
+
+    def test_alias_list_different_sets(self):
+        assert _values_equal(["Jane"], ["Jane", "JD"], "alias_list") is False
+
+
+class TestDiffCaseInsensitiveStrings:
+    def test_case_only_difference_is_not_flagged(self):
+        """BROWN vs Brown should NOT be flagged as a change."""
+        local = {"eye_color": "Brown", "hair_color": "Black"}
+        upstream = {"eye_color": "BROWN", "hair_color": "BLACK"}
+        snapshot = {"eye_color": "BROWN", "hair_color": "BLACK"}
+        enabled = {"eye_color", "hair_color"}
+
+        changes = diff_performer_fields(local, upstream, snapshot, enabled)
+        assert len(changes) == 0
+
+    def test_real_value_change_still_flagged(self):
+        """BROWN vs GREEN should still be flagged."""
+        local = {"eye_color": "Brown"}
+        upstream = {"eye_color": "GREEN"}
+        snapshot = {"eye_color": "BROWN"}
+        enabled = {"eye_color"}
+
+        changes = diff_performer_fields(local, upstream, snapshot, enabled)
+        assert len(changes) == 1
+        assert changes[0]["field"] == "eye_color"
 
 
 class TestFieldMergeTypes:

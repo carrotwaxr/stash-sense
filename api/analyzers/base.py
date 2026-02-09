@@ -6,7 +6,7 @@ All analyzers inherit from this class and implement the run() method.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..stash_client_unified import StashClientUnified
@@ -42,9 +42,21 @@ class BaseAnalyzer(ABC):
         self,
         stash: "StashClientUnified",
         rec_db: "RecommendationsDB",
+        run_id: Optional[int] = None,
     ):
         self.stash = stash
         self.rec_db = rec_db
+        self.run_id = run_id
+
+    def set_items_total(self, total: int):
+        """Report total items to process for this run."""
+        if self.run_id is not None:
+            self.rec_db.update_analysis_items_total(self.run_id, total)
+
+    def update_progress(self, items_processed: int, recommendations_created: int):
+        """Report progress for this run."""
+        if self.run_id is not None:
+            self.rec_db.update_analysis_progress(self.run_id, items_processed, recommendations_created)
 
     @abstractmethod
     async def run(self, incremental: bool = True) -> AnalysisResult:

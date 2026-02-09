@@ -133,16 +133,16 @@ def save_image_fingerprint(
         for result in faces:
             if result.matches:
                 best = result.matches[0]
-                box = result.face.box
+                bbox = result.face.bbox  # dict with x, y, w, h in pixels
                 rec_db.add_image_fingerprint_face(
                     stash_image_id=image_id,
                     performer_id=best.stashdb_id,
                     confidence=max(0.0, min(1.0, 1.0 - best.combined_score)),
                     distance=best.combined_score,
-                    bbox_x=box[0] / img_w if img_w > 0 else 0,
-                    bbox_y=box[1] / img_h if img_h > 0 else 0,
-                    bbox_w=(box[2] - box[0]) / img_w if img_w > 0 else 0,
-                    bbox_h=(box[3] - box[1]) / img_h if img_h > 0 else 0,
+                    bbox_x=bbox["x"] / img_w if img_w > 0 else 0,
+                    bbox_y=bbox["y"] / img_h if img_h > 0 else 0,
+                    bbox_w=bbox["w"] / img_w if img_w > 0 else 0,
+                    bbox_h=bbox["h"] / img_h if img_h > 0 else 0,
                 )
 
         return fp_id, None

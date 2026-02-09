@@ -64,8 +64,9 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         batch_size: int = 100,
         max_comparisons: int = None,  # No limit
         max_scenes: int = None,  # No limit
+        **kwargs,
     ):
-        super().__init__(stash, rec_db)
+        super().__init__(stash, rec_db, **kwargs)
         self.min_confidence = min_confidence
         self.batch_size = batch_size
         self.max_comparisons = max_comparisons

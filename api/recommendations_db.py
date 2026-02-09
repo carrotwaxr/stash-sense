@@ -1226,7 +1226,7 @@ class RecommendationsDB:
                 INSERT INTO image_fingerprints (stash_image_id, gallery_id, faces_detected, db_version)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(stash_image_id) DO UPDATE SET
-                    gallery_id = excluded.gallery_id,
+                    gallery_id = COALESCE(excluded.gallery_id, gallery_id),
                     faces_detected = excluded.faces_detected,
                     db_version = excluded.db_version,
                     updated_at = datetime('now')

@@ -5,6 +5,7 @@ and computes 3-way diffs (local vs upstream vs previous snapshot)
 to detect meaningful upstream changes.
 """
 
+import re
 from typing import Optional
 
 
@@ -137,6 +138,68 @@ def _format_body_modifications(mods: Optional[list[dict]]) -> Optional[str]:
     return "; ".join(parts)
 
 
+def parse_measurements(measurements: Optional[str]) -> dict:
+    """Parse a Stash measurements string into individual components.
+
+    Handles formats like "38F-24-35", "34DD-26-36", "38-24-35", "38F", etc.
+    Returns dict with keys: band_size, cup_size, waist_size, hip_size (any may be None).
+    """
+    result = {"band_size": None, "cup_size": None, "waist_size": None, "hip_size": None}
+    if not measurements or not measurements.strip():
+        return result
+
+    parts = measurements.strip().split("-", 2)
+
+    # Parse bust part (first segment): e.g. "38F", "34DD", "38"
+    if parts[0]:
+        bust_match = re.match(r"^(\d+)([A-Za-z]+)?$", parts[0].strip())
+        if bust_match:
+            result["band_size"] = int(bust_match.group(1))
+            if bust_match.group(2):
+                result["cup_size"] = bust_match.group(2).upper()
+
+    # Waist (second segment)
+    if len(parts) > 1 and parts[1].strip():
+        try:
+            result["waist_size"] = int(parts[1].strip())
+        except ValueError:
+            pass
+
+    # Hip (third segment)
+    if len(parts) > 2 and parts[2].strip():
+        try:
+            result["hip_size"] = int(parts[2].strip())
+        except ValueError:
+            pass
+
+    return result
+
+
+def parse_career_length(career_length: Optional[str]) -> dict:
+    """Parse a Stash career_length string into start/end years.
+
+    Handles formats like "2010-2023", "2010-", "2010", etc.
+    Returns dict with keys: career_start_year, career_end_year (may be None).
+    """
+    result = {"career_start_year": None, "career_end_year": None}
+    if not career_length or not career_length.strip():
+        return result
+
+    parts = career_length.strip().split("-", 1)
+    if parts[0].strip():
+        try:
+            result["career_start_year"] = int(parts[0].strip())
+        except ValueError:
+            pass
+    if len(parts) > 1 and parts[1].strip():
+        try:
+            result["career_end_year"] = int(parts[1].strip())
+        except ValueError:
+            pass
+
+    return result
+
+
 def normalize_upstream_performer(upstream: dict) -> dict:
     """Convert stash-box performer data to normalized dict using local Stash field names.
 
@@ -181,12 +244,30 @@ def normalize_upstream_performer(upstream: dict) -> dict:
     return result
 
 
-def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
-    """Compare two field values, with special handling for alias_list types.
+def _is_empty(value) -> bool:
+    """Check if a value is semantically empty (None, empty string, 0, empty list)."""
+    if value is None:
+        return True
+    if isinstance(value, str) and value.strip() == "":
+        return True
+    if isinstance(value, (int, float)) and value == 0:
+        return True
+    if isinstance(value, list) and len(value) == 0:
+        return True
+    return False
 
-    For alias_list merge type, comparison is case-insensitive set comparison.
-    For all other types, standard equality.
+
+def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
+    """Compare two field values for equality.
+
+    - alias_list: case-insensitive set comparison
+    - strings: case-insensitive comparison (eliminates BROWN vs Brown false positives)
+    - both empty: treats None, "", 0, and [] as equivalent empty values
+    - all other types: standard equality
     """
+    # Treat all forms of empty as equal (None vs 0, "" vs None, etc.)
+    if _is_empty(local_value) and _is_empty(upstream_value):
+        return True
     if merge_type == "alias_list":
         local_set = {
             v.lower() if isinstance(v, str) else v
@@ -197,6 +278,8 @@ def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
             for v in (upstream_value or [])
         }
         return local_set == upstream_set
+    if isinstance(local_value, str) and isinstance(upstream_value, str):
+        return local_value.lower() == upstream_value.lower()
     return local_value == upstream_value
 
 
