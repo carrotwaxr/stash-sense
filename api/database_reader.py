@@ -46,14 +46,17 @@ class StashboxId:
     performer_id: int
     endpoint: str
     stashbox_performer_id: str
+    created_at: Optional[str] = None
 
 
 @dataclass
 class Alias:
     """Performer alias/stage name."""
+    id: int
     performer_id: int
     alias: str
-    source_endpoint: str
+    source_endpoint: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 @dataclass
@@ -67,6 +70,8 @@ class Face:
     source_endpoint: str
     quality_score: Optional[float]
     created_at: str
+    pruned: Optional[bool] = None
+    yaw: Optional[float] = None
 
 
 class PerformerDatabaseReader:
