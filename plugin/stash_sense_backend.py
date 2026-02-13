@@ -25,13 +25,15 @@ def main():
         result = health_check(sidecar_url)
     elif mode == "identify_scene":
         scene_id = args.get("scene_id")
-        max_frames = int(args.get("max_frames", 40))  # 40 frames optimal per tuning
+        max_frames = int(args.get("max_frames", 60))  # 60 frames per 2026-02-12 reeval
         top_k = int(args.get("top_k", 3))
-        max_distance = float(args.get("max_distance", 0.6))  # 0.6 optimal per benchmark
+        max_distance = float(args.get("max_distance", 0.5))  # 0.5 per 2026-02-12 reeval
         min_face_size = int(args.get("min_face_size", 60))  # 60px optimal per benchmark
+        scene_performer_stashdb_ids = args.get("scene_performer_stashdb_ids", [])
 
         result = identify_scene(
-            sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size
+            sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size,
+            scene_performer_stashdb_ids=scene_performer_stashdb_ids,
         )
     elif mode == "identify_image":
         image_id = args.get("image_id")
@@ -84,7 +86,8 @@ def database_info(sidecar_url):
         return {"error": f"Request failed: {e}"}
 
 
-def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size):
+def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size,
+                    scene_performer_stashdb_ids=None):
     """Identify performers in a scene."""
     if not scene_id:
         return {"error": "No scene_id provided"}
@@ -97,6 +100,8 @@ def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance, min_f
             "max_distance": max_distance,
             "min_face_size": min_face_size,
         }
+        if scene_performer_stashdb_ids:
+            payload["scene_performer_stashdb_ids"] = scene_performer_stashdb_ids
 
         log(f"Identifying scene {scene_id} with max_distance={max_distance}, min_face_size={min_face_size}")
 
@@ -328,7 +333,7 @@ def fp_status(sidecar_url):
     return sidecar_get(sidecar_url, "/recommendations/fingerprints/status")
 
 
-def fp_generate(sidecar_url, refresh_outdated=True, num_frames=12, min_face_size=50, max_distance=0.6):
+def fp_generate(sidecar_url, refresh_outdated=True, num_frames=12, min_face_size=50, max_distance=0.5):
     """Start fingerprint generation."""
     data = {
         "refresh_outdated": refresh_outdated,
@@ -481,7 +486,7 @@ def handle_recommendations(mode, args, sidecar_url):
             refresh_outdated=args.get("refresh_outdated", True),
             num_frames=args.get("num_frames", 12),
             min_face_size=args.get("min_face_size", 50),
-            max_distance=args.get("max_distance", 0.6),
+            max_distance=args.get("max_distance", 0.5),
         )
 
     elif mode == "fp_progress":

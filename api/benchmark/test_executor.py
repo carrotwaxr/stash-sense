@@ -222,8 +222,8 @@ class TestExecutor:
         # Configure matching
         match_config = MatchingConfig(
             query_k=100,
-            facenet_weight=0.6,
-            arcface_weight=0.4,
+            facenet_weight=params.facenet_weight,
+            arcface_weight=params.arcface_weight,
             max_results=params.top_k * 2,
             max_distance=params.max_distance,
         )
@@ -273,9 +273,9 @@ class TestExecutor:
                 cluster_threshold=params.cluster_threshold,
                 top_k=params.top_k,
                 max_distance=params.max_distance,
-                min_appearances=2,
-                min_unique_frames=2,
-                min_confidence=0.35,
+                min_appearances=params.min_appearances,
+                min_unique_frames=params.min_unique_frames,
+                min_confidence=params.min_confidence,
             )
             # Get cluster count for stats
             clusters = cluster_faces_by_person(
@@ -298,10 +298,10 @@ class TestExecutor:
             persons = frequency_based_matching(
                 all_results,
                 top_k=params.top_k,
-                min_appearances=2,
-                min_unique_frames=2,
+                min_appearances=params.min_appearances,
+                min_unique_frames=params.min_unique_frames,
                 max_distance=params.max_distance,
-                min_confidence=0.35,
+                min_confidence=params.min_confidence,
             )
             num_clusters = len(persons)
 

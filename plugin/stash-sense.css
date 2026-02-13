@@ -350,6 +350,56 @@
   color: var(--bs-warning, #ffc107);
 }
 
+.ss-already-tagged {
+  color: var(--bs-success, #28a745);
+  font-weight: 500;
+}
+
+.ss-tagged-badge {
+  display: inline-block;
+  background: var(--bs-success, #28a745);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ss-tagged-badge-sm {
+  font-size: 9px;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+
+/* Single-frame detections section */
+.ss-singleton-section {
+  margin-top: 16px;
+  border-top: 1px solid var(--bs-border-color, #444);
+  padding-top: 12px;
+}
+
+.ss-singleton-header {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--bs-secondary-color, #888);
+  padding: 4px 0;
+}
+
+.ss-singleton-header:hover {
+  color: var(--bs-body-color, #ccc);
+}
+
+.ss-singleton-list .ss-person {
+  opacity: 0.7;
+}
+
+.ss-singleton-list .ss-person:hover {
+  opacity: 1;
+}
+
 /* Other Matches */
 .ss-other-matches {
   margin-top: 12px;

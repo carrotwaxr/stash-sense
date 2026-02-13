@@ -34,6 +34,7 @@ class RecognitionResult:
     """Result of face recognition on an image."""
     face: DetectedFace
     matches: list[PerformerMatch]  # Sorted by combined_score (best first)
+    embedding: Optional["FaceEmbedding"] = None  # Stored for clustering (avoids recomputation)
 
 
 class FaceRecognizer:
@@ -198,7 +199,7 @@ class FaceRecognizer:
         if config is None:
             config = MatchingConfig()
 
-        # Generate embedding
+        # Generate embedding (stored in result for clustering)
         embedding = self.generator.get_embedding(face.image)
 
         # Use new matching logic
@@ -227,7 +228,7 @@ class FaceRecognizer:
                 combined_score=candidate.combined_distance,
             ))
 
-        return matches, result
+        return matches, result, embedding
 
     def recognize_image(
         self,
@@ -268,8 +269,8 @@ class FaceRecognizer:
             if face.bbox["w"] < min_face_size or face.bbox["h"] < min_face_size:
                 continue
 
-            matches, _ = self.recognize_face_v2(face, config)
-            results.append(RecognitionResult(face=face, matches=matches))
+            matches, _, emb = self.recognize_face_v2(face, config)
+            results.append(RecognitionResult(face=face, matches=matches, embedding=emb))
 
         return results
 

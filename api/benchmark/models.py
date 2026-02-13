@@ -53,15 +53,20 @@ class BenchmarkParams:
     behavior during benchmark execution.
     """
     matching_mode: str = "frequency"
-    max_distance: float = 0.7
+    max_distance: float = 0.5
     min_face_size: int = 40
     use_multi_signal: bool = True
-    num_frames: int = 40
+    num_frames: int = 60
     start_offset_pct: float = 0.05
     end_offset_pct: float = 0.95
     min_face_confidence: float = 0.5
     top_k: int = 5
     cluster_threshold: float = 0.6
+    facenet_weight: float = 0.5
+    arcface_weight: float = 0.5
+    min_appearances: int = 2
+    min_unique_frames: int = 2
+    min_confidence: float = 0.35
 
     def to_dict(self) -> dict:
         """Convert parameters to dictionary."""

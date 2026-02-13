@@ -126,7 +126,7 @@
         refresh_outdated: options.refreshOutdated ?? true,
         num_frames: options.numFrames ?? 12,
         min_face_size: options.minFaceSize ?? 50,
-        max_distance: options.maxDistance ?? 0.6,
+        max_distance: options.maxDistance ?? 0.5,
       });
     },
 

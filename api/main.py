@@ -65,6 +65,7 @@ class PerformerMatchResponse(BaseModel):
     arcface_distance: float
     country: Optional[str] = None
     image_url: Optional[str] = Field(None, description="StashDB profile image URL")
+    already_tagged: bool = Field(False, description="Whether this performer is already tagged on the scene")
 
 
 class FaceResult(BaseModel):
@@ -676,7 +677,7 @@ class SceneIdentifyRequest(BaseModel):
     api_key: Optional[str] = Field(None, description="Stash API key (or use STASH_API_KEY env var)")
 
     # Frame extraction settings
-    num_frames: int = Field(40, ge=5, le=120, description="Number of frames to extract")
+    num_frames: int = Field(60, ge=5, le=120, description="Number of frames to extract")
     start_offset_pct: float = Field(0.05, ge=0.0, le=0.5, description="Skip first N% of video")
     end_offset_pct: float = Field(0.95, ge=0.5, le=1.0, description="Stop at N% of video")
 
@@ -686,13 +687,16 @@ class SceneIdentifyRequest(BaseModel):
 
     # Matching settings
     top_k: int = Field(3, ge=1, le=10, description="Matches per person")
-    max_distance: float = Field(0.7, ge=0.0, le=2.0, description="Maximum match distance")
+    max_distance: float = Field(0.5, ge=0.0, le=2.0, description="Maximum match distance")
 
     # Clustering settings
     cluster_threshold: float = Field(0.6, ge=0.2, le=3.0, description="Distance threshold for face clustering")
 
     # Matching mode: "cluster", "frequency", or "hybrid"
     matching_mode: str = Field("frequency", description="Matching mode: 'cluster' (cluster faces then match), 'frequency' (count performer appearances), or 'hybrid' (combine both)")
+
+    # Already-tagged performers (StashDB IDs) for boosting
+    scene_performer_stashdb_ids: list[str] = Field(default_factory=list, description="StashDB IDs of performers already tagged on this scene")
 
 
 class PersonResult(BaseModel):
@@ -716,21 +720,34 @@ class SceneIdentifyResponse(BaseModel):
     fingerprint_error: Optional[str] = None
 
 
+def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
+    """Compute cosine distance between two vectors."""
+    dot = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 1.0
+    return 1.0 - dot / (norm_a * norm_b)
+
+
 def cluster_faces_by_person(
     all_results: list[tuple[int, RecognitionResult]],
     recognizer: FaceRecognizer,
-    distance_threshold: float = 0.9,
+    distance_threshold: float = 0.6,
 ) -> list[list[tuple[int, RecognitionResult]]]:
     """
-    Cluster detected faces by person using embedding similarity.
+    Cluster detected faces by person using embedding cosine similarity.
 
-    Uses a simple greedy clustering: assign each face to the nearest existing
+    Uses greedy clustering: assign each face to the nearest existing
     cluster or create a new cluster if too far from all existing ones.
+
+    Uses cosine distance (consistent with Voyager indices) instead of L2,
+    and reuses pre-computed embeddings from recognition when available.
 
     Args:
         all_results: List of (frame_index, RecognitionResult) tuples
-        recognizer: FaceRecognizer instance for generating embeddings
-        distance_threshold: Max distance to consider same person (default 0.9 for L2 on concatenated embeddings)
+        recognizer: FaceRecognizer instance (fallback for embedding generation)
+        distance_threshold: Max cosine distance to consider same person (default 0.6)
 
     Returns:
         List of clusters, each containing faces of the same person
@@ -741,11 +758,14 @@ def cluster_faces_by_person(
     clusters: list[list[tuple[int, RecognitionResult, np.ndarray]]] = []
 
     for frame_idx, result in all_results:
-        # Get embedding for this face
-        embedding = recognizer.generator.get_embedding(result.face.image)
-        face_vector = np.concatenate([embedding.facenet, embedding.arcface])
+        # Use stored embedding if available, otherwise recompute
+        if result.embedding is not None:
+            face_vector = np.concatenate([result.embedding.facenet, result.embedding.arcface])
+        else:
+            embedding = recognizer.generator.get_embedding(result.face.image)
+            face_vector = np.concatenate([embedding.facenet, embedding.arcface])
 
-        # Find nearest cluster
+        # Find nearest cluster by cosine distance
         best_cluster_idx = -1
         best_distance = float("inf")
 
@@ -753,7 +773,7 @@ def cluster_faces_by_person(
             # Compare to cluster centroid (average of all faces in cluster)
             cluster_vectors = [c[2] for c in cluster]
             centroid = np.mean(cluster_vectors, axis=0)
-            distance = np.linalg.norm(face_vector - centroid)
+            distance = _cosine_distance(face_vector, centroid)
 
             if distance < best_distance:
                 best_distance = distance
@@ -877,7 +897,7 @@ def frequency_based_matching(
     top_k: int = 5,
     min_appearances: int = 2,
     min_unique_frames: int = 2,
-    max_distance: float = 0.7,
+    max_distance: float = 0.5,
     min_confidence: float = 0.35,
 ) -> list[PersonResult]:
     """
@@ -988,12 +1008,172 @@ def frequency_based_matching(
     return persons
 
 
+def clustered_frequency_matching(
+    all_results: list[tuple[int, RecognitionResult]],
+    recognizer: "FaceRecognizer",
+    cluster_threshold: float = 0.6,
+    top_k: int = 5,
+    max_distance: float = 0.5,
+    min_confidence: float = 0.35,
+    scene_performer_stashdb_ids: list[str] | None = None,
+    tagged_boost: float = 0.03,
+) -> list[PersonResult]:
+    """
+    Cluster faces first to determine person count, then use frequency matching
+    within each cluster to identify who each person is.
+
+    This combines the strengths of both approaches:
+    - Clustering answers "how many distinct people are there?"
+    - Frequency matching answers "who is each person?"
+
+    The result is one PersonResult per face cluster, with alternative matches
+    for each cluster shown as all_matches.
+    """
+    if not all_results:
+        return []
+
+    tagged_ids = set(scene_performer_stashdb_ids or [])
+
+    # Step 1: Cluster faces by embedding similarity
+    clusters = cluster_faces_by_person(
+        all_results, recognizer, distance_threshold=cluster_threshold
+    )
+    # Merge clusters that have the same best match
+    clusters = merge_clusters_by_match(clusters)
+
+    print(f"[clustered_freq] {len(all_results)} face detections -> {len(clusters)} person clusters")
+
+    # Step 2: For each cluster, run frequency matching to find the best performer
+    persons = []
+    used_performers: set[str] = set()
+
+    # Sort clusters by size (most prominent person first)
+    sorted_clusters = sorted(enumerate(clusters), key=lambda x: len(x[1]), reverse=True)
+
+    for cluster_idx, cluster in sorted_clusters:
+        cluster_size = len(cluster)
+        unique_frames = len(set(frame_idx for frame_idx, _ in cluster))
+
+        # Collect all matches from faces in this cluster
+        performer_matches: dict[str, list[tuple[float, PerformerMatch, int]]] = defaultdict(list)
+
+        for frame_idx, result in cluster:
+            for match in result.matches:
+                if match.combined_score <= max_distance:
+                    performer_matches[match.stashdb_id].append(
+                        (match.combined_score, match, frame_idx)
+                    )
+
+        if not performer_matches:
+            # No matches in this cluster - unknown person
+            persons.append(PersonResult(
+                person_id=len(persons),
+                frame_count=unique_frames,
+                best_match=None,
+                all_matches=[],
+            ))
+            continue
+
+        # Score each performer within this cluster
+        candidates = []
+        for stashdb_id, matches in performer_matches.items():
+            distances = [m[0] for m in matches]
+            min_distance = min(distances)
+            match_unique_frames = len(set(m[2] for m in matches))
+
+            if (1 - min_distance) < min_confidence:
+                continue
+
+            confidence = 1 - min_distance
+            frame_bonus = 0.1 * (match_unique_frames - 1)
+            weighted_score = confidence * (1 + frame_bonus)
+
+            # Apply small boost for already-tagged performers
+            if stashdb_id in tagged_ids:
+                weighted_score += tagged_boost
+
+            best_match = min(matches, key=lambda m: m[0])[1]
+
+            candidates.append({
+                "stashdb_id": stashdb_id,
+                "appearances": len(matches),
+                "unique_frames": match_unique_frames,
+                "min_distance": min_distance,
+                "avg_distance": float(np.mean(distances)),
+                "weighted_score": weighted_score,
+                "best_match": best_match,
+                "is_tagged": stashdb_id in tagged_ids,
+            })
+
+        # Sort by weighted score (higher is better)
+        candidates.sort(key=lambda c: c["weighted_score"], reverse=True)
+
+        # Pick best performer not yet used by a higher-priority cluster
+        best_candidate = None
+        alt_candidates = []
+        for c in candidates:
+            if c["stashdb_id"] not in used_performers:
+                if best_candidate is None:
+                    best_candidate = c
+                    used_performers.add(c["stashdb_id"])
+                else:
+                    alt_candidates.append(c)
+            else:
+                alt_candidates.append(c)
+
+        if best_candidate is None:
+            # All candidates already used
+            persons.append(PersonResult(
+                person_id=len(persons),
+                frame_count=unique_frames,
+                best_match=None,
+                all_matches=[],
+            ))
+            continue
+
+        # Build all_matches list: best first, then alternatives (up to top_k)
+        def _to_match_response(c: dict) -> PerformerMatchResponse:
+            m = c["best_match"]
+            return PerformerMatchResponse(
+                stashdb_id=m.stashdb_id,
+                name=m.name,
+                confidence=distance_to_confidence(c["avg_distance"]),
+                distance=c["avg_distance"],
+                facenet_distance=m.facenet_distance,
+                arcface_distance=m.arcface_distance,
+                country=m.country,
+                image_url=m.image_url,
+                already_tagged=c["is_tagged"],
+            )
+
+        best_response = _to_match_response(best_candidate)
+        all_matches = [best_response]
+        for alt in alt_candidates[:top_k - 1]:
+            all_matches.append(_to_match_response(alt))
+
+        persons.append(PersonResult(
+            person_id=len(persons),
+            frame_count=unique_frames,
+            best_match=best_response,
+            all_matches=all_matches,
+        ))
+
+    # Sort: persons with matches first (by frame count desc), then unknowns
+    persons.sort(key=lambda p: (p.best_match is not None, p.frame_count), reverse=True)
+
+    # Re-assign person IDs after sorting
+    for i, p in enumerate(persons):
+        p.person_id = i
+
+    return persons
+
+
 def hybrid_matching(
     all_results: list[tuple[int, RecognitionResult]],
     recognizer: "FaceRecognizer",
     cluster_threshold: float = 0.6,
     top_k: int = 5,
-    max_distance: float = 0.7,
+    max_distance: float = 0.5,
     min_appearances: int = 2,
     min_unique_frames: int = 2,
     min_confidence: float = 0.35,
@@ -1238,8 +1418,8 @@ async def identify_scene(request: SceneIdentifyRequest):
     # Configure matching
     match_config = MatchingConfig(
         query_k=100,  # Get more candidates for better fusion
-        facenet_weight=0.6,
-        arcface_weight=0.4,
+        facenet_weight=0.5,
+        arcface_weight=0.5,
         max_results=request.top_k * 2,
         max_distance=request.max_distance,
     )
@@ -1266,9 +1446,9 @@ async def identify_scene(request: SceneIdentifyRequest):
             filtered_faces += 1
 
             # Recognize this face using V2 matching (with health detection)
-            matches, _match_result = recognizer.recognize_face_v2(face, match_config)
+            matches, _match_result, embedding = recognizer.recognize_face_v2(face, match_config)
 
-            result = RecognitionResult(face=face, matches=matches)
+            result = RecognitionResult(face=face, matches=matches, embedding=embedding)
             all_results.append((frame.frame_index, result))
 
     print(f"[identify_scene] [{time.time()-t_start:.1f}s] Face detection: {total_faces} detected, {filtered_faces} after size filter")
@@ -1303,8 +1483,8 @@ async def identify_scene(request: SceneIdentifyRequest):
                     for face in screenshot_detected:
                         face_w, face_h = face.bbox["w"], face.bbox["h"]
                         if face_w >= request.min_face_size and face_h >= request.min_face_size:
-                            matches, _ = recognizer.recognize_face_v2(face, match_config)
-                            result = RecognitionResult(face=face, matches=matches)
+                            matches, _, emb = recognizer.recognize_face_v2(face, match_config)
+                            result = RecognitionResult(face=face, matches=matches, embedding=emb)
                             # Use frame_index -1 to indicate screenshot
                             all_results.append((-1, result))
                             screenshot_faces += 1
@@ -1330,15 +1510,17 @@ async def identify_scene(request: SceneIdentifyRequest):
         )
         print(f"[identify_scene] [{time.time()-t_start:.1f}s] Hybrid matching: {len(persons)} performers in {time.time()-t_match:.1f}s")
     elif request.matching_mode == "frequency":
-        # Frequency-based matching: count performer appearances across all faces
-        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using frequency matching...")
-        persons = frequency_based_matching(
+        # Clustered frequency matching: cluster faces first, then identify within clusters
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using clustered frequency matching...")
+        persons = clustered_frequency_matching(
             all_results,
-            top_k=request.top_k * 2,  # Get more candidates, we'll filter later
-            min_appearances=2,
+            recognizer,
+            cluster_threshold=request.cluster_threshold,
+            top_k=request.top_k,
             max_distance=request.max_distance,
+            scene_performer_stashdb_ids=request.scene_performer_stashdb_ids,
         )
-        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Frequency matching: {len(persons)} performers in {time.time()-t_match:.1f}s")
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Clustered frequency matching: {len(persons)} persons in {time.time()-t_match:.1f}s")
     else:
         # Cluster-based matching (original approach)
         print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using cluster matching...")

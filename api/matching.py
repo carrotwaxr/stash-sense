@@ -26,8 +26,8 @@ class MatchingConfig:
     query_k: int = 100  # Number of candidates to fetch from each index
 
     # Fusion weights (when both models are healthy)
-    facenet_weight: float = 0.6
-    arcface_weight: float = 0.4
+    facenet_weight: float = 0.5
+    arcface_weight: float = 0.5
 
     # Model health detection thresholds
     # Degenerate outputs have very low variance (all distances nearly identical)

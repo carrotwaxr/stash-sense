@@ -23,7 +23,7 @@ class FrameExtractionConfig:
     """Configuration for frame extraction. All values are easily tunable."""
 
     # Number of frames to extract
-    num_frames: int = 40  # Target number of frames (30-60 recommended)
+    num_frames: int = 60  # Target number of frames (30-60 recommended)
 
     # Time offsets (skip intros/outros)
     start_offset_pct: float = 0.05  # Skip first 5% (logos, intros)

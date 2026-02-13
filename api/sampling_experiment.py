@@ -270,8 +270,8 @@ async def run_strategy_on_scene(
             if face.bbox["w"] < 40 or face.bbox["h"] < 40:
                 continue
 
-            matches, _ = recognizer.recognize_face_v2(face, match_config)
-            result = RecognitionResult(face=face, matches=matches)
+            matches, _, emb = recognizer.recognize_face_v2(face, match_config)
+            result = RecognitionResult(face=face, matches=matches, embedding=emb)
             all_results.append((frame.frame_index, result))
             faces_recognized += 1
 

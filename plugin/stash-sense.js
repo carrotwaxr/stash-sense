@@ -31,21 +31,59 @@
         return Math.round((1 - clamped) * 100);
       },
 
+      // Get scene's existing performer StashDB IDs
+      async getScenePerformerStashDBIds(sceneId) {
+        const query = `
+          query GetScenePerformers($id: ID!) {
+            findScene(id: $id) {
+              performers {
+                id
+                name
+                stash_ids { endpoint stash_id }
+              }
+            }
+          }
+        `;
+        try {
+          const data = await SS.stashQuery(query, { id: sceneId });
+          const performers = data?.findScene?.performers || [];
+          return performers;
+        } catch (e) {
+          console.error('Failed to get scene performers:', e);
+          return [];
+        }
+      },
+
       // Call the face recognition API via Python backend
       async identifyScene(sceneId, onProgress) {
         const settings = await SS.getSettings();
         onProgress?.('Connecting to Stash Sense...');
 
+        // Get existing performer StashDB IDs for tagged-performer awareness
+        const scenePerformers = await this.getScenePerformerStashDBIds(sceneId);
+        const stashdbIds = [];
+        for (const p of scenePerformers) {
+          for (const sid of (p.stash_ids || [])) {
+            if (sid.endpoint === 'https://stashdb.org/graphql') {
+              stashdbIds.push(sid.stash_id);
+            }
+          }
+        }
+
         const result = await SS.runPluginOperation('identify_scene', {
           scene_id: sceneId,
           sidecar_url: settings.sidecarUrl,
           top_k: settings.maxResults,
-          // max_distance and min_face_size use tuned defaults in backend (0.6, 60px)
+          scene_performer_stashdb_ids: stashdbIds,
+          // max_distance and min_face_size use tuned defaults in backend (0.5, 60px)
         });
 
         if (result.error) {
           throw new Error(result.error);
         }
+
+        // Attach scene performers for UI rendering
+        result._scenePerformers = scenePerformers;
 
         return result;
       },
@@ -232,87 +270,61 @@
           return;
         }
 
+        // Build set of StashDB IDs already tagged on this scene
+        const taggedStashDBIds = new Set();
+        const scenePerformers = results._scenePerformers || [];
+        const scenePerformerLocalIds = new Set();
+        for (const p of scenePerformers) {
+          scenePerformerLocalIds.add(p.id);
+          for (const sid of (p.stash_ids || [])) {
+            if (sid.endpoint === 'https://stashdb.org/graphql') {
+              taggedStashDBIds.add(sid.stash_id);
+            }
+          }
+        }
+
+        // Separate persons with multi-frame clusters from singletons
+        const multiFrame = results.persons.filter(p => p.frame_count > 1 && p.best_match);
+        const singleFrame = results.persons.filter(p => p.frame_count <= 1 && p.best_match);
+        const unknown = results.persons.filter(p => !p.best_match);
+
+        const clusterCount = multiFrame.length;
+        const totalPersons = results.persons.filter(p => p.best_match).length;
+
         resultsDiv.innerHTML = `
           <p class="ss-summary">
             Analyzed <strong>${results.frames_analyzed}</strong> frames,
             detected <strong>${results.faces_detected}</strong> faces,
-            identified <strong>${results.persons.length}</strong> unique person(s).
+            found <strong>${clusterCount}</strong> distinct person(s)${singleFrame.length ? ` + ${singleFrame.length} single-frame detection(s)` : ''}.
           </p>
           <div class="ss-persons"></div>
+          ${singleFrame.length ? '<div class="ss-singletons"></div>' : ''}
         `;
 
         const personsDiv = resultsDiv.querySelector('.ss-persons');
 
-        for (const person of results.persons) {
-          const personDiv = document.createElement('div');
-          personDiv.className = 'ss-person';
-
-          if (!person.best_match) {
-            personDiv.innerHTML = `
-              <div class="ss-person-header">
-                <span class="ss-person-label">Unknown Person</span>
-                <span class="ss-person-frames">${person.frame_count} appearances</span>
-              </div>
-              <p class="ss-no-match">No match found in database</p>
-            `;
-          } else {
-            const match = person.best_match;
-            const confidence = this.distanceToConfidence(match.distance || (1 - match.confidence) || 0.5);
-            const confidenceClass = SS.getConfidenceClass(confidence);
-
-            const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id);
-
-            personDiv.innerHTML = `
-              <div class="ss-person-header">
-                <span class="ss-person-label">Person ${person.person_id + 1}</span>
-                <span class="ss-person-frames">${person.frame_count} appearances</span>
-              </div>
-              <div class="ss-match">
-                <div class="ss-match-image">
-                  ${match.image_url ? `<img src="${match.image_url}" alt="${match.name}" loading="lazy" />` : '<div class="ss-no-image">No image</div>'}
-                </div>
-                <div class="ss-match-info">
-                  <h4>${match.name}</h4>
-                  <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
-                  ${match.country ? `<div class="ss-country">${match.country}</div>` : ''}
-                  <div class="ss-links">
-                    <a href="https://stashdb.org/performers/${match.stashdb_id}" target="_blank" rel="noopener" class="ss-link">
-                      View on StashDB
-                    </a>
-                  </div>
-                  <div class="ss-actions">
-                    ${localPerformer
-                      ? `<button class="ss-btn ss-btn-add" data-performer-id="${localPerformer.id}" data-scene-id="${sceneId}">
-                           Add to Scene
-                         </button>
-                         <span class="ss-local-status">In library as: ${localPerformer.name}</span>`
-                      : `<span class="ss-local-status ss-not-in-library">Not in library</span>`
-                    }
-                  </div>
-                </div>
-              </div>
-              ${person.all_matches && person.all_matches.length > 1 ? `
-                <details class="ss-other-matches">
-                  <summary>Other possible matches (${person.all_matches.length - 1})</summary>
-                  <ul>
-                    ${person.all_matches.slice(1).map(m => {
-                      const altConf = this.distanceToConfidence(m.distance || (1 - m.confidence) || 0.5);
-                      return `
-                        <li>
-                          <a href="https://stashdb.org/performers/${m.stashdb_id}" target="_blank" rel="noopener">
-                            ${m.name}
-                          </a>
-                          <span class="ss-alt-confidence">${altConf}%</span>
-                        </li>
-                      `;
-                    }).join('')}
-                  </ul>
-                </details>
-              ` : ''}
-            `;
-          }
-
+        // Render multi-frame persons (high confidence clusters)
+        for (const person of multiFrame) {
+          const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
           personsDiv.appendChild(personDiv);
+        }
+
+        // Render single-frame detections collapsed by default
+        if (singleFrame.length) {
+          const singletonsDiv = resultsDiv.querySelector('.ss-singletons');
+          const details = document.createElement('details');
+          details.className = 'ss-singleton-section';
+          details.innerHTML = `
+            <summary class="ss-singleton-header">Single-frame detections (${singleFrame.length})</summary>
+          `;
+          const innerDiv = document.createElement('div');
+          innerDiv.className = 'ss-singleton-list';
+          for (const person of singleFrame) {
+            const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
+            innerDiv.appendChild(personDiv);
+          }
+          details.appendChild(innerDiv);
+          singletonsDiv.appendChild(details);
         }
 
         // Add click handlers for "Add to Scene" buttons
@@ -336,6 +348,94 @@
         });
 
         resultsDiv.style.display = 'block';
+      },
+
+      async _renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds) {
+        const personDiv = document.createElement('div');
+        personDiv.className = 'ss-person';
+
+        if (!person.best_match) {
+          personDiv.innerHTML = `
+            <div class="ss-person-header">
+              <span class="ss-person-label">Unknown Person</span>
+              <span class="ss-person-frames">${person.frame_count} appearances</span>
+            </div>
+            <p class="ss-no-match">No match found in database</p>
+          `;
+          return personDiv;
+        }
+
+        const match = person.best_match;
+        const confidence = this.distanceToConfidence(match.distance || (1 - match.confidence) || 0.5);
+        const confidenceClass = SS.getConfidenceClass(confidence);
+
+        // Check if already tagged (from API flag or local cross-reference)
+        const isAlreadyTagged = match.already_tagged || taggedStashDBIds.has(match.stashdb_id);
+
+        const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id);
+        const isLocallyTagged = localPerformer && scenePerformerLocalIds.has(localPerformer.id);
+        const showAlreadyTagged = isAlreadyTagged || isLocallyTagged;
+
+        let actionsHtml;
+        if (showAlreadyTagged) {
+          actionsHtml = `<span class="ss-local-status ss-already-tagged">Already tagged on scene</span>`;
+        } else if (localPerformer) {
+          actionsHtml = `
+            <button class="ss-btn ss-btn-add" data-performer-id="${localPerformer.id}" data-scene-id="${sceneId}">
+              Add to Scene
+            </button>
+            <span class="ss-local-status">In library as: ${localPerformer.name}</span>`;
+        } else {
+          actionsHtml = `<span class="ss-local-status ss-not-in-library">Not in library</span>`;
+        }
+
+        personDiv.innerHTML = `
+          <div class="ss-person-header">
+            <span class="ss-person-label">Person ${person.person_id + 1}</span>
+            <span class="ss-person-frames">${person.frame_count} appearances</span>
+            ${showAlreadyTagged ? '<span class="ss-tagged-badge">Tagged</span>' : ''}
+          </div>
+          <div class="ss-match">
+            <div class="ss-match-image">
+              ${match.image_url ? `<img src="${match.image_url}" alt="${match.name}" loading="lazy" />` : '<div class="ss-no-image">No image</div>'}
+            </div>
+            <div class="ss-match-info">
+              <h4>${match.name}</h4>
+              <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
+              ${match.country ? `<div class="ss-country">${match.country}</div>` : ''}
+              <div class="ss-links">
+                <a href="https://stashdb.org/performers/${match.stashdb_id}" target="_blank" rel="noopener" class="ss-link">
+                  View on StashDB
+                </a>
+              </div>
+              <div class="ss-actions">
+                ${actionsHtml}
+              </div>
+            </div>
+          </div>
+          ${person.all_matches && person.all_matches.length > 1 ? `
+            <details class="ss-other-matches">
+              <summary>Other possible matches (${person.all_matches.length - 1})</summary>
+              <ul>
+                ${person.all_matches.slice(1).map(m => {
+                  const altConf = this.distanceToConfidence(m.distance || (1 - m.confidence) || 0.5);
+                  const altTagged = m.already_tagged || taggedStashDBIds.has(m.stashdb_id);
+                  return `
+                    <li>
+                      <a href="https://stashdb.org/performers/${m.stashdb_id}" target="_blank" rel="noopener">
+                        ${m.name}
+                      </a>
+                      <span class="ss-alt-confidence">${altConf}%</span>
+                      ${altTagged ? '<span class="ss-tagged-badge ss-tagged-badge-sm">Tagged</span>' : ''}
+                    </li>
+                  `;
+                }).join('')}
+              </ul>
+            </details>
+          ` : ''}
+        `;
+
+        return personDiv;
       },
 
       showError(modal, message) {
