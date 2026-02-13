@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>stash-sense</Name>
+  <Repository>carrotwaxr/stash-sense:latest</Repository>
+  <Registry>https://hub.docker.com/r/carrotwaxr/stash-sense</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/carrotwaxr/stash-sense/issues</Support>
+  <Project>https://github.com/carrotwaxr/stash-sense</Project>
+  <Overview>AI-powered performer identification using face recognition. Provides a REST API for identifying performers in images and scenes using FaceNet512 and ArcFace embeddings against a database of 100k+ performers from StashDB and other stash-box instances.</Overview>
+  <Category>MediaApp:Other</Category>
+  <WebUI>http://[IP]:[PORT:6960]/docs</WebUI>
+  <Icon>https://raw.githubusercontent.com/carrotwaxr/stash-sense/main/icon.png</Icon>
+  <ExtraParams>--runtime=nvidia --gpus all</ExtraParams>
+  <PostArgs/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>NVIDIA GPU with nvidia-container-toolkit (Nvidia-Driver plugin)</Requires>
+  <Config Name="API Port" Target="5000" Default="6960" Mode="tcp" Description="Port for the Stash Sense API" Type="Port" Display="always" Required="true" Mask="false">6960</Config>
+  <Config Name="Data Directory" Target="/data" Default="/mnt/nvme_cache/appdata/stash-sense/data" Mode="rw" Description="Face recognition database files (Voyager indices, performers.db, JSON metadata)" Type="Path" Display="always" Required="true" Mask="false">/mnt/nvme_cache/appdata/stash-sense/data</Config>
+  <Config Name="InsightFace Cache" Target="/root/.insightface" Default="/mnt/nvme_cache/appdata/stash-sense/insightface-cache" Mode="rw" Description="InsightFace model cache (RetinaFace detector, downloaded on first run)" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/nvme_cache/appdata/stash-sense/insightface-cache</Config>
+  <Config Name="STASH_URL" Target="STASH_URL" Default="http://10.0.0.4:6969" Mode="" Description="URL of your Stash instance" Type="Variable" Display="always" Required="true" Mask="false">http://10.0.0.4:6969</Config>
+  <Config Name="STASH_API_KEY" Target="STASH_API_KEY" Default="" Mode="" Description="Stash API key (JWT token from Stash Settings &gt; Security)" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="DATA_DIR" Target="DATA_DIR" Default="/data" Mode="" Description="Container path for data files (should match Data Directory target)" Type="Variable" Display="advanced" Required="false" Mask="false">/data</Config>
+  <Config Name="PYTHONUNBUFFERED" Target="PYTHONUNBUFFERED" Default="1" Mode="" Description="Force unbuffered Python output for Docker logs" Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="ENABLE_BODY_SIGNAL" Target="ENABLE_BODY_SIGNAL" Default="true" Mode="" Description="Enable body proportion matching (requires mediapipe)" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+</Container>

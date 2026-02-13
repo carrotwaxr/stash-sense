@@ -1,43 +1,55 @@
+# Secrets
+.env
+*.env
+api/.env
+api/*.env
+
 # Git
 .git
 .gitignore
 
-# Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-venv/
-.venv/
-*.egg-info/
-.eggs/
+# Data files (volume-mounted, not baked into image)
+api/data/
+data/
+api/data-archives/
+
+# Python (match at any depth with **)
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+
+# Model/data caches
+**/.deepface/
+**/.insightface/
+**/.pytest_cache/
+
+# Large files that should not be in context
+*.voy
+*.db
+*.h5
+*.pt
+
+# Development
+api/test_output/
+api/validation/
+api/profile_test/
+api/benchmark_results/
+api/benchmark/
+api/tests/
+docs/
 
 # IDE
 .idea/
 .vscode/
 *.swp
-*.swo
-
-# Data and models (mounted as volumes)
-api/data/
-*.voy
-*.jpg
-*.png
-
-# Docs
-docs/
-*.md
-!requirements*.txt
-
-# Tests
-test_*.py
-validate_*.py
-
-# Local config
-.env
-*.local
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Plugin (not needed in sidecar image)
+plugin/
+
+# Claude
+.claude/

@@ -1,23 +1,19 @@
-# Stage 1: Build dependencies
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS base
+# syntax=docker/dockerfile:1
 
-# Prevent interactive prompts
+# Stage 1: Build dependencies
+FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS build
+
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python and system dependencies
-RUN apt-get update && apt-get install -y \
+# Install Python and build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-venv \
     python3-pip \
     libgl1-mesa-glx \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python 3.11 as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
@@ -27,26 +23,24 @@ WORKDIR /app
 RUN python -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
-# Install PyTorch with CUDA 12.4 (closest available to 12.8)
-RUN pip install --no-cache-dir \
-    torch torchvision --index-url https://download.pytorch.org/whl/cu124
-
-# Install other dependencies
 COPY requirements.docker.txt .
-RUN pip install --no-cache-dir -r requirements.docker.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.docker.txt
 
 # Stage 2: Runtime
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
@@ -54,9 +48,12 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
 
 WORKDIR /app
 
-# Copy venv from builder
-COPY --from=base /app/venv /app/venv
+# Copy venv from build stage
+COPY --from=build /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
+
+# Copy ONNX models (baked into image, ~220MB)
+COPY api/models/ ./models/
 
 # Copy application code
 COPY api/ ./
@@ -64,16 +61,14 @@ COPY api/ ./
 # Create data directory mount point
 RUN mkdir -p /data
 
-# Environment variables
+# Environment defaults
 ENV DATA_DIR=/data
 ENV PYTHONUNBUFFERED=1
+ENV ENABLE_TATTOO_SIGNAL=false
 
-# Expose API port
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Run the API
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]

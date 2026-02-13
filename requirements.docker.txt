@@ -1,13 +1,15 @@
-# Docker requirements (PyTorch installed separately with CUDA)
-
-# TensorFlow (CPU-only for embeddings, GPU not needed)
-tensorflow-cpu>=2.15.0
+# Docker runtime requirements
+# PyTorch: NOT included (tattoo detection disabled by default)
+# TensorFlow: NOT included (only needed by convert_models_to_onnx.py)
+# DeepFace: NOT included (only needed by convert_models_to_onnx.py)
 
 # Face recognition
-deepface>=0.0.93
 insightface>=0.7.0
 onnxruntime-gpu>=1.15.0
 voyager>=2.0.0
+
+# Body proportion detection
+mediapipe>=0.10.9
 
 # API
 fastapi>=0.100.0

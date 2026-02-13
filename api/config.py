@@ -94,7 +94,7 @@ class MultiSignalConfig:
     def from_env(cls) -> "MultiSignalConfig":
         return cls(
             enable_body=os.environ.get("ENABLE_BODY_SIGNAL", "true").lower() == "true",
-            enable_tattoo=os.environ.get("ENABLE_TATTOO_SIGNAL", "true").lower() == "true",
+            enable_tattoo=os.environ.get("ENABLE_TATTOO_SIGNAL", "false").lower() == "true",
             face_candidates=int(os.environ.get("FACE_CANDIDATES", "20")),
         )
 

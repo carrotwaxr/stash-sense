@@ -1,23 +1,19 @@
-version: "3.8"
-
 services:
   stash-sense:
     build: .
-    image: stash-sense:latest
+    image: carrotwaxr/stash-sense:latest
     container_name: stash-sense
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "6960:5000"
     volumes:
-      # Mount the database files
-      - ./api/data:/data:ro
-      # Mount model weights cache (optional, speeds up restarts)
-      - stash-sense-models:/root/.deepface
+      - ./api/data:/data
       - stash-sense-insightface:/root/.insightface
     environment:
+      - STASH_URL=${STASH_URL:-http://10.0.0.4:6969}
+      - STASH_API_KEY=${STASH_API_KEY}
       - DATA_DIR=/data
       - PYTHONUNBUFFERED=1
-    # GPU support - requires nvidia-container-toolkit
     deploy:
       resources:
         reservations:
@@ -30,8 +26,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
 volumes:
-  stash-sense-models:
   stash-sense-insightface:
