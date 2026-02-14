@@ -2,31 +2,27 @@
 
 Uses:
 - InsightFace RetinaFace for face detection (ONNX Runtime, GPU-compatible)
-- DeepFace FaceNet512 + ArcFace for embeddings (TensorFlow, CPU-only on Blackwell GPUs)
+- FaceNet512 + ArcFace for embeddings (ONNX Runtime, GPU-accelerated)
+
+All inference runs through ONNX Runtime with CUDAExecutionProvider when
+available, falling back to CPU. No TensorFlow dependency at runtime.
 """
 import io
-import os
 import cv2
 import numpy as np
+import onnxruntime as ort
 from PIL import Image
 from typing import Optional
 from dataclasses import dataclass
 from pathlib import Path
 
-# Reduce TensorFlow logging before import
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-# Import TensorFlow and force it to CPU-only mode
-# This is necessary because TensorFlow 2.20 doesn't support Blackwell GPUs (sm_120)
-import tensorflow as tf
-tf.config.set_visible_devices([], 'GPU')  # Hide all GPUs from TensorFlow
-
 # InsightFace for RetinaFace detection (uses ONNX Runtime with GPU)
 from insightface.app import FaceAnalysis
 from insightface.utils.face_align import norm_crop
 
-# Import DeepFace modules (will use TensorFlow on CPU)
-from deepface.modules import modeling
+
+# Default path for ONNX embedding models
+MODELS_DIR = Path(__file__).parent / "models"
 
 
 @dataclass
@@ -47,71 +43,84 @@ class FaceEmbedding:
 
 
 class FaceEmbeddingGenerator:
-    """Generate face embeddings using RetinaFace detection + FaceNet512/ArcFace embeddings."""
+    """Generate face embeddings using RetinaFace detection + FaceNet512/ArcFace embeddings.
 
-    def __init__(self, device: str = None):
+    All models run through ONNX Runtime with GPU acceleration when available.
+    Supports batch inference for processing multiple faces in a single call.
+    """
+
+    def __init__(self, device: str = None, models_dir: Path = MODELS_DIR):
         """
         Initialize the embedding generator.
 
         Args:
-            device: Device for detection ("cuda", "cpu", or None for auto)
+            device: Device for inference ("cuda", "cpu", or None for auto)
+            models_dir: Directory containing facenet512.onnx and arcface.onnx
         """
         # Auto-detect device
         if device is None:
-            # Check if CUDA is available for ONNX Runtime
-            import onnxruntime as ort
             providers = ort.get_available_providers()
             self.device = "cuda" if "CUDAExecutionProvider" in providers else "cpu"
         else:
             self.device = device
 
+        self._models_dir = models_dir
         self._face_analyzer = None
-        self._facenet_model = None
-        self._arcface_model = None
+        self._facenet_session = None
+        self._arcface_session = None
+
+        # ONNX model I/O names (set during lazy load)
+        self._fn_input_name = None
+        self._fn_output_name = None
+        self._af_input_name = None
+        self._af_output_name = None
+
+    def _ort_providers(self) -> list[str]:
+        """Get ONNX Runtime providers based on device."""
+        if self.device == "cuda":
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        return ["CPUExecutionProvider"]
 
     @property
     def face_analyzer(self):
         """Lazy-load InsightFace face analyzer with RetinaFace."""
         if self._face_analyzer is None:
             print(f"Loading RetinaFace detector on {self.device}...")
-
-            # Set up providers based on device
-            if self.device == "cuda":
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                providers = ["CPUExecutionProvider"]
-
-            # Initialize with detection only (no recognition - we use DeepFace for that)
             self._face_analyzer = FaceAnalysis(
-                name="buffalo_sc",  # Smaller model, detection-focused
-                providers=providers,
+                name="buffalo_sc",
+                providers=self._ort_providers(),
             )
-            # det_size controls input resolution for detection
-            self._face_analyzer.prepare(ctx_id=0 if self.device == "cuda" else -1, det_size=(640, 640))
-
+            self._face_analyzer.prepare(
+                ctx_id=0 if self.device == "cuda" else -1,
+                det_size=(640, 640),
+            )
         return self._face_analyzer
 
     @property
-    def facenet_model(self):
-        """Lazy-load FaceNet512 model (runs on CPU)."""
-        if self._facenet_model is None:
-            print("Loading FaceNet512 model (CPU)...")
-            self._facenet_model = modeling.build_model(
-                task="facial_recognition",
-                model_name="Facenet512"
+    def facenet_session(self) -> ort.InferenceSession:
+        """Lazy-load FaceNet512 ONNX model."""
+        if self._facenet_session is None:
+            model_path = str(self._models_dir / "facenet512.onnx")
+            print(f"Loading FaceNet512 ONNX model on {self.device}...")
+            self._facenet_session = ort.InferenceSession(
+                model_path, providers=self._ort_providers(),
             )
-        return self._facenet_model
+            self._fn_input_name = self._facenet_session.get_inputs()[0].name
+            self._fn_output_name = self._facenet_session.get_outputs()[0].name
+        return self._facenet_session
 
     @property
-    def arcface_model(self):
-        """Lazy-load ArcFace model (runs on CPU)."""
-        if self._arcface_model is None:
-            print("Loading ArcFace model (CPU)...")
-            self._arcface_model = modeling.build_model(
-                task="facial_recognition",
-                model_name="ArcFace"
+    def arcface_session(self) -> ort.InferenceSession:
+        """Lazy-load ArcFace ONNX model."""
+        if self._arcface_session is None:
+            model_path = str(self._models_dir / "arcface.onnx")
+            print(f"Loading ArcFace ONNX model on {self.device}...")
+            self._arcface_session = ort.InferenceSession(
+                model_path, providers=self._ort_providers(),
             )
-        return self._arcface_model
+            self._af_input_name = self._arcface_session.get_inputs()[0].name
+            self._af_output_name = self._arcface_session.get_outputs()[0].name
+        return self._arcface_session
 
     def detect_faces(
         self,
@@ -128,8 +137,6 @@ class FaceEmbeddingGenerator:
         Returns:
             List of DetectedFace objects
         """
-        # InsightFace expects BGR, but we'll handle RGB since our input is RGB
-        # Actually InsightFace.get() handles RGB fine
         results = self.face_analyzer.get(image)
 
         faces = []
@@ -191,6 +198,8 @@ class FaceEmbeddingGenerator:
 
         Uses aspect-ratio-preserving resize with black padding,
         matching DeepFace's preprocessing pipeline.
+
+        Returns array of shape (H, W, 3) as float32 (NOT batched).
         """
         target_h, target_w = target_size
         face_h, face_w = face.shape[:2]
@@ -208,8 +217,7 @@ class FaceEmbeddingGenerator:
         x_off = (target_w - new_w) // 2
         canvas[y_off:y_off + new_h, x_off:x_off + new_w] = resized
 
-        # Expand dims for batch and cast to float32
-        return np.expand_dims(canvas, axis=0).astype(np.float32)
+        return canvas.astype(np.float32)
 
     def get_embedding(self, face: np.ndarray) -> FaceEmbedding:
         """
@@ -224,42 +232,79 @@ class FaceEmbeddingGenerator:
         Returns:
             FaceEmbedding with FaceNet and ArcFace embeddings
         """
-        # Create flipped version for flip-averaging
-        flipped = face[:, ::-1, :]
+        return self.get_embeddings_batch([face])[0]
 
-        # Get model input shapes
-        facenet_size = self.facenet_model.input_shape
-        arcface_size = self.arcface_model.input_shape
+    def get_embeddings_batch(
+        self,
+        faces: list[np.ndarray],
+        max_batch_size: int = 16,
+    ) -> list[FaceEmbedding]:
+        """
+        Generate embeddings for a batch of faces using ONNX Runtime.
 
-        # Preprocess both original and flipped for each model
-        facenet_orig = self._preprocess_face(face, facenet_size)
-        facenet_flip = self._preprocess_face(flipped, facenet_size)
-        arcface_orig = self._preprocess_face(face, arcface_size)
-        arcface_flip = self._preprocess_face(flipped, arcface_size)
+        Processes faces in sub-batches to avoid GPU memory exhaustion.
+        Each sub-batch runs 2 model calls (1 FaceNet + 1 ArcFace).
 
-        # Normalize for FaceNet (expects [-1, 1])
-        facenet_orig = (facenet_orig - 127.5) / 127.5
-        facenet_flip = (facenet_flip - 127.5) / 127.5
+        Args:
+            faces: List of RGB face images as numpy arrays
+            max_batch_size: Max faces per GPU inference call (limits VRAM usage)
 
-        # Normalize for ArcFace (expects [-1, 1] per ArcFace paper: (x-127.5)/128)
-        arcface_orig = (arcface_orig - 127.5) / 128.0
-        arcface_flip = (arcface_flip - 127.5) / 128.0
+        Returns:
+            List of FaceEmbedding objects, one per input face
+        """
+        if not faces:
+            return []
 
-        # Get embeddings for both orientations
-        facenet_emb_orig = self.facenet_model.model(facenet_orig, training=False).numpy()[0]
-        facenet_emb_flip = self.facenet_model.model(facenet_flip, training=False).numpy()[0]
-        arcface_emb_orig = self.arcface_model.model(arcface_orig, training=False).numpy()[0]
-        arcface_emb_flip = self.arcface_model.model(arcface_flip, training=False).numpy()[0]
+        # Ensure models are loaded (triggers lazy init + prints)
+        _ = self.facenet_session
+        _ = self.arcface_session
 
-        # Average original + flipped embeddings for more canonical representation
-        facenet_emb = (facenet_emb_orig + facenet_emb_flip) / 2.0
-        arcface_emb = (arcface_emb_orig + arcface_emb_flip) / 2.0
+        # Process in sub-batches to limit GPU memory
+        results = []
+        for batch_start in range(0, len(faces), max_batch_size):
+            batch = faces[batch_start:batch_start + max_batch_size]
+            results.extend(self._embed_batch(batch))
 
-        return FaceEmbedding(facenet=facenet_emb, arcface=arcface_emb)
+        return results
 
-    def get_embeddings_batch(self, faces: list[np.ndarray]) -> list[FaceEmbedding]:
-        """Generate embeddings for a batch of faces."""
-        return [self.get_embedding(face) for face in faces]
+    def _embed_batch(self, faces: list[np.ndarray]) -> list[FaceEmbedding]:
+        """Run embedding inference on a single sub-batch of faces."""
+        n = len(faces)
+
+        # Preprocess all faces: original + flipped for each model
+        fn_inputs = np.empty((n * 2, 160, 160, 3), dtype=np.float32)
+        af_inputs = np.empty((n * 2, 112, 112, 3), dtype=np.float32)
+
+        for i, face in enumerate(faces):
+            flipped = face[:, ::-1, :]
+
+            fn_orig = self._preprocess_face(face, (160, 160))
+            fn_flip = self._preprocess_face(flipped, (160, 160))
+            fn_inputs[i * 2] = (fn_orig - 127.5) / 127.5
+            fn_inputs[i * 2 + 1] = (fn_flip - 127.5) / 127.5
+
+            af_orig = self._preprocess_face(face, (112, 112))
+            af_flip = self._preprocess_face(flipped, (112, 112))
+            af_inputs[i * 2] = (af_orig - 127.5) / 128.0
+            af_inputs[i * 2 + 1] = (af_flip - 127.5) / 128.0
+
+        # Run batch inference
+        fn_embeddings = self.facenet_session.run(
+            [self._fn_output_name], {self._fn_input_name: fn_inputs}
+        )[0]
+
+        af_embeddings = self.arcface_session.run(
+            [self._af_output_name], {self._af_input_name: af_inputs}
+        )[0]
+
+        # Average original + flipped pairs for flip-averaging
+        results = []
+        for i in range(n):
+            fn_emb = (fn_embeddings[i * 2] + fn_embeddings[i * 2 + 1]) / 2.0
+            af_emb = (af_embeddings[i * 2] + af_embeddings[i * 2 + 1]) / 2.0
+            results.append(FaceEmbedding(facenet=fn_emb, arcface=af_emb))
+
+        return results
 
 
 def load_image(data: bytes) -> np.ndarray:
@@ -279,13 +324,10 @@ def load_image_from_path(path: str) -> np.ndarray:
 
 
 if __name__ == "__main__":
-    # Quick test
+    import time
     import requests
 
-    print("Testing face embedding generator...")
-
-    # Check ONNX Runtime providers
-    import onnxruntime as ort
+    print("Testing face embedding generator (ONNX Runtime)...")
     print(f"ONNX Runtime providers: {ort.get_available_providers()}")
 
     generator = FaceEmbeddingGenerator()
@@ -309,10 +351,24 @@ if __name__ == "__main__":
         print(f"  Confidence: {face.confidence:.2f}")
         print(f"  Size: {face.bbox['w']}x{face.bbox['h']}")
 
-        # Get embeddings
-        print("\nGenerating embeddings...")
+        # Warmup
+        print("\nWarming up models...")
+        _ = generator.get_embedding(face.image)
+
+        # Benchmark single face
+        print("Benchmarking single face...")
+        t0 = time.time()
         embedding = generator.get_embedding(face.image)
-        print(f"FaceNet embedding shape: {embedding.facenet.shape}")
-        print(f"ArcFace embedding shape: {embedding.arcface.shape}")
-        print(f"FaceNet first 5 values: {embedding.facenet[:5]}")
-        print(f"ArcFace first 5 values: {embedding.arcface[:5]}")
+        t1 = time.time()
+        print(f"  Single face: {(t1-t0)*1000:.1f}ms")
+        print(f"  FaceNet shape: {embedding.facenet.shape}")
+        print(f"  ArcFace shape: {embedding.arcface.shape}")
+
+        # Benchmark batch (simulate 10 faces)
+        print("\nBenchmarking batch of 10 faces...")
+        batch_faces = [face.image] * 10
+        t0 = time.time()
+        batch_results = generator.get_embeddings_batch(batch_faces)
+        t1 = time.time()
+        print(f"  Batch of 10: {(t1-t0)*1000:.1f}ms ({(t1-t0)*100:.1f}ms/face)")
+        print(f"  Results: {len(batch_results)} embeddings")

@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, AsyncIterator
 from enum import Enum
 
+import face_config
 from rate_limiter import RateLimiter, Priority
 
 if TYPE_CHECKING:
@@ -111,9 +112,9 @@ class SceneFingerprintGenerator:
         rec_db: "RecommendationsDB",
         db_version: str,
         sidecar_url: str = "http://localhost:5000",
-        num_frames: int = 12,
-        min_face_size: int = 50,
-        max_distance: float = 0.6,
+        num_frames: int = face_config.NUM_FRAMES,
+        min_face_size: int = face_config.MIN_FACE_SIZE,
+        max_distance: float = face_config.MAX_DISTANCE,
     ):
         self.stash = stash_client
         self.rec_db = rec_db

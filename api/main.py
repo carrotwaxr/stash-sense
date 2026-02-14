@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, Field
 
+import face_config
 from config import DatabaseConfig, MultiSignalConfig
 from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
 from body_proportions import BodyProportionExtractor
@@ -676,21 +677,21 @@ class SceneIdentifyRequest(BaseModel):
     scene_id: str = Field(description="Scene ID in Stash")
     api_key: Optional[str] = Field(None, description="Stash API key (or use STASH_API_KEY env var)")
 
-    # Frame extraction settings
-    num_frames: int = Field(60, ge=5, le=120, description="Number of frames to extract")
-    start_offset_pct: float = Field(0.05, ge=0.0, le=0.5, description="Skip first N% of video")
-    end_offset_pct: float = Field(0.95, ge=0.5, le=1.0, description="Stop at N% of video")
+    # Frame extraction settings (defaults from face_config.py)
+    num_frames: int = Field(face_config.NUM_FRAMES, ge=5, le=120, description="Number of frames to extract")
+    start_offset_pct: float = Field(face_config.START_OFFSET_PCT, ge=0.0, le=0.5, description="Skip first N% of video")
+    end_offset_pct: float = Field(face_config.END_OFFSET_PCT, ge=0.5, le=1.0, description="Stop at N% of video")
 
     # Face detection settings
-    min_face_size: int = Field(40, ge=20, le=200, description="Minimum face size in pixels")
-    min_face_confidence: float = Field(0.5, ge=0.1, le=1.0, description="Minimum face detection confidence")
+    min_face_size: int = Field(face_config.MIN_FACE_SIZE, ge=20, le=200, description="Minimum face size in pixels")
+    min_face_confidence: float = Field(face_config.MIN_FACE_CONFIDENCE, ge=0.1, le=1.0, description="Minimum face detection confidence")
 
     # Matching settings
-    top_k: int = Field(3, ge=1, le=10, description="Matches per person")
-    max_distance: float = Field(0.5, ge=0.0, le=2.0, description="Maximum match distance")
+    top_k: int = Field(face_config.TOP_K, ge=1, le=10, description="Matches per person")
+    max_distance: float = Field(face_config.MAX_DISTANCE, ge=0.0, le=2.0, description="Maximum match distance")
 
     # Clustering settings
-    cluster_threshold: float = Field(0.6, ge=0.2, le=3.0, description="Distance threshold for face clustering")
+    cluster_threshold: float = Field(face_config.CLUSTER_THRESHOLD, ge=0.2, le=3.0, description="Distance threshold for face clustering")
 
     # Matching mode: "cluster", "frequency", or "hybrid"
     matching_mode: str = Field("frequency", description="Matching mode: 'cluster' (cluster faces then match), 'frequency' (count performer appearances), or 'hybrid' (combine both)")
@@ -718,6 +719,7 @@ class SceneIdentifyResponse(BaseModel):
     errors: list[str] = []
     fingerprint_saved: bool = False
     fingerprint_error: Optional[str] = None
+    timing: Optional[dict] = None
 
 
 def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -1418,40 +1420,58 @@ async def identify_scene(request: SceneIdentifyRequest):
     # Configure matching
     match_config = MatchingConfig(
         query_k=100,  # Get more candidates for better fusion
-        facenet_weight=0.5,
-        arcface_weight=0.5,
+        facenet_weight=face_config.FACENET_WEIGHT,
+        arcface_weight=face_config.ARCFACE_WEIGHT,
         max_results=request.top_k * 2,
         max_distance=request.max_distance,
     )
 
-    # Detect and recognize faces in each frame
-    all_results: list[tuple[int, RecognitionResult]] = []
+    # Phase 1: Detect all faces from all frames
+    detected_faces: list[tuple[int, "DetectedFace"]] = []  # (frame_index, face)
     total_faces = 0
-    filtered_faces = 0
+    t_detect_total = 0.0
 
+    t_face_loop = time.time()
     for frame in extraction_result.frames:
-        # Detect faces
+        t_det = time.time()
         faces = recognizer.generator.detect_faces(
             frame.image,
             min_confidence=request.min_face_confidence,
         )
+        t_detect_total += time.time() - t_det
 
         for face in faces:
             total_faces += 1
+            if face.bbox["w"] >= request.min_face_size and face.bbox["h"] >= request.min_face_size:
+                detected_faces.append((frame.frame_index, face))
 
-            # Apply minimum face size filter
-            if face.bbox["w"] < request.min_face_size or face.bbox["h"] < request.min_face_size:
-                continue
+    filtered_faces = len(detected_faces)
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Detection: {t_detect_total:.1f}s | {total_faces} detected, {filtered_faces} after filter")
 
-            filtered_faces += 1
+    # Phase 2: Batch generate embeddings for ALL faces (2 model calls total)
+    t_embed = time.time()
+    if detected_faces:
+        face_images = [face.image for _, face in detected_faces]
+        embeddings = recognizer.generator.get_embeddings_batch(face_images)
+    else:
+        embeddings = []
+    t_embed_total = time.time() - t_embed
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Batch embedding: {t_embed_total:.1f}s for {len(embeddings)} faces ({t_embed_total*1000/max(1,len(embeddings)):.1f}ms/face)")
 
-            # Recognize this face using V2 matching (with health detection)
-            matches, _match_result, embedding = recognizer.recognize_face_v2(face, match_config)
+    # Phase 3: Match each face against the index using pre-computed embeddings
+    all_results: list[tuple[int, RecognitionResult]] = []
+    t_recognize_total = 0.0
 
-            result = RecognitionResult(face=face, matches=matches, embedding=embedding)
-            all_results.append((frame.frame_index, result))
+    for (frame_idx, face), embedding in zip(detected_faces, embeddings):
+        t_rec = time.time()
+        matches, _match_result, _ = recognizer.recognize_face_v2(face, match_config, embedding=embedding)
+        t_recognize_total += time.time() - t_rec
 
-    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Face detection: {total_faces} detected, {filtered_faces} after size filter")
+        result = RecognitionResult(face=face, matches=matches, embedding=embedding)
+        all_results.append((frame_idx, result))
+
+    t_face_loop_total = time.time() - t_face_loop
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Matching: {t_recognize_total:.1f}s | Total face pipeline: {t_face_loop_total:.1f}s")
 
     # Process screenshot if available (high-quality cover image often has clear faces)
     # Stash serves thumbnails via paths.screenshot, so we scale up if needed
@@ -1480,23 +1500,24 @@ async def identify_scene(request: SceneIdentifyRequest):
                         screenshot_image,
                         min_confidence=request.min_face_confidence,
                     )
-                    for face in screenshot_detected:
-                        face_w, face_h = face.bbox["w"], face.bbox["h"]
-                        if face_w >= request.min_face_size and face_h >= request.min_face_size:
-                            matches, _, emb = recognizer.recognize_face_v2(face, match_config)
+                    # Filter and batch-embed screenshot faces
+                    ss_faces = [f for f in screenshot_detected
+                                if f.bbox["w"] >= request.min_face_size and f.bbox["h"] >= request.min_face_size]
+                    if ss_faces:
+                        ss_embeddings = recognizer.generator.get_embeddings_batch([f.image for f in ss_faces])
+                        for face, emb in zip(ss_faces, ss_embeddings):
+                            matches, _, _ = recognizer.recognize_face_v2(face, match_config, embedding=emb)
                             result = RecognitionResult(face=face, matches=matches, embedding=emb)
-                            # Use frame_index -1 to indicate screenshot
                             all_results.append((-1, result))
                             screenshot_faces += 1
                             top_match = matches[0].name if matches else "no match"
-                            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot face: {face_w}x{face_h}px -> {top_match}")
-                        else:
-                            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot face too small: {face_w}x{face_h}px < {request.min_face_size}")
+                            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot face: {face.bbox['w']}x{face.bbox['h']}px -> {top_match}")
                     print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot ({img_w}x{img_h}): {len(screenshot_detected)} faces, {screenshot_faces} usable")
         except Exception as e:
             print(f"[identify_scene] Screenshot processing failed: {e}")
 
     # Choose matching mode
+    t_match_end = 0.0
     t_match = time.time()
     if request.matching_mode == "hybrid":
         # Hybrid matching: combine cluster and frequency approaches
@@ -1580,6 +1601,7 @@ async def identify_scene(request: SceneIdentifyRequest):
         for i, person in enumerate(persons):
             person.person_id = i
 
+    t_match_end = time.time()
     top_names = [p.best_match.name for p in persons[:3] if p.best_match]
     print(f"[identify_scene] [{time.time()-t_start:.1f}s] === DONE === Top matches: {', '.join(top_names)}")
 
@@ -1615,6 +1637,17 @@ async def identify_scene(request: SceneIdentifyRequest):
                 fingerprint_error = fp_error
                 print(f"[identify_scene] [{time.time()-t_start:.1f}s] Failed to save fingerprint: {fp_error}")
 
+    timing_data = {
+        "total_ms": round((time.time() - t_start) * 1000),
+        "extraction_ms": round((t_face_loop - t_extract) * 1000),
+        "face_loop_ms": round(t_face_loop_total * 1000),
+        "detection_ms": round(t_detect_total * 1000),
+        "embedding_ms": round(t_embed_total * 1000),
+        "recognition_ms": round(t_recognize_total * 1000),
+        "matching_ms": round((t_match_end - t_match) * 1000),
+    }
+    print(f"[identify_scene] Timing: {timing_data}")
+
     return SceneIdentifyResponse(
         scene_id=request.scene_id,
         frames_analyzed=len(extraction_result.frames),
@@ -1625,6 +1658,7 @@ async def identify_scene(request: SceneIdentifyRequest):
         errors=extraction_result.errors[:5] if extraction_result.errors else [],
         fingerprint_saved=fingerprint_saved,
         fingerprint_error=fingerprint_error,
+        timing=timing_data,
     )
 
 

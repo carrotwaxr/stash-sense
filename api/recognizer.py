@@ -180,6 +180,7 @@ class FaceRecognizer:
         self,
         face: DetectedFace,
         config: MatchingConfig = None,
+        embedding: "FaceEmbedding | None" = None,
     ) -> tuple[list[PerformerMatch], MatchingResult]:
         """
         Recognize a face using the robust matching strategy (V2).
@@ -191,16 +192,17 @@ class FaceRecognizer:
         Args:
             face: DetectedFace object with cropped face image
             config: Matching configuration (uses defaults if not provided)
+            embedding: Pre-computed FaceEmbedding (skips inference if provided)
 
         Returns:
-            Tuple of (matches, matching_result) where matching_result contains
-            diagnostic info about the fusion strategy used.
+            Tuple of (matches, matching_result, embedding)
         """
         if config is None:
             config = MatchingConfig()
 
-        # Generate embedding (stored in result for clustering)
-        embedding = self.generator.get_embedding(face.image)
+        # Use pre-computed embedding or generate one
+        if embedding is None:
+            embedding = self.generator.get_embedding(face.image)
 
         # Use new matching logic
         result = match_face(
@@ -241,7 +243,7 @@ class FaceRecognizer:
         """
         Detect and recognize all faces in an image.
 
-        Uses the V2 matching logic with adaptive health detection.
+        Uses batch embedding generation + V2 matching with adaptive health detection.
 
         Args:
             image: RGB image as numpy array
@@ -254,7 +256,16 @@ class FaceRecognizer:
             List of RecognitionResult objects, one per detected face
         """
         # Detect faces
-        faces = self.generator.detect_faces(image, min_confidence=min_face_confidence)
+        all_faces = self.generator.detect_faces(image, min_confidence=min_face_confidence)
+
+        # Filter small faces
+        faces = [f for f in all_faces if f.bbox["w"] >= min_face_size and f.bbox["h"] >= min_face_size]
+
+        if not faces:
+            return []
+
+        # Batch generate embeddings for all faces at once
+        embeddings = self.generator.get_embeddings_batch([f.image for f in faces])
 
         # Configure matching
         config = MatchingConfig(
@@ -262,14 +273,10 @@ class FaceRecognizer:
             max_distance=max_distance,
         )
 
-        # Recognize each face using V2 logic
+        # Match each face using pre-computed embeddings
         results = []
-        for face in faces:
-            # Skip small faces
-            if face.bbox["w"] < min_face_size or face.bbox["h"] < min_face_size:
-                continue
-
-            matches, _, emb = self.recognize_face_v2(face, config)
+        for face, emb in zip(faces, embeddings):
+            matches, _, _ = self.recognize_face_v2(face, config, embedding=emb)
             results.append(RecognitionResult(face=face, matches=matches, embedding=emb))
 
         return results

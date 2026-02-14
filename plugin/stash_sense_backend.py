@@ -25,15 +25,13 @@ def main():
         result = health_check(sidecar_url)
     elif mode == "identify_scene":
         scene_id = args.get("scene_id")
-        max_frames = int(args.get("max_frames", 60))  # 60 frames per 2026-02-12 reeval
-        top_k = int(args.get("top_k", 3))
-        max_distance = float(args.get("max_distance", 0.5))  # 0.5 per 2026-02-12 reeval
-        min_face_size = int(args.get("min_face_size", 60))  # 60px optimal per benchmark
-        scene_performer_stashdb_ids = args.get("scene_performer_stashdb_ids", [])
-
         result = identify_scene(
-            sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size,
-            scene_performer_stashdb_ids=scene_performer_stashdb_ids,
+            sidecar_url, scene_id,
+            num_frames=args.get("max_frames") or args.get("num_frames"),
+            top_k=args.get("top_k"),
+            max_distance=args.get("max_distance"),
+            min_face_size=args.get("min_face_size"),
+            scene_performer_stashdb_ids=args.get("scene_performer_stashdb_ids", []),
         )
     elif mode == "identify_image":
         image_id = args.get("image_id")
@@ -86,24 +84,26 @@ def database_info(sidecar_url):
         return {"error": f"Request failed: {e}"}
 
 
-def identify_scene(sidecar_url, scene_id, max_frames, top_k, max_distance, min_face_size,
-                    scene_performer_stashdb_ids=None):
-    """Identify performers in a scene."""
+def identify_scene(sidecar_url, scene_id, num_frames=None, top_k=None, max_distance=None,
+                    min_face_size=None, scene_performer_stashdb_ids=None):
+    """Identify performers in a scene. Params default to sidecar's face_config when omitted."""
     if not scene_id:
         return {"error": "No scene_id provided"}
 
     try:
-        payload = {
-            "scene_id": str(scene_id),
-            "num_frames": max_frames,
-            "top_k": top_k,
-            "max_distance": max_distance,
-            "min_face_size": min_face_size,
-        }
+        payload = {"scene_id": str(scene_id)}
+        if num_frames is not None:
+            payload["num_frames"] = int(num_frames)
+        if top_k is not None:
+            payload["top_k"] = int(top_k)
+        if max_distance is not None:
+            payload["max_distance"] = float(max_distance)
+        if min_face_size is not None:
+            payload["min_face_size"] = int(min_face_size)
         if scene_performer_stashdb_ids:
             payload["scene_performer_stashdb_ids"] = scene_performer_stashdb_ids
 
-        log(f"Identifying scene {scene_id} with max_distance={max_distance}, min_face_size={min_face_size}")
+        log(f"Identifying scene {scene_id}")
 
         response = requests.post(
             f"{sidecar_url}/identify/scene",
@@ -333,14 +333,15 @@ def fp_status(sidecar_url):
     return sidecar_get(sidecar_url, "/recommendations/fingerprints/status")
 
 
-def fp_generate(sidecar_url, refresh_outdated=True, num_frames=12, min_face_size=50, max_distance=0.5):
-    """Start fingerprint generation."""
-    data = {
-        "refresh_outdated": refresh_outdated,
-        "num_frames": num_frames,
-        "min_face_size": min_face_size,
-        "max_distance": max_distance,
-    }
+def fp_generate(sidecar_url, refresh_outdated=True, num_frames=None, min_face_size=None, max_distance=None):
+    """Start fingerprint generation. Params default to sidecar's face_config when omitted."""
+    data = {"refresh_outdated": refresh_outdated}
+    if num_frames is not None:
+        data["num_frames"] = int(num_frames)
+    if min_face_size is not None:
+        data["min_face_size"] = int(min_face_size)
+    if max_distance is not None:
+        data["max_distance"] = float(max_distance)
     return sidecar_post(sidecar_url, "/recommendations/fingerprints/generate", data)
 
 
@@ -484,9 +485,9 @@ def handle_recommendations(mode, args, sidecar_url):
         return fp_generate(
             sidecar_url,
             refresh_outdated=args.get("refresh_outdated", True),
-            num_frames=args.get("num_frames", 12),
-            min_face_size=args.get("min_face_size", 50),
-            max_distance=args.get("max_distance", 0.5),
+            num_frames=args.get("num_frames"),
+            min_face_size=args.get("min_face_size"),
+            max_distance=args.get("max_distance"),
         )
 
     elif mode == "fp_progress":

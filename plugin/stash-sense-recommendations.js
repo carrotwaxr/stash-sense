@@ -122,12 +122,12 @@
     },
 
     async startFingerprintGeneration(options = {}) {
-      return apiCall('fp_generate', {
-        refresh_outdated: options.refreshOutdated ?? true,
-        num_frames: options.numFrames ?? 12,
-        min_face_size: options.minFaceSize ?? 50,
-        max_distance: options.maxDistance ?? 0.5,
-      });
+      // Only send params that are explicitly provided; sidecar defaults from face_config.py
+      const params = { refresh_outdated: options.refreshOutdated ?? true };
+      if (options.numFrames != null) params.num_frames = options.numFrames;
+      if (options.minFaceSize != null) params.min_face_size = options.minFaceSize;
+      if (options.maxDistance != null) params.max_distance = options.maxDistance;
+      return apiCall('fp_generate', params);
     },
 
     async getFingerprintProgress() {
@@ -289,7 +289,7 @@
         </div>
 
         <div class="ss-fingerprint-section">
-          <h2>Scene Fingerprints</h2>
+          <h2>Scene Fingerprints <span id="ss-info-fp"></span></h2>
           <p class="ss-fingerprint-desc">Fingerprints enable face-based duplicate detection. Generate them for your library to improve accuracy.</p>
 
           <div class="ss-fingerprint-stats">
@@ -341,12 +341,12 @@
         </div>
 
         <div class="ss-dashboard-types">
-          <h2>Recommendation Types</h2>
+          <h2>Recommendation Types <span id="ss-info-types"></span></h2>
           <div class="ss-type-cards"></div>
         </div>
 
         <div class="ss-dashboard-actions">
-          <h2>Action Runner</h2>
+          <h2>Action Runner <span id="ss-info-actions"></span></h2>
           <div class="ss-analysis-buttons"></div>
         </div>
       `
@@ -356,6 +356,14 @@
       if (gearSlot) {
         gearSlot.appendChild(createSettingsGearButton(() => showSettingsModal()));
       }
+
+      // Add info icons to section headers
+      const fpInfoSlot = container.querySelector('#ss-info-fp');
+      if (fpInfoSlot) fpInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Scene Fingerprints', HELP_FINGERPRINTS)));
+      const typesInfoSlot = container.querySelector('#ss-info-types');
+      if (typesInfoSlot) typesInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Recommendation Types', HELP_REC_TYPES)));
+      const actionsInfoSlot = container.querySelector('#ss-info-actions');
+      if (actionsInfoSlot) actionsInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Action Runner', HELP_ACTION_RUNNER)));
 
       // Render type cards
       const typeCards = container.querySelector('.ss-type-cards');
@@ -957,7 +965,7 @@
 
     container.innerHTML = `
       <div class="ss-detail-duplicate-performer">
-        <h2>Duplicate Performers</h2>
+        <h2>Duplicate Performers <span id="ss-info-dup-perf"></span></h2>
         <p class="ss-detail-subtitle">
           These performers share StashDB ID:
           <a href="https://stashdb.org/performers/${details.stash_id}" target="_blank" rel="noopener">
@@ -1000,6 +1008,10 @@
         </div>
       </div>
     `;
+
+    // Add info icon
+    const dpInfoSlot = container.querySelector('#ss-info-dup-perf');
+    if (dpInfoSlot) dpInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Duplicate Performers', HELP_DUP_PERFORMER)));
 
     // Click anywhere on card to select radio (except links)
     container.querySelectorAll('.ss-performer-option').forEach(card => {
@@ -1067,7 +1079,7 @@
 
     container.innerHTML = `
       <div class="ss-detail-scene-files">
-        <h2>${details.scene_title}</h2>
+        <h2>${details.scene_title} <span id="ss-info-dup-files"></span></h2>
         <p class="ss-detail-subtitle">
           <a href="/scenes/${rec.target_id}" target="_blank">View Scene</a>
           ${details.studio?.name ? ` | ${details.studio.name}` : ''}
@@ -1109,6 +1121,10 @@
         </div>
       </div>
     `;
+
+    // Add info icon
+    const dfInfoSlot = container.querySelector('#ss-info-dup-files');
+    if (dfInfoSlot) dfInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Duplicate Scene Files', HELP_DUP_SCENE_FILES)));
 
     // Click anywhere on file card to select radio (except links)
     container.querySelectorAll('.ss-file-option').forEach(card => {
@@ -1275,6 +1291,160 @@
     });
   }
 
+  // ==================== Help System ====================
+
+  const HELP_FINGERPRINTS = `
+    <div class="ss-help-section">
+      <h4>What are Fingerprints?</h4>
+      <p>Scene fingerprints are face recognition data extracted from video frames. Each fingerprint records which performers' faces were detected in a scene.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>Why Generate Them?</h4>
+      <p>Fingerprints enable face-based duplicate scene detection and performer identification. Without them, duplicate scene detection relies only on metadata matching.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>What Does "Need Refresh" Mean?</h4>
+      <p>The face recognition database was updated with improved data (better face alignment, more performers). Scenes with outdated fingerprints should be regenerated for improved accuracy.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>How Generation Works</h4>
+      <p>Analyzes multiple frames from each scene, detects faces, and matches them against a database of known performers. Results are stored locally for fast lookups during analysis.</p>
+    </div>
+  `;
+
+  const HELP_ACTION_RUNNER = `
+    <div class="ss-help-section">
+      <h4>Check Duplicate Performers</h4>
+      <p>Finds performers in your library that share the same StashDB ID on the same endpoint. These are definite duplicates that can be merged.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>Check Duplicate Scenes</h4>
+      <p>Compares scenes using multiple signals &mdash; StashDB IDs (exact match), face fingerprints (who appears), and metadata (title, date, duration). Higher confidence means more signals agree.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>Check Duplicate Scene Files</h4>
+      <p>Finds scenes that have multiple video files attached. Scores each file by resolution, bitrate, and codec to suggest which to keep. Helps reclaim storage space.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>Check Upstream Performer Changes</h4>
+      <p>Compares your local performer data against StashDB using a 3-way diff (local vs upstream vs last-synced snapshot). Shows only meaningful changes, filtering out false positives from formatting differences.</p>
+    </div>
+  `;
+
+  const HELP_REC_TYPES = `
+    <div class="ss-help-section">
+      <h4>How Recommendations Work</h4>
+      <p>Running an analysis creates recommendations. Each recommendation can be:</p>
+      <ul class="ss-help-list">
+        <li><strong>Acted on</strong> &mdash; merge performers, delete files, or apply upstream updates</li>
+        <li><strong>Dismissed</strong> &mdash; hide the recommendation (view later from the Dismissed tab)</li>
+        <li><strong>Left pending</strong> &mdash; come back to it later</li>
+      </ul>
+    </div>
+    <div class="ss-help-section">
+      <h4>Status Counts</h4>
+      <p>Each type shows pending (needs review), resolved (action taken), and dismissed (hidden) counts. Click "View All" to browse recommendations of that type.</p>
+    </div>
+  `;
+
+  const HELP_DUP_PERFORMER = `
+    <div class="ss-help-section">
+      <h4>Suggested Keeper</h4>
+      <p>The performer with the most content (scenes, images, galleries) is suggested as the keeper. You can override this by selecting a different performer.</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>What Merging Does</h4>
+      <p>Merging moves all scenes, images, and galleries from the other performer(s) to the keeper, then deletes the duplicates. This cannot be undone.</p>
+    </div>
+  `;
+
+  const HELP_DUP_SCENE_FILES = `
+    <div class="ss-help-section">
+      <h4>Quality Scoring</h4>
+      <p>Files are scored based on resolution (primary factor), bitrate, and codec. The highest-scoring file is marked as "Best Quality" and pre-selected.</p>
+    </div>
+    <div class="ss-help-tip">File deletion is permanent and irreversible. Make sure you've selected the right file to keep before proceeding.</div>
+  `;
+
+  const HELP_UPSTREAM_DETAIL = `
+    <div class="ss-help-section">
+      <h4>3-Column Comparison</h4>
+      <p><strong>Local</strong> &mdash; your current value in Stash<br>
+      <strong>Upstream</strong> &mdash; the current value on StashDB<br>
+      <strong>Result</strong> &mdash; the value that will be written to Stash when you apply</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>Snapshots</h4>
+      <p>A snapshot records what StashDB looked like when you last synced. The 3-way diff uses this to distinguish "you changed it locally" from "StashDB changed it upstream".</p>
+    </div>
+    <div class="ss-help-section">
+      <h4>Dismiss Options</h4>
+      <p><strong>Dismiss</strong> &mdash; hides this recommendation until the next analysis finds new changes.<br>
+      <strong>Permanent dismiss</strong> &mdash; ignores this performer until you un-dismiss from the Dismissed tab.</p>
+    </div>
+  `;
+
+  const HELP_UPSTREAM_SETTINGS = `
+    <div class="ss-help-section">
+      <h4>Field Monitoring</h4>
+      <p>Controls which performer fields are checked during upstream analysis. Unchecked fields are completely ignored &mdash; no recommendations will be created for changes to those fields.</p>
+    </div>
+    <div class="ss-help-tip">Changes take effect on the next analysis run. Existing recommendations are not affected.</div>
+  `;
+
+  function createInfoIcon(onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'ss-info-btn';
+    btn.title = 'Help';
+    btn.textContent = 'i';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return btn;
+  }
+
+  function showHelpModal(title, contentHtml) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10001;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#2a2a2a;border:1px solid #444;border-radius:10px;max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #444;';
+    const titleEl = document.createElement('h3');
+    titleEl.style.cssText = 'margin:0;font-size:1.1rem;font-weight:600;color:#fff;';
+    titleEl.textContent = title;
+    const closeBtn = document.createElement('button');
+    closeBtn.style.cssText = 'background:none;border:none;font-size:1.5rem;color:#888;cursor:pointer;padding:0;line-height:1;';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    header.appendChild(titleEl);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:1.25rem;overflow-y:auto;flex:1;';
+    body.innerHTML = contentHtml;
+
+    modal.appendChild(header);
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        overlay.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+  }
+
   // ==================== Settings Modal ====================
 
   function createGearIcon() {
@@ -1439,6 +1609,13 @@
       }
 
       loadingDiv.remove();
+
+      // Help info for upstream sync settings
+      const helpRow = document.createElement('div');
+      helpRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:1rem;color:#888;font-size:0.85rem;';
+      helpRow.appendChild(document.createTextNode('Configure which fields are monitored for upstream changes.'));
+      helpRow.appendChild(createInfoIcon(() => showHelpModal('Upstream Field Monitoring', HELP_UPSTREAM_SETTINGS)));
+      container.appendChild(helpRow);
 
       for (const ep of endpoints) {
         const epDiv = document.createElement('div');
@@ -1660,6 +1837,7 @@
         <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
       </div>
     `;
+    headerDiv.appendChild(createInfoIcon(() => showHelpModal('Upstream Performer Changes', HELP_UPSTREAM_DETAIL)));
     headerDiv.appendChild(createSettingsGearButton(() => showSettingsModal()));
     wrapper.appendChild(headerDiv);
 

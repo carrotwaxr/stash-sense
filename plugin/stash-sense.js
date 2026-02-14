@@ -75,7 +75,7 @@
           sidecar_url: settings.sidecarUrl,
           top_k: settings.maxResults,
           scene_performer_stashdb_ids: stashdbIds,
-          // max_distance and min_face_size use tuned defaults in backend (0.5, 60px)
+          // Omitted params (num_frames, max_distance, min_face_size) default from sidecar face_config.py
         });
 
         if (result.error) {

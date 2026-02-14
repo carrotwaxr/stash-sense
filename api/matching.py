@@ -13,9 +13,11 @@ import numpy as np
 
 from voyager import Index
 
+import face_config
+
 
 # =============================================================================
-# CONFIGURATION - Tune these values
+# CONFIGURATION - Tune these values in face_config.py
 # =============================================================================
 
 @dataclass
@@ -25,9 +27,9 @@ class MatchingConfig:
     # Query parameters
     query_k: int = 100  # Number of candidates to fetch from each index
 
-    # Fusion weights (when both models are healthy)
-    facenet_weight: float = 0.5
-    arcface_weight: float = 0.5
+    # Fusion weights (when both models are healthy) - from face_config.py
+    facenet_weight: float = face_config.FACENET_WEIGHT
+    arcface_weight: float = face_config.ARCFACE_WEIGHT
 
     # Model health detection thresholds
     # Degenerate outputs have very low variance (all distances nearly identical)

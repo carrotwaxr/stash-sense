@@ -49,11 +49,36 @@ class FrameExtractionConfig:
     min_face_confidence: float = 0.5     # Minimum detection confidence
 
     # Performance
-    max_concurrent_extractions: int = 4  # Parallel ffmpeg processes
+    max_concurrent_extractions: int = 8  # Parallel ffmpeg processes
     extraction_timeout_sec: float = 30.0 # Timeout per frame
+
+    # GPU decoding - "cuda" for NVIDIA, "auto" for ffmpeg auto, False to disable
+    # Disabled by default: GPU decode adds per-process init overhead that hurts
+    # single-frame seeks. Only beneficial for continuous decoding (long segments).
+    hwaccel: Optional[str] = None
 
     # ffmpeg settings
     ffmpeg_path: str = "ffmpeg"          # Path to ffmpeg binary
+
+
+# Cached GPU decode availability (None = not checked yet)
+_gpu_decode_available: Optional[bool] = None
+
+
+def check_gpu_decode_available(ffmpeg_path: str = "ffmpeg") -> bool:
+    """Check if ffmpeg supports NVIDIA GPU-accelerated decoding."""
+    global _gpu_decode_available
+    if _gpu_decode_available is not None:
+        return _gpu_decode_available
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-hwaccels"],
+            capture_output=True, timeout=5, text=True,
+        )
+        _gpu_decode_available = "cuda" in result.stdout
+    except Exception:
+        _gpu_decode_available = False
+    return _gpu_decode_available
 
 
 # Default config instance
@@ -329,19 +354,33 @@ def extract_frame_sync(
     Returns:
         RGB image as numpy array, or None on failure
     """
+    # GPU decode: only use when explicitly configured (per-process init overhead
+    # hurts single-frame seeks; CPU decode with fast keyframe seeking is faster)
+    use_hwaccel = config.hwaccel
+
     # Build ffmpeg command
     # Key: -ss before -i enables fast seeking without decoding everything
-    cmd = [
-        config.ffmpeg_path,
+    cmd = [config.ffmpeg_path]
+
+    # GPU-accelerated decoding (before -i)
+    if use_hwaccel:
+        cmd.extend(["-hwaccel", use_hwaccel])
+
+    cmd.extend([
         "-ss", str(timestamp_sec),        # Seek to timestamp (before -i for fast seek)
-        "-headers", f"ApiKey: {api_key}\r\n" if api_key else "",
+    ])
+
+    if api_key:
+        cmd.extend(["-headers", f"ApiKey: {api_key}\r\n"])
+
+    cmd.extend([
         "-i", stream_url,                 # Input from HTTP stream
         "-frames:v", "1",                 # Extract exactly 1 frame
         "-f", "image2pipe",               # Output to pipe
         "-vcodec", "mjpeg",               # Output as JPEG
         "-q:v", str(max(1, min(31, 32 - config.jpeg_quality // 3))),  # Quality (1=best, 31=worst)
         "-"                               # Output to stdout
-    ]
+    ])
 
     # Add scaling if requested
     if config.output_width or config.output_height:
@@ -349,10 +388,6 @@ def extract_frame_sync(
         h = config.output_height or -1
         cmd.insert(-1, "-vf")
         cmd.insert(-1, f"scale={w}:{h}")
-
-    # Remove empty headers arg if no API key
-    if not api_key:
-        cmd = [c for c in cmd if c != "-headers" and c != ""]
 
     try:
         result = subprocess.run(

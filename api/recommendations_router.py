@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
+import face_config
 from recommendations_db import RecommendationsDB, Recommendation, AnalysisRun
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer
@@ -510,11 +511,11 @@ class FingerprintStatusResponse(BaseModel):
 
 
 class FingerprintGenerateRequest(BaseModel):
-    """Request to start fingerprint generation."""
+    """Request to start fingerprint generation. Defaults from face_config.py."""
     refresh_outdated: bool = True
-    num_frames: int = 12
-    min_face_size: int = 50
-    max_distance: float = 0.6
+    num_frames: int = face_config.NUM_FRAMES
+    min_face_size: int = face_config.MIN_FACE_SIZE
+    max_distance: float = face_config.MAX_DISTANCE
 
 
 @router.get("/fingerprints/status", response_model=FingerprintStatusResponse)

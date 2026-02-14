@@ -1857,3 +1857,77 @@
 .ss-toggle-label input[type="checkbox"] {
   accent-color: var(--bs-primary, #0d6efd);
 }
+
+/* ==================== Help System ==================== */
+
+.ss-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bs-secondary-color, #888);
+  background: none;
+  color: var(--bs-secondary-color, #888);
+  font-size: 12px;
+  font-weight: 600;
+  font-style: italic;
+  font-family: Georgia, serif;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 8px;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s;
+  vertical-align: middle;
+}
+
+.ss-info-btn:hover {
+  color: var(--bs-body-color, #fff);
+  border-color: var(--bs-body-color, #fff);
+}
+
+.ss-help-section {
+  margin-bottom: 1rem;
+}
+
+.ss-help-section:last-child {
+  margin-bottom: 0;
+}
+
+.ss-help-section h4 {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-help-section p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--bs-secondary-color, #aaa);
+}
+
+.ss-help-list {
+  margin: 0.4rem 0 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--bs-secondary-color, #aaa);
+}
+
+.ss-help-list strong {
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-help-tip {
+  margin-top: 1rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(255, 193, 7, 0.1);
+  border-left: 3px solid #ffc107;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--bs-secondary-color, #ccc);
+}
