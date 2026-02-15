@@ -11,7 +11,7 @@
   <Category>MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:6960]/docs</WebUI>
   <Icon>https://raw.githubusercontent.com/carrotwaxr/stash-sense/main/icon.png</Icon>
-  <ExtraParams>--runtime=nvidia --gpus all</ExtraParams>
+  <ExtraParams>--runtime=nvidia --gpus all --memory=6g</ExtraParams>
   <PostArgs/>
   <DonateText/>
   <DonateLink/>
