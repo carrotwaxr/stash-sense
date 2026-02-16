@@ -334,3 +334,78 @@ class TestFingerprintJoinQuery:
 
         result = db.get_fingerprints_with_faces(scene_ids={100})
         assert len(result) == 1
+
+
+class TestFaceCandidateGeneration:
+    """Tests for SQL self-join face candidate generation."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    def _add_fingerprint_with_faces(self, db, scene_id, performer_ids):
+        """Helper: create a complete fingerprint with face entries."""
+        fp_id = db.create_scene_fingerprint(
+            stash_scene_id=scene_id, total_faces=len(performer_ids), frames_analyzed=60,
+            fingerprint_status="complete"
+        )
+        for i, pid in enumerate(performer_ids):
+            db.add_fingerprint_face(
+                fp_id, pid, face_count=5,
+                avg_confidence=0.8, proportion=1.0 / len(performer_ids)
+            )
+        return fp_id
+
+    def test_finds_scenes_sharing_performer(self, db):
+        """Two scenes with the same identified performer should be candidates."""
+        self._add_fingerprint_with_faces(db, 100, ["performer_1"])
+        self._add_fingerprint_with_faces(db, 200, ["performer_1"])
+
+        pairs = db.generate_face_candidates()
+        assert len(pairs) == 1
+        assert pairs[0] == (100, 200)
+
+    def test_excludes_unknown_performers(self, db):
+        """Scenes sharing only 'unknown' faces should not be candidates."""
+        self._add_fingerprint_with_faces(db, 100, ["unknown"])
+        self._add_fingerprint_with_faces(db, 200, ["unknown"])
+
+        pairs = db.generate_face_candidates()
+        assert len(pairs) == 0
+
+    def test_canonical_order(self, db):
+        """Pairs should always have scene_a_id < scene_b_id."""
+        self._add_fingerprint_with_faces(db, 300, ["performer_1"])
+        self._add_fingerprint_with_faces(db, 100, ["performer_1"])
+
+        pairs = db.generate_face_candidates()
+        assert pairs[0] == (100, 300)
+
+    def test_deduplicates_across_performers(self, db):
+        """Two scenes sharing multiple performers should appear once."""
+        self._add_fingerprint_with_faces(db, 100, ["performer_1", "performer_2"])
+        self._add_fingerprint_with_faces(db, 200, ["performer_1", "performer_2"])
+
+        pairs = db.generate_face_candidates()
+        assert len(pairs) == 1
+
+    def test_excludes_incomplete_fingerprints(self, db):
+        """Only complete fingerprints participate."""
+        self._add_fingerprint_with_faces(db, 100, ["performer_1"])
+        # Scene 200 has an error fingerprint
+        db.create_scene_fingerprint(
+            stash_scene_id=200, total_faces=0, frames_analyzed=0,
+            fingerprint_status="error"
+        )
+
+        pairs = db.generate_face_candidates()
+        assert len(pairs) == 0
+
+    def test_many_scenes_same_performer(self, db):
+        """N scenes with same performer = N*(N-1)/2 pairs."""
+        for sid in [100, 200, 300, 400]:
+            self._add_fingerprint_with_faces(db, sid, ["performer_1"])
+
+        pairs = db.generate_face_candidates()
+        assert len(pairs) == 6  # 4*3/2

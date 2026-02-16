@@ -1510,6 +1510,29 @@ class RecommendationsDB:
 
         return result
 
+    def generate_face_candidates(self) -> list[tuple[int, int]]:
+        """
+        Find all scene pairs that share an identified performer via SQL self-join
+        on scene_fingerprint_faces. Returns list of (scene_a_id, scene_b_id) tuples
+        in canonical order (a < b).
+        """
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT sfa.stash_scene_id AS scene_a_id,
+                                sfb.stash_scene_id AS scene_b_id
+                FROM scene_fingerprint_faces fa
+                JOIN scene_fingerprint_faces fb ON fa.performer_id = fb.performer_id
+                JOIN scene_fingerprints sfa ON fa.fingerprint_id = sfa.id
+                JOIN scene_fingerprints sfb ON fb.fingerprint_id = sfb.id
+                WHERE sfa.fingerprint_status = 'complete'
+                  AND sfb.fingerprint_status = 'complete'
+                  AND sfa.stash_scene_id < sfb.stash_scene_id
+                  AND fa.performer_id != 'unknown'
+                """
+            ).fetchall()
+            return [(row[0], row[1]) for row in rows]
+
 
 # Convenience function
 def open_recommendations_db(path: str | Path) -> RecommendationsDB:
