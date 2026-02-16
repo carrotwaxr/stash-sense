@@ -47,10 +47,11 @@ class TestUpstreamSyncSchema:
             ).fetchone()
             assert row["permanent"] == 0
 
-    def test_schema_version_is_6(self, db):
+    def test_schema_version_is_current(self, db):
+        from recommendations_db import SCHEMA_VERSION
         with db._connection() as conn:
             version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
-            assert version == 6
+            assert version == SCHEMA_VERSION
 
 
 class TestUpstreamSnapshots:

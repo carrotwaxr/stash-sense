@@ -387,11 +387,12 @@ class TestImageFingerprintMigration:
         # Opening the DB should trigger migration
         db = RecommendationsDB(db_path)
 
-        # Verify schema version is now 6
+        # Verify schema version is now current
+        from recommendations_db import SCHEMA_VERSION
         conn = sqlite3.connect(db_path)
         version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
         conn.close()
-        assert version == 6
+        assert version == SCHEMA_VERSION
 
     def test_migration_v5_to_v6_tables_exist(self, tmp_path):
         """After migration, image fingerprint tables should exist and be functional."""
