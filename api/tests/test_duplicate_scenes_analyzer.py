@@ -57,7 +57,8 @@ class TestDuplicateScenesAnalyzer:
             )
         )
 
-        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db)
+        run_id = rec_db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db, run_id=run_id)
         result = await analyzer.run(incremental=False)
 
         assert result.recommendations_created == 1
@@ -99,7 +100,8 @@ class TestDuplicateScenesAnalyzer:
             )
         )
 
-        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db, min_confidence=40)
+        run_id = rec_db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db, min_confidence=40, run_id=run_id)
         result = await analyzer.run(incremental=False)
 
         assert result.recommendations_created == 1
@@ -136,7 +138,8 @@ class TestDuplicateScenesAnalyzer:
         )
 
         # High minimum confidence should filter out low-confidence matches
-        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db, min_confidence=80)
+        run_id = rec_db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db, min_confidence=80, run_id=run_id)
         result = await analyzer.run(incremental=False)
 
         assert result.recommendations_created == 0
@@ -176,7 +179,8 @@ class TestDuplicateScenesAnalyzer:
                 ("duplicate_scenes", "scene", "1"),
             )
 
-        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db)
+        run_id = rec_db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, rec_db, run_id=run_id)
         result = await analyzer.run(incremental=False)
 
         # Should not create recommendation for dismissed target
@@ -409,3 +413,146 @@ class TestFaceCandidateGeneration:
 
         pairs = db.generate_face_candidates()
         assert len(pairs) == 6  # 4*3/2
+
+
+class TestCandidateGeneration:
+    """Tests for Phase 1: candidate generation."""
+
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        return stash
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.mark.asyncio
+    async def test_generates_stashbox_candidates(self, mock_stash, db):
+        """Scenes sharing a stash-box ID become candidates with source='stashbox'."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+            return_value=(
+                [
+                    {"id": "1", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc"}],
+                     "studio": None, "performers": [], "files": [], "date": None},
+                    {"id": "2", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc"}],
+                     "studio": None, "performers": [], "files": [], "date": None},
+                    {"id": "3", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "xyz"}],
+                     "studio": None, "performers": [], "files": [], "date": None},
+                ],
+                3,
+            )
+        )
+
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        count = await analyzer._generate_candidates(run_id)
+
+        assert count >= 1
+        candidates = db.get_candidates_batch(run_id, after_id=0, limit=100)
+        stashbox_candidates = [c for c in candidates if c["source"] == "stashbox"]
+        assert len(stashbox_candidates) == 1
+        assert stashbox_candidates[0]["scene_a_id"] == 1
+        assert stashbox_candidates[0]["scene_b_id"] == 2
+
+    @pytest.mark.asyncio
+    async def test_generates_face_candidates(self, mock_stash, db):
+        """Scenes sharing an identified performer in fingerprints become candidates."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        fp1 = db.create_scene_fingerprint(stash_scene_id=10, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
+        db.add_fingerprint_face(fp1, "performer_1", face_count=5, avg_confidence=0.8, proportion=1.0)
+        fp2 = db.create_scene_fingerprint(stash_scene_id=20, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
+        db.add_fingerprint_face(fp2, "performer_1", face_count=3, avg_confidence=0.7, proportion=1.0)
+
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        count = await analyzer._generate_candidates(run_id)
+
+        assert count >= 1
+        candidates = db.get_candidates_batch(run_id, after_id=0, limit=100)
+        face_candidates = [c for c in candidates if c["source"] == "face"]
+        assert len(face_candidates) == 1
+
+    @pytest.mark.asyncio
+    async def test_generates_metadata_candidates(self, mock_stash, db):
+        """Scenes sharing studio AND performer become candidates with source='metadata'."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+            return_value=(
+                [
+                    {"id": "1", "stash_ids": [], "studio": {"id": "s1", "name": "Studio"},
+                     "performers": [{"id": "p1", "name": "Performer"}], "files": [], "date": None},
+                    {"id": "2", "stash_ids": [], "studio": {"id": "s1", "name": "Studio"},
+                     "performers": [{"id": "p1", "name": "Performer"}], "files": [], "date": None},
+                ],
+                2,
+            )
+        )
+
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        count = await analyzer._generate_candidates(run_id)
+
+        candidates = db.get_candidates_batch(run_id, after_id=0, limit=100)
+        metadata_candidates = [c for c in candidates if c["source"] == "metadata"]
+        assert len(metadata_candidates) == 1
+
+    @pytest.mark.asyncio
+    async def test_no_metadata_candidates_without_shared_performer(self, mock_stash, db):
+        """Same studio but no shared performer should NOT produce metadata candidates."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+            return_value=(
+                [
+                    {"id": "1", "stash_ids": [], "studio": {"id": "s1", "name": "Studio"},
+                     "performers": [{"id": "p1", "name": "Perf A"}], "files": [], "date": None},
+                    {"id": "2", "stash_ids": [], "studio": {"id": "s1", "name": "Studio"},
+                     "performers": [{"id": "p2", "name": "Perf B"}], "files": [], "date": None},
+                ],
+                2,
+            )
+        )
+
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        count = await analyzer._generate_candidates(run_id)
+
+        candidates = db.get_candidates_batch(run_id, after_id=0, limit=100)
+        metadata_candidates = [c for c in candidates if c["source"] == "metadata"]
+        assert len(metadata_candidates) == 0
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_across_sources(self, mock_stash, db):
+        """A pair found by both stashbox and face should appear only once."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+            return_value=(
+                [
+                    {"id": "10", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "same"}],
+                     "studio": None, "performers": [], "files": [], "date": None},
+                    {"id": "20", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "same"}],
+                     "studio": None, "performers": [], "files": [], "date": None},
+                ],
+                2,
+            )
+        )
+        fp1 = db.create_scene_fingerprint(stash_scene_id=10, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
+        db.add_fingerprint_face(fp1, "performer_1", face_count=5, avg_confidence=0.8, proportion=1.0)
+        fp2 = db.create_scene_fingerprint(stash_scene_id=20, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
+        db.add_fingerprint_face(fp2, "performer_1", face_count=3, avg_confidence=0.7, proportion=1.0)
+
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        count = await analyzer._generate_candidates(run_id)
+
+        assert count == 1

@@ -1,12 +1,11 @@
 """
 Duplicate Scenes Analyzer
 
-Detects duplicate scenes using multi-signal analysis:
-- Stash-box ID matching (authoritative, 100%)
-- Face fingerprint similarity (up to 85%)
-- Metadata heuristics (up to 60%)
+Detects duplicate scenes using a two-phase pipeline:
+  Phase 1: Candidate generation via inverted indices + SQL self-join
+  Phase 2: Sequential scoring of candidate pairs
 
-See: docs/plans/2026-01-30-duplicate-scene-detection-design.md
+See: docs/plans/2026-02-15-scalable-duplicate-scene-detection-design.md
 
 Note: Face fingerprint similarity requires fingerprints to be generated first.
 Use /recommendations/fingerprints/generate to generate fingerprints for your library.
@@ -16,7 +15,7 @@ The analyzer will still find duplicates via stash-box IDs and metadata without f
 import asyncio
 import logging
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .base import BaseAnalyzer, AnalysisResult
 from duplicate_detection import (
@@ -46,12 +45,22 @@ class DuplicateScenesResult(AnalysisResult):
 
 class DuplicateScenesAnalyzer(BaseAnalyzer):
     """
-    Detects duplicate scenes using multi-signal analysis.
+    Detects duplicate scenes using a two-phase candidate-then-score pipeline.
+
+    Phase 1 (Candidate Generation):
+        - Stash-box ID grouping: scenes sharing (endpoint, stash_id)
+        - Face fingerprint SQL self-join: scenes sharing identified performers
+        - Metadata intersection: scenes sharing (studio_id, performer_id)
+        All candidates stored in duplicate_candidates table.
+
+    Phase 2 (Sequential Scoring):
+        - Iterate candidates with cursor-based pagination
+        - Score each pair with calculate_duplicate_confidence()
+        - Write recommendations immediately
 
     Configuration:
         min_confidence: Minimum confidence (0-100) to create recommendation
-        batch_size: Scenes to process per batch
-        max_comparisons: Safety limit on O(n²) comparisons
+        batch_size: Scenes to fetch per Stash API page
     """
 
     type = "duplicate_scenes"
@@ -62,160 +71,239 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         rec_db: "RecommendationsDB",
         min_confidence: float = 50.0,
         batch_size: int = 100,
-        max_comparisons: int = None,  # No limit
-        max_scenes: int = None,  # No limit
         **kwargs,
     ):
         super().__init__(stash, rec_db, **kwargs)
         self.min_confidence = min_confidence
         self.batch_size = batch_size
-        self.max_comparisons = max_comparisons
-        self.max_scenes = max_scenes
 
     async def run(self, incremental: bool = True) -> DuplicateScenesResult:
         """
-        Run duplicate scene detection.
+        Run duplicate scene detection via candidate-then-score pipeline.
 
-        Note: Incremental mode is not supported for this analyzer since
-        we need to compare all scenes against each other. Always runs full scan.
-
-        Phase 1: Load scenes and existing fingerprints
-        Phase 2: Compare all pairs for duplicates
-        Phase 3: Create recommendations
-
-        Returns DuplicateScenesResult with fingerprint coverage info.
+        Note: Incremental mode is not yet supported — always runs a full scan.
         """
-        # Phase 1: Load scenes
-        logger.info("Loading scenes from Stash...")
-        all_scenes: list[dict] = []
-        offset = 0
+        run_id = self.run_id
 
-        while True:
-            scenes, total = await self.stash.get_scenes_for_fingerprinting(
-                limit=self.batch_size,
-                offset=offset,
-            )
-            all_scenes.extend(scenes)
+        # Phase 1: Generate candidates
+        logger.warning("Phase 1: Generating candidates...")
+        candidates_count = await self._generate_candidates(run_id)
+        logger.warning(f"Phase 1 complete: {candidates_count} candidates generated")
 
-            if len(all_scenes) >= total or not scenes:
-                break
-
-            if self.max_scenes and len(all_scenes) >= self.max_scenes:
-                logger.warning(f"Hit max scenes limit ({self.max_scenes})")
-                all_scenes = all_scenes[: self.max_scenes]
-                break
-
-            offset += self.batch_size
-            # Rate limiting handled by StashClientUnified
-
-        logger.info(f"Loaded {len(all_scenes)} scenes")
-
-        if len(all_scenes) < 2:
+        if candidates_count == 0:
             return DuplicateScenesResult(
-                items_processed=len(all_scenes),
+                items_processed=0,
                 recommendations_created=0,
-                total_scenes=len(all_scenes),
             )
 
-        # Convert to metadata objects
-        scene_metadata = [SceneMetadata.from_stash(s) for s in all_scenes]
-        scene_ids = {s.scene_id for s in scene_metadata}
+        # Phase 2: Score candidates
+        self.set_items_total(candidates_count)
+        logger.warning(f"Phase 2: Scoring {candidates_count} candidates...")
+        scored, created, total_scenes, scenes_with_fp, coverage_pct = await self._score_candidates(run_id)
+        logger.warning(f"Phase 2 complete: {scored} scored, {created} recommendations created")
 
-        # Load existing fingerprints
-        fingerprints: dict[str, SceneFingerprint] = {}
-        for fp_data in self.rec_db.get_all_scene_fingerprints(status="complete"):
-            try:
-                scene_id = str(fp_data["stash_scene_id"])
-                faces_data = self.rec_db.get_fingerprint_faces(fp_data["id"])
-
-                faces = {}
-                for f in faces_data:
-                    faces[f["performer_id"]] = FaceAppearance(
-                        performer_id=f["performer_id"],
-                        face_count=f["face_count"],
-                        avg_confidence=f["avg_confidence"],
-                        proportion=f["proportion"],
-                    )
-
-                fingerprints[scene_id] = SceneFingerprint(
-                    stash_scene_id=fp_data["stash_scene_id"],
-                    faces=faces,
-                    total_faces_detected=fp_data["total_faces"],
-                    frames_analyzed=fp_data["frames_analyzed"],
-                )
-            except (KeyError, TypeError) as e:
-                logger.warning(f"Skipping malformed fingerprint {fp_data.get('id')}: {e}")
-                continue
-
-        # Calculate fingerprint coverage for loaded scenes
-        scenes_with_fp = sum(1 for s in scene_metadata if s.scene_id in fingerprints)
-        coverage_pct = (scenes_with_fp / len(scene_metadata) * 100) if scene_metadata else 0
-
-        logger.info(
-            f"Loaded {len(fingerprints)} fingerprints, "
-            f"{scenes_with_fp}/{len(scene_metadata)} scenes have fingerprints ({coverage_pct:.1f}%)"
+        return DuplicateScenesResult(
+            items_processed=scored,
+            recommendations_created=created,
+            total_scenes=total_scenes,
+            scenes_with_fingerprints=scenes_with_fp,
+            fingerprint_coverage_pct=round(coverage_pct, 1),
+            comparisons_made=scored,
+            duplicates_found=created,
         )
 
-        if coverage_pct < 10:
-            logger.warning(
-                f"Low fingerprint coverage ({coverage_pct:.1f}%). "
-                "Run /recommendations/fingerprints/generate to improve duplicate detection accuracy."
+    async def _generate_candidates(self, run_id: int) -> int:
+        """
+        Phase 1: Generate candidate pairs from three sources.
+        Returns total number of unique candidates.
+        """
+        # Clear any stale candidates from a previous failed run
+        self.rec_db.clear_candidates(run_id)
+
+        # Source A + C: Stash-box IDs and metadata indices (single pass over paginated scenes)
+        stashbox_index: dict[tuple[str, str], list[int]] = {}
+        combined_index: dict[tuple[str, str], set[int]] = {}  # (studio_id, performer_id) -> scene_ids
+
+        offset = 0
+        total_scenes = 0
+        while True:
+            scenes, total = await self.stash.get_scenes_for_fingerprinting(
+                limit=self.batch_size, offset=offset,
+            )
+            total_scenes = total
+
+            for scene in scenes:
+                sid = int(scene["id"])
+
+                # Build stash-box index
+                for stash_id_entry in scene.get("stash_ids", []):
+                    key = (stash_id_entry["endpoint"], stash_id_entry["stash_id"])
+                    stashbox_index.setdefault(key, []).append(sid)
+
+                # Build combined (studio, performer) index
+                studio = scene.get("studio")
+                if studio and studio.get("id"):
+                    studio_id = studio["id"]
+                    for performer in scene.get("performers", []):
+                        key = (studio_id, performer["id"])
+                        combined_index.setdefault(key, set()).add(sid)
+
+            if len(scenes) == 0 or offset + len(scenes) >= total:
+                break
+            offset += self.batch_size
+            await asyncio.sleep(0)
+
+        logger.warning(f"Loaded {total_scenes} scenes. Building candidates...")
+
+        # Generate stash-box candidates
+        stashbox_pairs = []
+        for key, scene_ids in stashbox_index.items():
+            if len(scene_ids) > 1:
+                for i, a in enumerate(scene_ids):
+                    for b in scene_ids[i + 1:]:
+                        stashbox_pairs.append((a, b, "stashbox"))
+        if stashbox_pairs:
+            self.rec_db.insert_candidates_batch(stashbox_pairs, run_id)
+            logger.warning(f"  Stash-box ID: {len(stashbox_pairs)} candidates")
+
+        # Source B: Face fingerprint candidates (SQL self-join)
+        face_pairs = self.rec_db.generate_face_candidates()
+        if face_pairs:
+            self.rec_db.insert_candidates_batch(
+                [(a, b, "face") for a, b in face_pairs], run_id
+            )
+            logger.warning(f"  Face fingerprint: {len(face_pairs)} candidates ({self.rec_db.count_candidates(run_id)} after dedup)")
+
+        # Generate metadata candidates
+        metadata_pairs = []
+        for key, scene_ids in combined_index.items():
+            if len(scene_ids) > 1:
+                sorted_ids = sorted(scene_ids)
+                for i, a in enumerate(sorted_ids):
+                    for b in sorted_ids[i + 1:]:
+                        metadata_pairs.append((a, b, "metadata"))
+        if metadata_pairs:
+            self.rec_db.insert_candidates_batch(metadata_pairs, run_id)
+            logger.warning(f"  Metadata: {len(metadata_pairs)} candidates ({self.rec_db.count_candidates(run_id)} after dedup)")
+
+        return self.rec_db.count_candidates(run_id)
+
+    async def _score_candidates(self, run_id: int) -> tuple[int, int, int, int, float]:
+        """
+        Phase 2: Score candidate pairs sequentially.
+        Returns (scored, created, total_scenes, scenes_with_fp, coverage_pct).
+        """
+        # Load scene metadata for candidate scenes only
+        candidate_scene_ids = self.rec_db.get_candidate_scene_ids(run_id)
+        scene_metadata = await self._load_scene_metadata(candidate_scene_ids)
+
+        # Load fingerprints via JOIN query (filtered to candidate scenes)
+        fp_data = self.rec_db.get_fingerprints_with_faces(scene_ids=candidate_scene_ids)
+        fingerprints: dict[str, SceneFingerprint] = {}
+        for scene_id_str, data in fp_data.items():
+            faces = {}
+            for pid, face in data["faces"].items():
+                faces[pid] = FaceAppearance(
+                    performer_id=pid,
+                    face_count=face["face_count"],
+                    avg_confidence=face["avg_confidence"],
+                    proportion=face["proportion"],
+                )
+            fingerprints[scene_id_str] = SceneFingerprint(
+                stash_scene_id=data["stash_scene_id"],
+                faces=faces,
+                total_faces_detected=data["total_faces"],
+                frames_analyzed=data["frames_analyzed"],
             )
 
-        # Phase 2: Find duplicates
-        duplicates = []
-        comparisons = 0
+        total_scenes = len(scene_metadata)
+        scenes_with_fp = sum(1 for sid in scene_metadata if sid in fingerprints)
+        coverage_pct = (scenes_with_fp / total_scenes * 100) if total_scenes else 0
 
-        for i, scene_a in enumerate(scene_metadata):
-            fp_a = fingerprints.get(scene_a.scene_id)
+        if coverage_pct < 10 and total_scenes > 0:
+            logger.warning(
+                f"Low fingerprint coverage ({coverage_pct:.1f}%). "
+                "Run /recommendations/fingerprints/generate to improve accuracy."
+            )
 
-            for scene_b in scene_metadata[i + 1 :]:
-                comparisons += 1
+        # Score candidates with cursor-based pagination
+        scored = 0
+        created = 0
+        last_id = 0
 
-                if self.max_comparisons and comparisons > self.max_comparisons:
-                    logger.warning(f"Hit max comparisons limit ({self.max_comparisons})")
-                    break
+        while True:
+            batch = self.rec_db.get_candidates_batch(run_id, after_id=last_id, limit=100)
+            if not batch:
+                break
 
-                # Yield periodically
-                if comparisons % 1000 == 0:
-                    await asyncio.sleep(0)
+            for candidate in batch:
+                scene_a = scene_metadata.get(str(candidate["scene_a_id"]))
+                scene_b = scene_metadata.get(str(candidate["scene_b_id"]))
 
-                fp_b = fingerprints.get(scene_b.scene_id)
+                if not scene_a or not scene_b:
+                    scored += 1
+                    last_id = candidate["id"]
+                    continue
+
+                fp_a = fingerprints.get(str(candidate["scene_a_id"]))
+                fp_b = fingerprints.get(str(candidate["scene_b_id"]))
 
                 match = calculate_duplicate_confidence(scene_a, scene_b, fp_a, fp_b)
 
                 if match and match.confidence >= self.min_confidence:
-                    duplicates.append(match)
+                    rec_id = self.create_recommendation(
+                        target_type="scene",
+                        target_id=str(match.scene_a_id),
+                        details={
+                            "scene_b_id": match.scene_b_id,
+                            "confidence": match.confidence,
+                            "reasoning": match.reasoning,
+                            "signal_breakdown": asdict(match.signal_breakdown),
+                        },
+                        confidence=match.confidence / 100.0,
+                    )
+                    if rec_id:
+                        created += 1
 
-            if self.max_comparisons and comparisons > self.max_comparisons:
-                break
+                scored += 1
+                last_id = candidate["id"]
 
-        logger.info(f"Found {len(duplicates)} potential duplicates from {comparisons} comparisons")
+            self.update_progress(scored, created)
+            await asyncio.sleep(0)
 
-        # Phase 3: Create recommendations
-        created = 0
-        for match in duplicates:
-            rec_id = self.create_recommendation(
-                target_type="scene",
-                target_id=str(match.scene_a_id),
-                details={
-                    "scene_b_id": match.scene_b_id,
-                    "confidence": match.confidence,
-                    "reasoning": match.reasoning,
-                    "signal_breakdown": asdict(match.signal_breakdown),
-                },
-                confidence=match.confidence / 100.0,  # Normalize to 0-1
+        return scored, created, total_scenes, scenes_with_fp, coverage_pct
+
+    async def _load_scene_metadata(
+        self, scene_ids: set[int]
+    ) -> dict[str, SceneMetadata]:
+        """
+        Load SceneMetadata from Stash for specific scene IDs.
+        Fetches all scenes (paginated) and filters to needed IDs.
+        """
+        if not scene_ids:
+            return {}
+
+        result: dict[str, SceneMetadata] = {}
+        offset = 0
+
+        while True:
+            scenes, total = await self.stash.get_scenes_for_fingerprinting(
+                limit=self.batch_size, offset=offset,
             )
 
-            if rec_id:
-                created += 1
+            for scene in scenes:
+                if int(scene["id"]) in scene_ids:
+                    metadata = SceneMetadata.from_stash(scene)
+                    result[scene["id"]] = metadata
 
-        return DuplicateScenesResult(
-            items_processed=len(all_scenes),
-            recommendations_created=created,
-            total_scenes=len(all_scenes),
-            scenes_with_fingerprints=scenes_with_fp,
-            fingerprint_coverage_pct=round(coverage_pct, 1),
-            comparisons_made=comparisons,
-            duplicates_found=len(duplicates),
-        )
+            # Stop early if we've found all needed scenes
+            if len(result) >= len(scene_ids):
+                break
+
+            if len(scenes) == 0 or offset + len(scenes) >= total:
+                break
+
+            offset += self.batch_size
+            await asyncio.sleep(0)
+
+        return result
