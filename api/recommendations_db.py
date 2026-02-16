@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 @dataclass
@@ -268,6 +268,18 @@ class RecommendationsDB:
 
             -- Seed default settings
             INSERT INTO user_settings (key, value) VALUES ('normalize_enum_display', 'true');
+
+            -- Duplicate scene candidates (work queue for scoring)
+            CREATE TABLE duplicate_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_a_id INTEGER NOT NULL,
+                scene_b_id INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                run_id INTEGER REFERENCES analysis_runs(id),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(scene_a_id, scene_b_id)
+            );
+            CREATE INDEX idx_dup_candidates_run ON duplicate_candidates(run_id);
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
@@ -385,6 +397,22 @@ class RecommendationsDB:
                 CREATE INDEX IF NOT EXISTS idx_image_fp_faces_performer ON image_fingerprint_faces(performer_id);
 
                 UPDATE schema_version SET version = 6;
+            """)
+
+        if from_version < 7:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS duplicate_candidates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scene_a_id INTEGER NOT NULL,
+                    scene_b_id INTEGER NOT NULL,
+                    source TEXT NOT NULL,
+                    run_id INTEGER REFERENCES analysis_runs(id),
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(scene_a_id, scene_b_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_dup_candidates_run ON duplicate_candidates(run_id);
+
+                UPDATE schema_version SET version = 7;
             """)
 
     @contextmanager

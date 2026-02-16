@@ -181,3 +181,25 @@ class TestDuplicateScenesAnalyzer:
 
         # Should not create recommendation for dismissed target
         assert result.recommendations_created == 0
+
+
+class TestDuplicateCandidatesDB:
+    """Tests for duplicate_candidates table and DB methods."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    def test_table_exists(self, db):
+        """The duplicate_candidates table should be created on init."""
+        with db._connection() as conn:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='duplicate_candidates'"
+            ).fetchone()
+            assert row is not None
+
+    def test_schema_version_is_7(self, db):
+        with db._connection() as conn:
+            version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
+            assert version == 7
