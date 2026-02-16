@@ -280,6 +280,7 @@ class RecommendationsDB:
                 UNIQUE(scene_a_id, scene_b_id)
             );
             CREATE INDEX idx_dup_candidates_run ON duplicate_candidates(run_id);
+            CREATE INDEX idx_dup_candidates_run_id ON duplicate_candidates(run_id, id);
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
@@ -411,6 +412,7 @@ class RecommendationsDB:
                     UNIQUE(scene_a_id, scene_b_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_dup_candidates_run ON duplicate_candidates(run_id);
+                CREATE INDEX IF NOT EXISTS idx_dup_candidates_run_id ON duplicate_candidates(run_id, id);
 
                 UPDATE schema_version SET version = 7;
             """)
@@ -1354,6 +1356,159 @@ class RecommendationsDB:
                 "SELECT COUNT(*) FROM analysis_runs WHERE date(started_at) = date('now')"
             ).fetchone()[0]
             return stats
+
+    # ==================== Duplicate Candidates ====================
+
+    def insert_candidate(
+        self,
+        scene_a_id: int,
+        scene_b_id: int,
+        source: str,
+        run_id: int,
+    ) -> Optional[int]:
+        """Insert a candidate pair. Enforces canonical order (a < b). Returns ID or None if duplicate."""
+        a, b = (min(scene_a_id, scene_b_id), max(scene_a_id, scene_b_id))
+        with self._connection() as conn:
+            try:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO duplicate_candidates (scene_a_id, scene_b_id, source, run_id)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (a, b, source, run_id),
+                )
+                return cursor.lastrowid
+            except sqlite3.IntegrityError:
+                return None
+
+    def insert_candidates_batch(
+        self,
+        candidates: list[tuple[int, int, str]],
+        run_id: int,
+    ) -> int:
+        """Batch insert candidate pairs. Each tuple is (scene_a_id, scene_b_id, source).
+        Enforces canonical order. Returns count inserted."""
+        if not candidates:
+            return 0
+        rows = [(min(a, b), max(a, b), source, run_id) for a, b, source in candidates]
+        with self._connection() as conn:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO duplicate_candidates (scene_a_id, scene_b_id, source, run_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                rows,
+            )
+            return conn.execute(
+                "SELECT COUNT(*) FROM duplicate_candidates WHERE run_id = ?", (run_id,)
+            ).fetchone()[0]
+
+    def get_candidates_batch(
+        self,
+        run_id: int,
+        after_id: int = 0,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Get a batch of candidates using cursor-based pagination."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM duplicate_candidates
+                WHERE run_id = ? AND id > ?
+                ORDER BY id
+                LIMIT ?
+                """,
+                (run_id, after_id, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def count_candidates(self, run_id: int) -> int:
+        """Count candidates for a run."""
+        with self._connection() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM duplicate_candidates WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()[0]
+
+    def clear_candidates(self, run_id: int) -> int:
+        """Delete all candidates for a run. Returns count deleted."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM duplicate_candidates WHERE run_id = ?",
+                (run_id,),
+            )
+            return cursor.rowcount
+
+    def get_candidate_scene_ids(self, run_id: int) -> set[int]:
+        """Get all distinct scene IDs that appear in candidates for a run."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT scene_a_id AS sid FROM duplicate_candidates WHERE run_id = ?
+                UNION
+                SELECT scene_b_id AS sid FROM duplicate_candidates WHERE run_id = ?
+                """,
+                (run_id, run_id),
+            ).fetchall()
+            return {row[0] for row in rows}
+
+    def get_fingerprints_with_faces(
+        self,
+        scene_ids: Optional[set[int]] = None,
+    ) -> dict:
+        """
+        Load all complete fingerprints with their faces in a single JOIN query.
+        Returns dict keyed by str(stash_scene_id) with structure:
+        {stash_scene_id, total_faces, frames_analyzed, faces: {performer_id -> {face_count, avg_confidence, proportion}}}
+        Optionally filtered to specific scene IDs.
+        """
+        with self._connection() as conn:
+            if scene_ids:
+                placeholders = ",".join("?" for _ in scene_ids)
+                rows = conn.execute(
+                    f"""
+                    SELECT sf.stash_scene_id, sf.total_faces, sf.frames_analyzed,
+                           sff.performer_id, sff.face_count, sff.avg_confidence, sff.proportion
+                    FROM scene_fingerprints sf
+                    LEFT JOIN scene_fingerprint_faces sff ON sf.id = sff.fingerprint_id
+                    WHERE sf.fingerprint_status = 'complete'
+                      AND sf.stash_scene_id IN ({placeholders})
+                    ORDER BY sf.stash_scene_id
+                    """,
+                    list(scene_ids),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT sf.stash_scene_id, sf.total_faces, sf.frames_analyzed,
+                           sff.performer_id, sff.face_count, sff.avg_confidence, sff.proportion
+                    FROM scene_fingerprints sf
+                    LEFT JOIN scene_fingerprint_faces sff ON sf.id = sff.fingerprint_id
+                    WHERE sf.fingerprint_status = 'complete'
+                    ORDER BY sf.stash_scene_id
+                    """,
+                ).fetchall()
+
+        # Group by scene
+        result = {}
+        for row in rows:
+            scene_id = str(row["stash_scene_id"])
+            if scene_id not in result:
+                result[scene_id] = {
+                    "stash_scene_id": row["stash_scene_id"],
+                    "total_faces": row["total_faces"],
+                    "frames_analyzed": row["frames_analyzed"],
+                    "faces": {},
+                }
+            if row["performer_id"] is not None:
+                result[scene_id]["faces"][row["performer_id"]] = {
+                    "performer_id": row["performer_id"],
+                    "face_count": row["face_count"],
+                    "avg_confidence": row["avg_confidence"],
+                    "proportion": row["proportion"],
+                }
+
+        return result
 
 
 # Convenience function
