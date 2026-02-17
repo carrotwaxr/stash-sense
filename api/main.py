@@ -165,69 +165,106 @@ tattoo_matcher = None  # Optional[TattooMatcher]
 multi_signal_config: Optional[MultiSignalConfig] = None
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Load the recognizer and initialize recommendations on startup."""
+def reload_database(data_dir: Path) -> bool:
+    """Load (or reload) the face recognition database and multi-signal components.
+
+    Sets the module-level globals: recognizer, db_manifest, multi_signal_matcher,
+    body_extractor, tattoo_detector, tattoo_matcher, multi_signal_config.
+
+    When called for a hot-swap (not first startup), stale references for
+    body_extractor, tattoo_detector, tattoo_matcher, and multi_signal_matcher
+    are explicitly cleared before rebuilding.
+
+    Args:
+        data_dir: Path to the data directory containing DB files.
+
+    Returns:
+        True on success.
+
+    Raises:
+        Exception: on any failure during loading.
+    """
     global recognizer, db_manifest
     global multi_signal_matcher, body_extractor, tattoo_detector, tattoo_matcher, multi_signal_config
 
-    data_dir = Path(DATA_DIR)
+    # Clear stale references so a hot-swap doesn't leave dangling pointers
+    body_extractor = None
+    tattoo_detector = None
+    tattoo_matcher = None
+    multi_signal_matcher = None
+
     print(f"Loading face database from {data_dir}...")
+
+    db_config = DatabaseConfig(data_dir=data_dir)
+
+    # Load manifest for database info
+    if db_config.manifest_json_path.exists():
+        with open(db_config.manifest_json_path) as f:
+            db_manifest = json.load(f)
+
+    recognizer = FaceRecognizer(db_config)
+    print("Face database loaded successfully!")
+
+    # Initialize multi-signal components
+    multi_signal_config = MultiSignalConfig.from_env()
+
+    if multi_signal_config.enable_body:
+        print("Initializing body proportion extractor...")
+        body_extractor = BodyProportionExtractor()
+
+    # Tattoo signal: "auto" enables if index files exist, "true" always enables
+    enable_tattoo = multi_signal_config.enable_tattoo
+    tattoo_enabled = (
+        enable_tattoo == "true"
+        or (enable_tattoo == "auto"
+            and db_config.tattoo_index_path.exists()
+            and db_config.tattoo_json_path.exists())
+    )
+
+    if tattoo_enabled:
+        print("Initializing tattoo detector...")
+        tattoo_detector = TattooDetector()
+
+        # Initialize embedding-based matcher if index is available
+        if recognizer.tattoo_index is not None and recognizer.tattoo_mapping is not None:
+            from tattoo_matcher import TattooMatcher
+            tattoo_matcher = TattooMatcher(
+                tattoo_index=recognizer.tattoo_index,
+                tattoo_mapping=recognizer.tattoo_mapping,
+            )
+            print(f"Tattoo embedding matching ready: {len(recognizer.tattoo_index)} embeddings loaded")
+
+    if recognizer.db_reader and (body_extractor or tattoo_detector):
+        print("Initializing multi-signal matcher...")
+        multi_signal_matcher = MultiSignalMatcher(
+            face_recognizer=recognizer,
+            db_reader=recognizer.db_reader,
+            body_extractor=body_extractor,
+            tattoo_detector=tattoo_detector,
+            tattoo_matcher=tattoo_matcher,
+        )
+        tattoo_count = len(multi_signal_matcher.performers_with_tattoo_embeddings)
+        print(f"Multi-signal ready: {len(multi_signal_matcher.body_data)} body, "
+              f"{tattoo_count} performers with tattoo embeddings")
+
+    # Set DB version for fingerprint tracking
+    if db_manifest.get("version"):
+        set_db_version(db_manifest["version"])
+        print(f"Face recognition DB version: {db_manifest['version']}")
+
+    return True
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load the recognizer and initialize recommendations on startup."""
+    global recognizer
+
+    data_dir = Path(DATA_DIR)
 
     # Load face recognition database
     try:
-        db_config = DatabaseConfig(data_dir=data_dir)
-
-        # Load manifest for database info
-        if db_config.manifest_json_path.exists():
-            with open(db_config.manifest_json_path) as f:
-                db_manifest = json.load(f)
-
-        recognizer = FaceRecognizer(db_config)
-        print("Face database loaded successfully!")
-
-        # Initialize multi-signal components
-        multi_signal_config = MultiSignalConfig.from_env()
-
-        if multi_signal_config.enable_body:
-            print("Initializing body proportion extractor...")
-            body_extractor = BodyProportionExtractor()
-
-        # Tattoo signal: "auto" enables if index files exist, "true" always enables
-        enable_tattoo = multi_signal_config.enable_tattoo
-        tattoo_enabled = (
-            enable_tattoo == "true"
-            or (enable_tattoo == "auto"
-                and db_config.tattoo_index_path.exists()
-                and db_config.tattoo_json_path.exists())
-        )
-
-        if tattoo_enabled:
-            print("Initializing tattoo detector...")
-            tattoo_detector = TattooDetector()
-
-            # Initialize embedding-based matcher if index is available
-            if recognizer.tattoo_index is not None and recognizer.tattoo_mapping is not None:
-                from tattoo_matcher import TattooMatcher
-                tattoo_matcher = TattooMatcher(
-                    tattoo_index=recognizer.tattoo_index,
-                    tattoo_mapping=recognizer.tattoo_mapping,
-                )
-                print(f"Tattoo embedding matching ready: {len(recognizer.tattoo_index)} embeddings loaded")
-
-        if recognizer.db_reader and (body_extractor or tattoo_detector):
-            print("Initializing multi-signal matcher...")
-            multi_signal_matcher = MultiSignalMatcher(
-                face_recognizer=recognizer,
-                db_reader=recognizer.db_reader,
-                body_extractor=body_extractor,
-                tattoo_detector=tattoo_detector,
-                tattoo_matcher=tattoo_matcher,
-            )
-            tattoo_count = len(multi_signal_matcher.performers_with_tattoo_embeddings)
-            print(f"Multi-signal ready: {len(multi_signal_matcher.body_data)} body, "
-                  f"{tattoo_count} performers with tattoo embeddings")
-
+        reload_database(data_dir)
     except Exception as e:
         print(f"Warning: Failed to load face database: {e}")
         print("API will start but /identify will not work until database is available")
@@ -242,11 +279,6 @@ async def lifespan(app: FastAPI):
         stash_api_key=STASH_API_KEY,
     )
     print("Recommendations database initialized!")
-
-    # Set DB version for fingerprint tracking
-    if db_manifest.get("version"):
-        set_db_version(db_manifest["version"])
-        print(f"Face recognition DB version: {db_manifest['version']}")
 
     if STASH_URL:
         print(f"Stash connection configured: {STASH_URL}")
