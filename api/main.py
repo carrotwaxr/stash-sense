@@ -365,29 +365,34 @@ async def identify_performers(request: IdentifyRequest):
             use_tattoo=request.use_tattoo,
         )
         # Convert to response format
-        results = []
+        faces = []
         for mr in multi_results:
-            results.append({
-                "face": {
-                    "bbox": mr.face.bbox,
-                    "confidence": mr.face.confidence,
-                },
-                "matches": [
-                    {
-                        "universal_id": m.universal_id,
-                        "stashdb_id": m.stashdb_id,
-                        "name": m.name,
-                        "country": m.country,
-                        "image_url": m.image_url,
-                        "score": m.combined_score,
-                    }
-                    for m in mr.matches
-                ],
-                "signals_used": mr.signals_used,
-                "body_detected": mr.body_ratios is not None,
-                "tattoos_detected": mr.tattoo_result.has_tattoos if mr.tattoo_result else False,
-            })
-        return {"results": results, "multi_signal": True}
+            bbox = mr.face.bbox
+            face_box = FaceBox(
+                x=int(bbox["x"]),
+                y=int(bbox["y"]),
+                width=int(bbox["w"]),
+                height=int(bbox["h"]),
+                confidence=mr.face.confidence,
+            )
+
+            matches = [
+                PerformerMatchResponse(
+                    stashdb_id=m.stashdb_id,
+                    name=m.name,
+                    confidence=distance_to_confidence(m.combined_score),
+                    distance=m.combined_score,
+                    facenet_distance=m.facenet_distance,
+                    arcface_distance=m.arcface_distance,
+                    country=m.country,
+                    image_url=m.image_url,
+                )
+                for m in mr.matches
+            ]
+
+            faces.append(FaceResult(box=face_box, matches=matches))
+
+        return IdentifyResponse(faces=faces, face_count=len(faces))
 
     # Run recognition
     try:
