@@ -401,7 +401,7 @@
             </div>
             <div class="ss-match-info">
               <h4>${match.name}</h4>
-              <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
+              <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>${person.signals_used && person.signals_used.includes('tattoo') ? '<span class="ss-signal-badge ss-signal-tattoo">tattoo match</span>' : ''}
               ${match.country ? `<div class="ss-country">${match.country}</div>` : ''}
               <div class="ss-links">
                 <a href="https://stashdb.org/performers/${match.stashdb_id}" target="_blank" rel="noopener" class="ss-link">

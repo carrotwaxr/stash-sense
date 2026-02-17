@@ -99,6 +99,9 @@ class ImageIdentifyRequest(BaseModel):
     top_k: int = Field(5, ge=1, le=20, description="Number of matches per face")
     max_distance: float = Field(0.6, ge=0.0, le=2.0, description="Maximum distance threshold")
     min_face_confidence: float = Field(0.5, ge=0.0, le=1.0, description="Minimum face detection confidence")
+    use_multi_signal: bool = True
+    use_body: bool = True
+    use_tattoo: bool = True
 
 
 class GalleryPerformerResult(BaseModel):
@@ -139,6 +142,7 @@ class DatabaseInfo(BaseModel):
     face_count: int
     sources: list[str]
     created_at: Optional[str] = None
+    tattoo_embedding_count: Optional[int] = None
 
 
 class HealthResponse(BaseModel):
@@ -313,12 +317,17 @@ async def database_info():
     if recognizer is None:
         raise HTTPException(status_code=503, detail="Database not loaded")
 
+    tattoo_count = None
+    if multi_signal_matcher is not None:
+        tattoo_count = len(multi_signal_matcher.performers_with_tattoo_embeddings) or None
+
     return DatabaseInfo(
         version=db_manifest.get("version", "unknown"),
         performer_count=len(recognizer.performers),
         face_count=len(recognizer.faces),
         sources=db_manifest.get("sources", ["stashdb.org"]),
         created_at=db_manifest.get("created_at"),
+        tattoo_embedding_count=tattoo_count,
     )
 
 
@@ -485,46 +494,89 @@ async def identify_image(request: ImageIdentifyRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch image: {e}")
 
-    # Run recognition
-    try:
-        results = recognizer.recognize_image(
-            image,
-            top_k=request.top_k,
-            max_distance=request.max_distance,
-            min_face_confidence=request.min_face_confidence,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
-
-    # Convert to response format (same pattern as /identify endpoint)
-    faces = []
-    img_h, img_w = image.shape[:2]
-
-    for result in results:
-        bbox = result.face.bbox  # dict with x, y, w, h in pixels
-        face_box = FaceBox(
-            x=int(bbox["x"]),
-            y=int(bbox["y"]),
-            width=int(bbox["w"]),
-            height=int(bbox["h"]),
-            confidence=result.face.confidence,
-        )
-
-        matches = [
-            PerformerMatchResponse(
-                stashdb_id=m.stashdb_id,
-                name=m.name,
-                confidence=distance_to_confidence(m.combined_score),
-                distance=m.combined_score,
-                facenet_distance=m.facenet_distance,
-                arcface_distance=m.arcface_distance,
-                country=m.country,
-                image_url=m.image_url,
+    # Use multi-signal matching if available and requested
+    if request.use_multi_signal and multi_signal_matcher is not None:
+        try:
+            multi_results = multi_signal_matcher.identify(
+                image,
+                top_k=request.top_k,
+                use_body=request.use_body,
+                use_tattoo=request.use_tattoo,
             )
-            for m in result.matches
-        ]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
 
-        faces.append(FaceResult(box=face_box, matches=matches))
+        faces = []
+        img_h, img_w = image.shape[:2]
+        # Also build results list for fingerprint saving
+        results = []
+        for mr in multi_results:
+            bbox = mr.face.bbox
+            face_box = FaceBox(
+                x=int(bbox["x"]),
+                y=int(bbox["y"]),
+                width=int(bbox["w"]),
+                height=int(bbox["h"]),
+                confidence=mr.face.confidence,
+            )
+
+            matches = [
+                PerformerMatchResponse(
+                    stashdb_id=m.stashdb_id,
+                    name=m.name,
+                    confidence=distance_to_confidence(m.combined_score),
+                    distance=m.combined_score,
+                    facenet_distance=m.facenet_distance,
+                    arcface_distance=m.arcface_distance,
+                    country=m.country,
+                    image_url=m.image_url,
+                )
+                for m in mr.matches
+            ]
+
+            faces.append(FaceResult(box=face_box, matches=matches))
+            # Build RecognitionResult for fingerprint
+            results.append(RecognitionResult(face=mr.face, matches=mr.matches))
+    else:
+        # Run face-only recognition
+        try:
+            results = recognizer.recognize_image(
+                image,
+                top_k=request.top_k,
+                max_distance=request.max_distance,
+                min_face_confidence=request.min_face_confidence,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
+
+        faces = []
+        img_h, img_w = image.shape[:2]
+
+        for result in results:
+            bbox = result.face.bbox
+            face_box = FaceBox(
+                x=int(bbox["x"]),
+                y=int(bbox["y"]),
+                width=int(bbox["w"]),
+                height=int(bbox["h"]),
+                confidence=result.face.confidence,
+            )
+
+            matches = [
+                PerformerMatchResponse(
+                    stashdb_id=m.stashdb_id,
+                    name=m.name,
+                    confidence=distance_to_confidence(m.combined_score),
+                    distance=m.combined_score,
+                    facenet_distance=m.facenet_distance,
+                    arcface_distance=m.arcface_distance,
+                    country=m.country,
+                    image_url=m.image_url,
+                )
+                for m in result.matches
+            ]
+
+            faces.append(FaceResult(box=face_box, matches=matches))
 
     # Save fingerprint
     try:
@@ -725,6 +777,11 @@ class SceneIdentifyRequest(BaseModel):
     # Already-tagged performers (StashDB IDs) for boosting
     scene_performer_stashdb_ids: list[str] = Field(default_factory=list, description="StashDB IDs of performers already tagged on this scene")
 
+    # Multi-signal settings
+    use_multi_signal: bool = True
+    use_body: bool = True
+    use_tattoo: bool = True
+
 
 class PersonResult(BaseModel):
     """A unique person detected across multiple frames."""
@@ -732,6 +789,8 @@ class PersonResult(BaseModel):
     frame_count: int = Field(description="Number of frames this person appeared in")
     best_match: Optional[PerformerMatchResponse] = Field(description="Best performer match")
     all_matches: list[PerformerMatchResponse] = Field(description="All potential matches")
+    signals_used: list[str] = Field(default_factory=list, description="Signals used for matching, e.g. ['face', 'body', 'tattoo']")
+    tattoos_detected: int = Field(0, description="Number of YOLO tattoo detections in this person's frames")
 
 
 class SceneIdentifyResponse(BaseModel):
@@ -746,6 +805,166 @@ class SceneIdentifyResponse(BaseModel):
     fingerprint_saved: bool = False
     fingerprint_error: Optional[str] = None
     timing: Optional[dict] = None
+    multi_signal_used: bool = False
+
+
+def _extract_scene_signals(
+    frames: list,
+    detected_faces: list[tuple[int, "DetectedFace"]],
+    matcher: "MultiSignalMatcher",
+    use_body: bool,
+    use_tattoo: bool,
+) -> tuple:
+    """Extract body and tattoo signals from representative scene frames.
+
+    Args:
+        frames: List of ExtractedFrame objects with .image attribute
+        detected_faces: List of (frame_index, DetectedFace) tuples
+        matcher: MultiSignalMatcher instance
+        use_body: Whether to extract body proportions
+        use_tattoo: Whether to run tattoo detection
+
+    Returns:
+        (body_ratios, tattoo_result, tattoo_scores, signals_used, tattoos_detected)
+    """
+    from body_proportions import BodyProportions
+    from tattoo_detector import TattooResult
+
+    body_ratios = None
+    tattoo_result = None
+    tattoo_scores = None
+    signals_used = ["face"]
+    tattoos_detected = 0
+
+    # Build frame index -> image lookup
+    frame_map = {f.frame_index: f.image for f in frames}
+
+    # Body: extract from one representative frame (the one with the largest face)
+    if use_body and matcher.body_extractor is not None and detected_faces:
+        # Pick frame with largest face
+        best_face_area = 0
+        best_frame_img = None
+        for frame_idx, face in detected_faces:
+            area = face.bbox["w"] * face.bbox["h"]
+            if area > best_face_area and frame_idx in frame_map:
+                best_face_area = area
+                best_frame_img = frame_map[frame_idx]
+
+        if best_frame_img is not None:
+            body_ratios = matcher.body_extractor.extract(best_frame_img)
+            if body_ratios is not None:
+                signals_used.append("body")
+
+    # Tattoo: detect on up to 3 frames with the most/largest faces
+    if use_tattoo and matcher.tattoo_detector is not None and detected_faces:
+        # Score each frame by number of faces * total face area
+        frame_scores: dict[int, float] = defaultdict(float)
+        for frame_idx, face in detected_faces:
+            frame_scores[frame_idx] += face.bbox["w"] * face.bbox["h"]
+
+        # Pick top 3 frames
+        top_frame_idxs = sorted(frame_scores, key=frame_scores.get, reverse=True)[:3]
+
+        # Merge detections across frames
+        all_detections = []
+        best_frame_for_matching = None
+        best_frame_detection_count = 0
+
+        for frame_idx in top_frame_idxs:
+            if frame_idx not in frame_map:
+                continue
+            frame_img = frame_map[frame_idx]
+            result = matcher.tattoo_detector.detect(frame_img)
+            if result.has_tattoos:
+                all_detections.extend(result.detections)
+                if len(result.detections) > best_frame_detection_count:
+                    best_frame_detection_count = len(result.detections)
+                    best_frame_for_matching = (frame_img, result)
+
+        tattoos_detected = len(all_detections)
+
+        if all_detections:
+            # Build a merged TattooResult for signal_scoring
+            tattoo_result = TattooResult(
+                detections=all_detections,
+                has_tattoos=True,
+                confidence=max(d.confidence for d in all_detections),
+            )
+            signals_used.append("tattoo")
+
+            # Run embedding matching on the frame with the most detections
+            if matcher.tattoo_matcher is not None and best_frame_for_matching:
+                frame_img, frame_result = best_frame_for_matching
+                tattoo_scores = matcher.tattoo_matcher.match(
+                    frame_img, frame_result.detections
+                )
+        else:
+            # No tattoos detected — still useful signal (absence)
+            tattoo_result = TattooResult(
+                detections=[], has_tattoos=False, confidence=0.0,
+            )
+
+    return body_ratios, tattoo_result, tattoo_scores, signals_used, tattoos_detected
+
+
+def _rerank_scene_persons(
+    persons: list[PersonResult],
+    matcher: "MultiSignalMatcher",
+    body_ratios,
+    tattoo_result,
+    tattoo_scores: dict | None,
+    signals_used: list[str],
+    tattoos_detected: int,
+) -> list[PersonResult]:
+    """Re-rank PersonResult matches using multi-signal scoring.
+
+    Adjusts the distance-based scores in each PersonResult's all_matches list
+    using body + tattoo multipliers, then re-selects best_match. Also attaches
+    signals_used and tattoos_detected to each PersonResult.
+
+    Args:
+        persons: List of PersonResult from any matching mode
+        matcher: MultiSignalMatcher instance (for body data lookup and tattoo embedding set)
+        body_ratios: Body proportions from the scene (may be None)
+        tattoo_result: Tattoo detection result (may be None)
+        tattoo_scores: Tattoo embedding similarity scores (may be None)
+        signals_used: List of signal names used (e.g. ["face", "body", "tattoo"])
+        tattoos_detected: Number of YOLO tattoo detections in scene frames
+
+    Returns:
+        Persons list with re-ranked matches and signal metadata attached
+    """
+    from signal_scoring import body_ratio_penalty, tattoo_adjustment
+
+    for person in persons:
+        person.signals_used = signals_used.copy()
+        person.tattoos_detected = tattoos_detected
+
+        if not person.all_matches:
+            continue
+
+        # Re-rank all_matches using multi-signal adjustments
+        scored = []
+        for m in person.all_matches:
+            # Derive universal_id from stashdb_id (matches recognizer convention)
+            uid = f"stashdb.org:{m.stashdb_id}"
+
+            # Base score from face distance (higher = better)
+            base_score = 1.0 / (1.0 + m.distance)
+
+            body_mult = body_ratio_penalty(body_ratios, matcher._get_candidate_body_ratios(uid))
+            has_embeddings = uid in matcher.performers_with_tattoo_embeddings
+            tattoo_mult = tattoo_adjustment(tattoo_result, uid, tattoo_scores, has_embeddings)
+
+            final_score = base_score * body_mult * tattoo_mult
+            scored.append((m, final_score))
+
+        # Sort by final score descending
+        scored.sort(key=lambda x: x[1], reverse=True)
+        person.all_matches = [m for m, _ in scored]
+        person.best_match = person.all_matches[0] if person.all_matches else None
+
+    return persons
 
 
 def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -1542,6 +1761,27 @@ async def identify_scene(request: SceneIdentifyRequest):
         except Exception as e:
             print(f"[identify_scene] Screenshot processing failed: {e}")
 
+    # Extract multi-signal data (body + tattoo) from representative frames
+    scene_body_ratios = None
+    scene_tattoo_result = None
+    scene_tattoo_scores = None
+    scene_signals_used = ["face"]
+    scene_tattoos_detected = 0
+    ms_used = False
+
+    if (request.use_multi_signal and multi_signal_matcher is not None
+            and (request.use_body or request.use_tattoo) and detected_faces):
+        t_ms = time.time()
+        scene_body_ratios, scene_tattoo_result, scene_tattoo_scores, scene_signals_used, scene_tattoos_detected = _extract_scene_signals(
+            frames=extraction_result.frames,
+            detected_faces=detected_faces,
+            matcher=multi_signal_matcher,
+            use_body=request.use_body,
+            use_tattoo=request.use_tattoo,
+        )
+        ms_used = len(scene_signals_used) > 1
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Multi-signal: signals={scene_signals_used}, tattoos_detected={scene_tattoos_detected} in {time.time()-t_ms:.1f}s")
+
     # Choose matching mode
     t_match_end = 0.0
     t_match = time.time()
@@ -1627,6 +1867,18 @@ async def identify_scene(request: SceneIdentifyRequest):
         for i, person in enumerate(persons):
             person.person_id = i
 
+    # Apply multi-signal re-ranking if signals were extracted
+    if ms_used and multi_signal_matcher is not None:
+        persons = _rerank_scene_persons(
+            persons=persons,
+            matcher=multi_signal_matcher,
+            body_ratios=scene_body_ratios,
+            tattoo_result=scene_tattoo_result,
+            tattoo_scores=scene_tattoo_scores,
+            signals_used=scene_signals_used,
+            tattoos_detected=scene_tattoos_detected,
+        )
+
     t_match_end = time.time()
     top_names = [p.best_match.name for p in persons[:3] if p.best_match]
     print(f"[identify_scene] [{time.time()-t_start:.1f}s] === DONE === Top matches: {', '.join(top_names)}")
@@ -1685,6 +1937,7 @@ async def identify_scene(request: SceneIdentifyRequest):
         fingerprint_saved=fingerprint_saved,
         fingerprint_error=fingerprint_error,
         timing=timing_data,
+        multi_signal_used=ms_used,
     )
 
 
