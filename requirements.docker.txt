@@ -1,7 +1,11 @@
 # Docker runtime requirements
-# PyTorch: NOT included (tattoo detection disabled by default)
 # TensorFlow: NOT included (only needed by convert_models_to_onnx.py)
 # DeepFace: NOT included (only needed by convert_models_to_onnx.py)
+
+# PyTorch (for tattoo detection + embedding matching)
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch
+torchvision
 
 # Face recognition
 insightface>=0.7.0
