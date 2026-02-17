@@ -41,6 +41,12 @@ def main():
         result = identify_gallery(sidecar_url, gallery_id)
     elif mode == "database_info":
         result = database_info(sidecar_url)
+    elif mode == "db_check_update":
+        result = sidecar_get(sidecar_url, "/database/check-update")
+    elif mode == "db_update":
+        result = sidecar_post(sidecar_url, "/database/update", timeout=10)
+    elif mode == "db_update_status":
+        result = sidecar_get(sidecar_url, "/database/update/status")
     elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
