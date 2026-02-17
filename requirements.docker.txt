@@ -7,6 +7,8 @@
 torch
 torchvision
 ultralytics>=8.0.0
+pandas
+seaborn
 
 # Face recognition
 insightface>=0.7.0

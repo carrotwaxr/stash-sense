@@ -155,7 +155,12 @@ class TattooDetector:
     def model(self):
         """Lazy-load YOLOv5 model."""
         if self._model is None:
-            from ultralytics import YOLO
+            import pathlib
+            import torch
+
+            # Fix for models saved on Windows - patch WindowsPath to PosixPath
+            # This is needed because TattooTrace model was saved on Windows
+            pathlib.WindowsPath = pathlib.PosixPath
 
             if self._model_path:
                 model_path = Path(self._model_path)
@@ -167,7 +172,13 @@ class TattooDetector:
                 model_path = _get_model_path()
 
             logger.info(f"Loading tattoo detection model from {model_path}...")
-            self._model = YOLO(str(model_path))
+            self._model = torch.hub.load(
+                "ultralytics/yolov5",
+                "custom",
+                path=str(model_path),
+                trust_repo=True,
+            )
+            self._model.conf = self.MIN_CONFIDENCE
             logger.info("Tattoo detection model loaded.")
 
         return self._model
@@ -183,17 +194,16 @@ class TattooDetector:
             TattooResult with detected tattoos
         """
         # Run inference
-        results = self.model(image, conf=self.MIN_CONFIDENCE, verbose=False)
+        results = self.model(image)
 
         # Parse detections
         detections = []
         height, width = image.shape[:2]
 
-        # Ultralytics v8 results format
-        boxes = results[0].boxes
-        for i in range(len(boxes)):
-            x1, y1, x2, y2 = boxes.xyxy[i].cpu().numpy()
-            conf = float(boxes.conf[i].cpu().numpy())
+        # Results format: xyxy, conf, cls
+        for *xyxy, conf, cls in results.xyxy[0].cpu().numpy():
+            x1, y1, x2, y2 = xyxy
+            conf = float(conf)
 
             if conf < self.MIN_CONFIDENCE:
                 continue
