@@ -24,7 +24,7 @@ from typing import Optional
 
 import httpx
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -44,6 +44,7 @@ from frame_extractor import (
 )
 from matching import MatchingConfig
 from recommendations_router import router as recommendations_router, init_recommendations, save_scene_fingerprint, save_image_fingerprint, set_db_version
+from database_updater import DatabaseUpdater, UpdateStatus
 
 
 # Pydantic models for API
@@ -153,6 +154,30 @@ class HealthResponse(BaseModel):
     face_count: int = 0
 
 
+class CheckUpdateResponse(BaseModel):
+    current_version: str
+    latest_version: Optional[str] = None
+    update_available: bool
+    release_name: Optional[str] = None
+    download_url: Optional[str] = None
+    download_size_mb: Optional[int] = None
+    published_at: Optional[str] = None
+    error: Optional[str] = None
+
+
+class StartUpdateResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+class UpdateStatusResponse(BaseModel):
+    status: str
+    progress_pct: int = 0
+    current_version: Optional[str] = None
+    target_version: Optional[str] = None
+    error: Optional[str] = None
+
+
 # Global recognizer instance
 recognizer: Optional[FaceRecognizer] = None
 db_manifest: dict = {}
@@ -163,6 +188,9 @@ body_extractor: Optional[BodyProportionExtractor] = None
 tattoo_detector: Optional[TattooDetector] = None
 tattoo_matcher = None  # Optional[TattooMatcher]
 multi_signal_config: Optional[MultiSignalConfig] = None
+
+# Database self-updater
+db_updater: Optional[DatabaseUpdater] = None
 
 
 def reload_database(data_dir: Path) -> bool:
@@ -262,6 +290,8 @@ async def lifespan(app: FastAPI):
 
     data_dir = Path(DATA_DIR)
 
+    global db_updater
+
     # Load face recognition database
     try:
         reload_database(data_dir)
@@ -269,6 +299,12 @@ async def lifespan(app: FastAPI):
         print(f"Warning: Failed to load face database: {e}")
         print("API will start but /identify will not work until database is available")
         recognizer = None
+
+    # Initialize database self-updater
+    db_updater = DatabaseUpdater(
+        data_dir=data_dir,
+        reload_fn=reload_database,
+    )
 
     # Initialize recommendations database
     rec_db_path = data_dir / "stash_sense.db"
@@ -318,6 +354,20 @@ def distance_to_confidence(distance: float) -> float:
     return max(0.0, min(1.0, 1.0 - distance))
 
 
+async def require_db_available():
+    """Return 503 if a database update is currently swapping files."""
+    if db_updater and db_updater._state.status in (
+        UpdateStatus.SWAPPING, UpdateStatus.RELOADING,
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Database update in progress",
+            headers={"Retry-After": "10"},
+        )
+    if recognizer is None:
+        raise HTTPException(status_code=503, detail="Database not loaded")
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check API health and database status."""
@@ -363,16 +413,48 @@ async def database_info():
     )
 
 
+@app.get("/database/check-update", response_model=CheckUpdateResponse)
+async def check_database_update():
+    """Check GitHub for a newer database release."""
+    if db_updater is None:
+        raise HTTPException(status_code=503, detail="Updater not initialized")
+    result = await db_updater.check_update()
+    return CheckUpdateResponse(**result)
+
+
+@app.post("/database/update", response_model=StartUpdateResponse)
+async def start_database_update():
+    """Trigger a database update."""
+    if db_updater is None:
+        raise HTTPException(status_code=503, detail="Updater not initialized")
+    if db_updater._update_task and not db_updater._update_task.done():
+        raise HTTPException(status_code=409, detail="Update already in progress")
+    check = await db_updater.check_update()
+    if not check.get("update_available"):
+        raise HTTPException(status_code=400, detail="Already on latest version")
+    job_id = await db_updater.start_update(
+        download_url=check["download_url"],
+        target_version=check["latest_version"],
+    )
+    return StartUpdateResponse(job_id=job_id, status="started")
+
+
+@app.get("/database/update/status", response_model=UpdateStatusResponse)
+async def get_update_status():
+    """Get current status of a database update."""
+    if db_updater is None:
+        raise HTTPException(status_code=503, detail="Updater not initialized")
+    return UpdateStatusResponse(**db_updater.get_status())
+
+
 @app.post("/identify", response_model=IdentifyResponse)
-async def identify_performers(request: IdentifyRequest):
+async def identify_performers(request: IdentifyRequest, _=Depends(require_db_available)):
     """
     Identify performers in an image.
 
     Provide either `image_url` or `image_base64`. Returns detected faces
     with potential performer matches sorted by confidence.
     """
-    if recognizer is None:
-        raise HTTPException(status_code=503, detail="Database not loaded")
 
     # Validate input
     if not request.image_url and not request.image_base64:
@@ -482,6 +564,7 @@ async def identify_from_url(
     url: str = Query(..., description="Image URL to analyze"),
     top_k: int = Query(5, ge=1, le=20),
     max_distance: float = Query(0.6, ge=0.0, le=2.0),
+    _=Depends(require_db_available),
 ):
     """Convenience endpoint to identify from URL via query params."""
     return await identify_performers(
@@ -490,13 +573,11 @@ async def identify_from_url(
 
 
 @app.post("/identify/image", response_model=IdentifyResponse)
-async def identify_image(request: ImageIdentifyRequest):
+async def identify_image(request: ImageIdentifyRequest, _=Depends(require_db_available)):
     """
     Identify performers in a Stash image by image ID.
     Fetches the image from Stash, runs face recognition, and stores fingerprint.
     """
-    if recognizer is None:
-        raise HTTPException(status_code=503, detail="Database not loaded")
 
     base_url = STASH_URL.rstrip("/")
     api_key = STASH_API_KEY
@@ -626,16 +707,13 @@ async def identify_image(request: ImageIdentifyRequest):
 
 
 @app.post("/identify/gallery", response_model=GalleryIdentifyResponse)
-async def identify_gallery(request: GalleryIdentifyRequest):
+async def identify_gallery(request: GalleryIdentifyRequest, _=Depends(require_db_available)):
     """
     Identify all performers across a gallery.
     Processes each image, aggregates results per-performer, and stores fingerprints.
     """
     import time
     t_start = time.time()
-
-    if recognizer is None:
-        raise HTTPException(status_code=503, detail="Database not loaded")
 
     base_url = STASH_URL.rstrip("/")
     api_key = STASH_API_KEY
@@ -1604,7 +1682,7 @@ def hybrid_matching(
 
 
 @app.post("/identify/scene", response_model=SceneIdentifyResponse)
-async def identify_scene(request: SceneIdentifyRequest):
+async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_available)):
     """
     Identify all performers in a scene using ffmpeg frame extraction.
 
@@ -1613,9 +1691,6 @@ async def identify_scene(request: SceneIdentifyRequest):
     """
     import time
     t_start = time.time()
-
-    if recognizer is None:
-        raise HTTPException(status_code=503, detail="Database not loaded")
 
     if not check_ffmpeg_available():
         raise HTTPException(status_code=503, detail="ffmpeg not available")
