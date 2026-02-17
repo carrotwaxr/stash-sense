@@ -6,6 +6,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu124
 torch
 torchvision
+ultralytics>=8.0.0
 
 # Face recognition
 insightface>=0.7.0
@@ -29,3 +30,4 @@ opencv-python-headless>=4.8.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 tqdm>=4.65.0
+gdown>=4.7.0

@@ -29,6 +29,7 @@ api/data-archives/
 *.db
 *.h5
 *.pt
+!api/models/tattoo/*.pt
 
 # Development
 api/test_output/
