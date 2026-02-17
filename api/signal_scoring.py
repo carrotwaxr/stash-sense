@@ -50,47 +50,54 @@ def body_ratio_penalty(
 
 def tattoo_adjustment(
     query_result: Optional[TattooResult],
-    has_tattoos: bool,
-    locations: set[str],
+    candidate_id: str,
+    tattoo_scores: Optional[dict[str, float]] = None,
+    has_tattoo_embeddings: bool = False,
 ) -> float:
     """
-    Compute adjustment multiplier based on tattoo comparison.
+    Compute adjustment multiplier based on tattoo embedding similarity.
+
+    Uses visual similarity scores from TattooMatcher (Voyager kNN on
+    EfficientNet-B0 embeddings) instead of binary has/doesn't-have presence.
 
     Args:
         query_result: Tattoo detection result from the query image (may be None)
-        has_tattoos: Whether the candidate has tattoos
-        locations: Set of tattoo location hints for the candidate
+        candidate_id: Universal ID of the candidate performer
+        tattoo_scores: Dict of universal_id -> best similarity score from TattooMatcher
+        has_tattoo_embeddings: Whether the candidate has any tattoo embeddings in the index
 
     Returns:
         Adjustment multiplier:
-        - 1.0 if query_result is None (neutral)
-        - 0.7 if query shows tattoos but candidate has none (penalty)
-        - 0.95 if query shows no tattoos but candidate has tattoos (slight penalty)
-        - 1.15 if both have tattoos and locations overlap (boost)
-        - 0.9 if both have tattoos but different locations
+        - 1.0 if query_result is None or no tattoos detected (neutral)
+        - 1.3-1.5 if high tattoo similarity (>0.7) between query and candidate
+        - 1.1 if moderate tattoo similarity (>0.5)
+        - 0.7 if query has tattoos but candidate has no tattoo embeddings (penalty)
+        - 0.95 if query has no tattoos but candidate has many tattoo embeddings
         - 1.0 otherwise (neutral)
     """
     if query_result is None:
         return 1.0
 
     query_has_tattoos = query_result.has_tattoos
-    query_locations = query_result.locations
 
-    # Query has tattoos, candidate does not
-    if query_has_tattoos and not has_tattoos:
+    # No tattoos in query image
+    if not query_has_tattoos:
+        if has_tattoo_embeddings:
+            return 0.95  # Slight penalty: candidate has tattoos, query doesn't
+        return 1.0
+
+    # Query has tattoos — check embedding similarity scores
+    if tattoo_scores:
+        score = tattoo_scores.get(candidate_id, 0.0)
+        if score > 0.7:
+            # High similarity — strong boost (scale linearly 1.3-1.5)
+            return 1.3 + (score - 0.7) * (0.2 / 0.3)
+        elif score > 0.5:
+            return 1.1  # Moderate similarity — modest boost
+
+    # Query has tattoos but candidate has no tattoo embeddings at all
+    if not has_tattoo_embeddings:
         return 0.7
 
-    # Query has no tattoos, candidate does
-    if not query_has_tattoos and has_tattoos:
-        return 0.95
-
-    # Both have tattoos - check location overlap
-    if query_has_tattoos and has_tattoos:
-        # Check if any locations overlap
-        if query_locations & locations:
-            return 1.15
-        else:
-            return 0.9
-
-    # Neither has tattoos (or other edge cases)
+    # Query has tattoos, candidate has embeddings, but low/no similarity
     return 1.0

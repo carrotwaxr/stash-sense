@@ -157,6 +157,7 @@ db_manifest: dict = {}
 multi_signal_matcher: Optional[MultiSignalMatcher] = None
 body_extractor: Optional[BodyProportionExtractor] = None
 tattoo_detector: Optional[TattooDetector] = None
+tattoo_matcher = None  # Optional[TattooMatcher]
 multi_signal_config: Optional[MultiSignalConfig] = None
 
 
@@ -164,7 +165,7 @@ multi_signal_config: Optional[MultiSignalConfig] = None
 async def lifespan(app: FastAPI):
     """Load the recognizer and initialize recommendations on startup."""
     global recognizer, db_manifest
-    global multi_signal_matcher, body_extractor, tattoo_detector, multi_signal_config
+    global multi_signal_matcher, body_extractor, tattoo_detector, tattoo_matcher, multi_signal_config
 
     data_dir = Path(DATA_DIR)
     print(f"Loading face database from {data_dir}...")
@@ -188,9 +189,27 @@ async def lifespan(app: FastAPI):
             print("Initializing body proportion extractor...")
             body_extractor = BodyProportionExtractor()
 
-        if multi_signal_config.enable_tattoo:
+        # Tattoo signal: "auto" enables if index files exist, "true" always enables
+        enable_tattoo = multi_signal_config.enable_tattoo
+        tattoo_enabled = (
+            enable_tattoo == "true"
+            or (enable_tattoo == "auto"
+                and db_config.tattoo_index_path.exists()
+                and db_config.tattoo_json_path.exists())
+        )
+
+        if tattoo_enabled:
             print("Initializing tattoo detector...")
             tattoo_detector = TattooDetector()
+
+            # Initialize embedding-based matcher if index is available
+            if recognizer.tattoo_index is not None and recognizer.tattoo_mapping is not None:
+                from tattoo_matcher import TattooMatcher
+                tattoo_matcher = TattooMatcher(
+                    tattoo_index=recognizer.tattoo_index,
+                    tattoo_mapping=recognizer.tattoo_mapping,
+                )
+                print(f"Tattoo embedding matching ready: {len(recognizer.tattoo_index)} embeddings loaded")
 
         if recognizer.db_reader and (body_extractor or tattoo_detector):
             print("Initializing multi-signal matcher...")
@@ -199,9 +218,11 @@ async def lifespan(app: FastAPI):
                 db_reader=recognizer.db_reader,
                 body_extractor=body_extractor,
                 tattoo_detector=tattoo_detector,
+                tattoo_matcher=tattoo_matcher,
             )
+            tattoo_count = len(multi_signal_matcher.performers_with_tattoo_embeddings)
             print(f"Multi-signal ready: {len(multi_signal_matcher.body_data)} body, "
-                  f"{len(multi_signal_matcher.tattoo_data)} tattoo records")
+                  f"{tattoo_count} performers with tattoo embeddings")
 
     except Exception as e:
         print(f"Warning: Failed to load face database: {e}")

@@ -70,6 +70,27 @@ class FaceRecognizer:
 
         print(f"Loaded {len(self.faces)} faces, {len(self.performers)} performers")
 
+        # Optionally load AdaFace index
+        self.adaface_index = None
+        if db_config.adaface_index_path and db_config.adaface_index_path.exists():
+            print(f"Loading AdaFace index from {db_config.adaface_index_path}...")
+            with open(db_config.adaface_index_path, "rb") as f:
+                self.adaface_index = Index.load(f)
+            print(f"AdaFace index loaded: {len(self.adaface_index)} vectors")
+
+        # Optionally load tattoo embedding index and mapping
+        self.tattoo_index = None
+        self.tattoo_mapping = None
+        if (db_config.tattoo_index_path and db_config.tattoo_index_path.exists()
+                and db_config.tattoo_json_path and db_config.tattoo_json_path.exists()):
+            print(f"Loading tattoo embedding index from {db_config.tattoo_index_path}...")
+            with open(db_config.tattoo_index_path, "rb") as f:
+                self.tattoo_index = Index.load(f)
+            with open(db_config.tattoo_json_path) as f:
+                self.tattoo_mapping = json.load(f)  # index -> universal_id
+            print(f"Tattoo embeddings loaded: {len(self.tattoo_index)} vectors, "
+                  f"{len(self.tattoo_mapping)} mappings")
+
         # Initialize SQLite database reader for multi-signal data
         self.db_reader = None
         if db_config.sqlite_db_path and db_config.sqlite_db_path.exists():

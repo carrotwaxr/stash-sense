@@ -69,8 +69,8 @@ class TestMultiSignalMatchDataclass:
 class TestMultiSignalMatcherInit:
     """Tests for MultiSignalMatcher initialization."""
 
-    def test_init_loads_body_and_tattoo_data(self):
-        """Test that matcher loads body and tattoo data on init."""
+    def test_init_loads_body_data(self):
+        """Test that matcher loads body data on init."""
         mock_face_recognizer = Mock()
         mock_db_reader = Mock()
         mock_db_reader.get_all_body_proportions.return_value = {
@@ -81,13 +81,6 @@ class TestMultiSignalMatcherInit:
                 "confidence": 0.9,
             }
         }
-        mock_db_reader.get_all_tattoo_info.return_value = {
-            "stashdb.org:uuid1": {
-                "has_tattoos": True,
-                "locations": ["left arm"],
-                "count": 1,
-            }
-        }
 
         matcher = MultiSignalMatcher(
             face_recognizer=mock_face_recognizer,
@@ -95,16 +88,13 @@ class TestMultiSignalMatcherInit:
         )
 
         mock_db_reader.get_all_body_proportions.assert_called_once()
-        mock_db_reader.get_all_tattoo_info.assert_called_once()
         assert matcher.body_data == mock_db_reader.get_all_body_proportions.return_value
-        assert matcher.tattoo_data == mock_db_reader.get_all_tattoo_info.return_value
 
     def test_init_with_optional_extractors(self):
         """Test that matcher stores optional body and tattoo extractors."""
         mock_face_recognizer = Mock()
         mock_db_reader = Mock()
         mock_db_reader.get_all_body_proportions.return_value = {}
-        mock_db_reader.get_all_tattoo_info.return_value = {}
         mock_body_extractor = Mock()
         mock_tattoo_detector = Mock()
 
@@ -118,6 +108,27 @@ class TestMultiSignalMatcherInit:
         assert matcher.body_extractor is mock_body_extractor
         assert matcher.tattoo_detector is mock_tattoo_detector
 
+    def test_init_builds_tattoo_embedding_set(self):
+        """Test that matcher builds performers_with_tattoo_embeddings from mapping."""
+        mock_face_recognizer = Mock()
+        mock_db_reader = Mock()
+        mock_db_reader.get_all_body_proportions.return_value = {}
+        mock_tattoo_matcher = Mock()
+        mock_tattoo_matcher.tattoo_mapping = [
+            {"universal_id": "stashdb.org:uuid1"}, {"universal_id": "stashdb.org:uuid1"},
+            {"universal_id": "stashdb.org:uuid2"}, None
+        ]
+
+        matcher = MultiSignalMatcher(
+            face_recognizer=mock_face_recognizer,
+            db_reader=mock_db_reader,
+            tattoo_matcher=mock_tattoo_matcher,
+        )
+
+        assert "stashdb.org:uuid1" in matcher.performers_with_tattoo_embeddings
+        assert "stashdb.org:uuid2" in matcher.performers_with_tattoo_embeddings
+        assert len(matcher.performers_with_tattoo_embeddings) == 2
+
 
 class TestMultiSignalMatcherIdentify:
     """Tests for MultiSignalMatcher.identify method."""
@@ -128,8 +139,8 @@ class TestMultiSignalMatcherIdentify:
         db_reader=None,
         body_extractor=None,
         tattoo_detector=None,
+        tattoo_matcher=None,
         body_data=None,
-        tattoo_data=None,
     ):
         """Helper to create a matcher with mocked dependencies."""
         if face_recognizer is None:
@@ -137,13 +148,13 @@ class TestMultiSignalMatcherIdentify:
         if db_reader is None:
             db_reader = Mock()
             db_reader.get_all_body_proportions.return_value = body_data or {}
-            db_reader.get_all_tattoo_info.return_value = tattoo_data or {}
 
         return MultiSignalMatcher(
             face_recognizer=face_recognizer,
             db_reader=db_reader,
             body_extractor=body_extractor,
             tattoo_detector=tattoo_detector,
+            tattoo_matcher=tattoo_matcher,
         )
 
     def test_identify_calls_face_recognizer(self):
@@ -279,6 +290,79 @@ class TestMultiSignalMatcherIdentify:
         mock_tattoo_detector.detect.assert_called_once_with(image)
         assert results[0].tattoo_result == expected_result
 
+    def test_identify_runs_tattoo_matcher_on_detections(self):
+        """Test that identify runs tattoo_matcher.match when tattoos detected."""
+        mock_face_recognizer = Mock()
+        mock_face_recognizer.recognize_image.return_value = [
+            Mock(
+                face=Mock(),
+                matches=[
+                    Mock(universal_id="stashdb.org:uuid1", combined_score=0.3)
+                ],
+            )
+        ]
+
+        tattoo_detections = [
+            TattooDetection(
+                bbox={"x": 0.1, "y": 0.2, "w": 0.1, "h": 0.1},
+                confidence=0.9,
+                location_hint="left arm",
+            )
+        ]
+
+        mock_tattoo_detector = Mock()
+        mock_tattoo_detector.detect.return_value = TattooResult(
+            detections=tattoo_detections,
+            has_tattoos=True,
+            confidence=0.9,
+        )
+
+        mock_tattoo_matcher = Mock()
+        mock_tattoo_matcher.tattoo_mapping = [{"universal_id": "stashdb.org:uuid1"}]
+        mock_tattoo_matcher.match.return_value = {"stashdb.org:uuid1": 0.85}
+
+        matcher = self._create_matcher(
+            face_recognizer=mock_face_recognizer,
+            tattoo_detector=mock_tattoo_detector,
+            tattoo_matcher=mock_tattoo_matcher,
+        )
+
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        results = matcher.identify(image, use_tattoo=True)
+
+        mock_tattoo_matcher.match.assert_called_once()
+
+    def test_identify_skips_tattoo_matching_when_no_tattoos_detected(self):
+        """Test that tattoo_matcher.match is not called when no tattoos detected."""
+        mock_face_recognizer = Mock()
+        mock_face_recognizer.recognize_image.return_value = [
+            Mock(
+                face=Mock(),
+                matches=[
+                    Mock(universal_id="stashdb.org:uuid1", combined_score=0.3)
+                ],
+            )
+        ]
+
+        mock_tattoo_detector = Mock()
+        mock_tattoo_detector.detect.return_value = TattooResult(
+            detections=[], has_tattoos=False, confidence=0.0,
+        )
+
+        mock_tattoo_matcher = Mock()
+        mock_tattoo_matcher.tattoo_mapping = []
+
+        matcher = self._create_matcher(
+            face_recognizer=mock_face_recognizer,
+            tattoo_detector=mock_tattoo_detector,
+            tattoo_matcher=mock_tattoo_matcher,
+        )
+
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        matcher.identify(image, use_tattoo=True)
+
+        mock_tattoo_matcher.match.assert_not_called()
+
     def test_identify_skips_tattoo_detection_when_use_tattoo_false(self):
         """Test that identify skips tattoo detection when use_tattoo=False."""
         mock_face_recognizer = Mock()
@@ -347,16 +431,21 @@ class TestMultiSignalMatcherIdentify:
 class TestMultiSignalMatcherRerank:
     """Tests for MultiSignalMatcher._rerank_candidates method."""
 
-    def _create_matcher_with_data(self, body_data=None, tattoo_data=None):
+    def _create_matcher_with_data(self, body_data=None, tattoo_mapping=None):
         """Helper to create a matcher with pre-populated data."""
         mock_face_recognizer = Mock()
         mock_db_reader = Mock()
         mock_db_reader.get_all_body_proportions.return_value = body_data or {}
-        mock_db_reader.get_all_tattoo_info.return_value = tattoo_data or {}
+
+        mock_tattoo_matcher = None
+        if tattoo_mapping is not None:
+            mock_tattoo_matcher = Mock()
+            mock_tattoo_matcher.tattoo_mapping = tattoo_mapping
 
         return MultiSignalMatcher(
             face_recognizer=mock_face_recognizer,
             db_reader=mock_db_reader,
+            tattoo_matcher=mock_tattoo_matcher,
         )
 
     def test_rerank_converts_distance_to_similarity(self):
@@ -373,6 +462,7 @@ class TestMultiSignalMatcherRerank:
             candidates=[candidate],
             body_ratios=None,
             tattoo_result=None,
+            tattoo_scores=None,
             top_k=5,
         )
 
@@ -409,6 +499,7 @@ class TestMultiSignalMatcherRerank:
             candidates=[candidate],
             body_ratios=query_ratios,
             tattoo_result=None,
+            tattoo_scores=None,
             top_k=5,
         )
 
@@ -424,31 +515,25 @@ class TestMultiSignalMatcherRerank:
             candidates=[candidate],
             body_ratios=query_ratios_mismatch,
             tattoo_result=None,
+            tattoo_scores=None,
             top_k=5,
         )
 
         # Mismatched body should have lower final score
-        # Since score calculation may differ, we just check ranking effect
         assert len(results_with_match) == 1
         assert len(results_with_mismatch) == 1
 
-    def test_rerank_applies_tattoo_adjustment(self):
-        """Test that rerank applies tattoo adjustment."""
-        tattoo_data = {
-            "stashdb.org:uuid1": {
-                "has_tattoos": True,
-                "locations": ["left arm"],
-                "count": 1,
-            },
-        }
-        matcher = self._create_matcher_with_data(tattoo_data=tattoo_data)
+    def test_rerank_applies_tattoo_embedding_boost(self):
+        """Test that rerank applies tattoo embedding similarity boost."""
+        tattoo_mapping = [{"universal_id": "stashdb.org:uuid1"}, {"universal_id": "stashdb.org:uuid1"}]
+        matcher = self._create_matcher_with_data(tattoo_mapping=tattoo_mapping)
 
         candidate = Mock(
-                        universal_id="stashdb.org:uuid1",
+            universal_id="stashdb.org:uuid1",
             combined_score=0.3,
         )
 
-        # Query with matching tattoo
+        # Query with tattoos detected
         query_tattoo = TattooResult(
             detections=[
                 TattooDetection(
@@ -461,10 +546,14 @@ class TestMultiSignalMatcherRerank:
             confidence=0.9,
         )
 
+        # High similarity score from matcher
+        tattoo_scores = {"stashdb.org:uuid1": 0.85}
+
         results = matcher._rerank_candidates(
             candidates=[candidate],
             body_ratios=None,
             tattoo_result=query_tattoo,
+            tattoo_scores=tattoo_scores,
             top_k=5,
         )
 
@@ -488,6 +577,7 @@ class TestMultiSignalMatcherRerank:
             candidates=[candidate2, candidate1],  # Pass in wrong order
             body_ratios=None,
             tattoo_result=None,
+            tattoo_scores=None,
             top_k=5,
         )
 
@@ -514,6 +604,7 @@ class TestMultiSignalMatcherRerank:
             candidates=candidates,
             body_ratios=None,
             tattoo_result=None,
+            tattoo_scores=None,
             top_k=3,
         )
 
@@ -571,18 +662,6 @@ class TestMultiSignalMatcherIntegration:
                 "confidence": 0.9,
             },
         }
-        mock_db_reader.get_all_tattoo_info.return_value = {
-            "stashdb.org:uuid1": {
-                "has_tattoos": True,
-                "locations": ["left arm"],
-                "count": 1,
-            },
-            "stashdb.org:uuid2": {
-                "has_tattoos": False,
-                "locations": [],
-                "count": 0,
-            },
-        }
 
         # Set up body extractor mock
         mock_body_extractor = Mock()
@@ -594,18 +673,26 @@ class TestMultiSignalMatcherIntegration:
         )
 
         # Set up tattoo detector mock
+        tattoo_detections = [
+            TattooDetection(
+                bbox={"x": 0.1, "y": 0.2, "w": 0.1, "h": 0.1},
+                confidence=0.9,
+                location_hint="left arm",
+            )
+        ]
         mock_tattoo_detector = Mock()
         mock_tattoo_detector.detect.return_value = TattooResult(
-            detections=[
-                TattooDetection(
-                    bbox={"x": 0.1, "y": 0.2, "w": 0.1, "h": 0.1},
-                    confidence=0.9,
-                    location_hint="left arm",  # Matches uuid1
-                )
-            ],
+            detections=tattoo_detections,
             has_tattoos=True,
             confidence=0.9,
         )
+
+        # Set up tattoo matcher mock — uuid1 has high similarity
+        mock_tattoo_matcher = Mock()
+        mock_tattoo_matcher.tattoo_mapping = [
+            {"universal_id": "stashdb.org:uuid1"}, {"universal_id": "stashdb.org:uuid1"}
+        ]
+        mock_tattoo_matcher.match.return_value = {"stashdb.org:uuid1": 0.85}
 
         # Create matcher
         matcher = MultiSignalMatcher(
@@ -613,6 +700,7 @@ class TestMultiSignalMatcherIntegration:
             db_reader=mock_db_reader,
             body_extractor=mock_body_extractor,
             tattoo_detector=mock_tattoo_detector,
+            tattoo_matcher=mock_tattoo_matcher,
         )
 
         # Run identification

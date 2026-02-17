@@ -154,18 +154,22 @@ class TestBodyRatioPenalty:
 
 
 class TestTattooAdjustment:
-    """Tests for tattoo_adjustment function."""
+    """Tests for tattoo_adjustment function (v2 embedding-based)."""
 
     def test_none_query_result_returns_neutral(self):
         """Test that None query_result returns 1.0 (neutral)."""
         from signal_scoring import tattoo_adjustment
 
-        result = tattoo_adjustment(None, has_tattoos=True, locations={"left arm"})
+        result = tattoo_adjustment(
+            None, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={"stashdb.org:uuid1": 0.9},
+            has_tattoo_embeddings=True,
+        )
 
         assert result == 1.0
 
-    def test_query_has_tattoos_candidate_has_none_returns_penalty(self):
-        """Test that query with tattoos but candidate without returns 0.7."""
+    def test_query_has_tattoos_candidate_has_no_embeddings_returns_penalty(self):
+        """Test that query with tattoos but candidate without embeddings returns 0.7."""
         from signal_scoring import tattoo_adjustment
 
         query_result = TattooResult(
@@ -180,12 +184,15 @@ class TestTattooAdjustment:
             confidence=0.9,
         )
 
-        result = tattoo_adjustment(query_result, has_tattoos=False, locations=set())
+        result = tattoo_adjustment(
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={}, has_tattoo_embeddings=False,
+        )
 
         assert result == 0.7
 
-    def test_query_no_tattoos_candidate_has_tattoos_returns_slight_penalty(self):
-        """Test that query without tattoos but candidate with returns 0.95."""
+    def test_query_no_tattoos_candidate_has_embeddings_returns_slight_penalty(self):
+        """Test that query without tattoos but candidate with embeddings returns 0.95."""
         from signal_scoring import tattoo_adjustment
 
         query_result = TattooResult(
@@ -194,12 +201,15 @@ class TestTattooAdjustment:
             confidence=0.0,
         )
 
-        result = tattoo_adjustment(query_result, has_tattoos=True, locations={"left arm"})
+        result = tattoo_adjustment(
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={}, has_tattoo_embeddings=True,
+        )
 
         assert result == 0.95
 
-    def test_both_have_tattoos_same_location_returns_boost(self):
-        """Test that both having tattoos at same location returns 1.15."""
+    def test_high_similarity_returns_strong_boost(self):
+        """Test that high tattoo similarity (>0.7) returns 1.3-1.5 boost."""
         from signal_scoring import tattoo_adjustment
 
         query_result = TattooResult(
@@ -215,13 +225,15 @@ class TestTattooAdjustment:
         )
 
         result = tattoo_adjustment(
-            query_result, has_tattoos=True, locations={"left arm", "torso"}
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={"stashdb.org:uuid1": 0.85},
+            has_tattoo_embeddings=True,
         )
 
-        assert result == 1.15
+        assert 1.3 <= result <= 1.5
 
-    def test_both_have_tattoos_different_locations_returns_penalty(self):
-        """Test that both having tattoos at different locations returns 0.9."""
+    def test_moderate_similarity_returns_modest_boost(self):
+        """Test that moderate tattoo similarity (>0.5, <=0.7) returns 1.1."""
         from signal_scoring import tattoo_adjustment
 
         query_result = TattooResult(
@@ -237,10 +249,36 @@ class TestTattooAdjustment:
         )
 
         result = tattoo_adjustment(
-            query_result, has_tattoos=True, locations={"right leg", "torso"}
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={"stashdb.org:uuid1": 0.6},
+            has_tattoo_embeddings=True,
         )
 
-        assert result == 0.9
+        assert result == 1.1
+
+    def test_low_similarity_returns_neutral(self):
+        """Test that low similarity (<=0.5) with embeddings returns 1.0."""
+        from signal_scoring import tattoo_adjustment
+
+        query_result = TattooResult(
+            detections=[
+                TattooDetection(
+                    bbox={"x": 0.1, "y": 0.2, "w": 0.1, "h": 0.1},
+                    confidence=0.9,
+                    location_hint="left arm",
+                )
+            ],
+            has_tattoos=True,
+            confidence=0.9,
+        )
+
+        result = tattoo_adjustment(
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={"stashdb.org:uuid1": 0.3},
+            has_tattoo_embeddings=True,
+        )
+
+        assert result == 1.0
 
     def test_neither_has_tattoos_returns_neutral(self):
         """Test that neither having tattoos returns 1.0 (neutral)."""
@@ -252,39 +290,15 @@ class TestTattooAdjustment:
             confidence=0.0,
         )
 
-        result = tattoo_adjustment(query_result, has_tattoos=False, locations=set())
+        result = tattoo_adjustment(
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores={}, has_tattoo_embeddings=False,
+        )
 
         assert result == 1.0
 
-    def test_multiple_query_locations_one_matches_returns_boost(self):
-        """Test that multiple query locations with one matching returns boost."""
-        from signal_scoring import tattoo_adjustment
-
-        query_result = TattooResult(
-            detections=[
-                TattooDetection(
-                    bbox={"x": 0.1, "y": 0.2, "w": 0.1, "h": 0.1},
-                    confidence=0.9,
-                    location_hint="left arm",
-                ),
-                TattooDetection(
-                    bbox={"x": 0.5, "y": 0.5, "w": 0.1, "h": 0.1},
-                    confidence=0.8,
-                    location_hint="torso",
-                ),
-            ],
-            has_tattoos=True,
-            confidence=0.9,
-        )
-
-        result = tattoo_adjustment(
-            query_result, has_tattoos=True, locations={"torso", "right leg"}
-        )
-
-        assert result == 1.15
-
-    def test_empty_candidate_locations_with_tattoos_returns_penalty(self):
-        """Test that candidate with tattoos but empty locations returns penalty."""
+    def test_no_scores_dict_returns_penalty_if_no_embeddings(self):
+        """Test that missing scores dict with no embeddings returns penalty."""
         from signal_scoring import tattoo_adjustment
 
         query_result = TattooResult(
@@ -299,7 +313,9 @@ class TestTattooAdjustment:
             confidence=0.9,
         )
 
-        # Candidate has tattoos but locations set is empty (no location hints)
-        result = tattoo_adjustment(query_result, has_tattoos=True, locations=set())
+        result = tattoo_adjustment(
+            query_result, candidate_id="stashdb.org:uuid1",
+            tattoo_scores=None, has_tattoo_embeddings=False,
+        )
 
-        assert result == 0.9
+        assert result == 0.7

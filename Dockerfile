@@ -66,7 +66,7 @@ RUN mkdir -p /data
 # Environment defaults
 ENV DATA_DIR=/data
 ENV PYTHONUNBUFFERED=1
-ENV ENABLE_TATTOO_SIGNAL=false
+ENV ENABLE_TATTOO_SIGNAL=auto
 
 EXPOSE 5000
 

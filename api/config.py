@@ -64,6 +64,11 @@ class DatabaseConfig:
     # Index files
     facenet_index_path: Path = None
     arcface_index_path: Path = None
+    adaface_index_path: Path = None
+
+    # Tattoo embedding index
+    tattoo_index_path: Path = None
+    tattoo_json_path: Path = None
 
     # Metadata files (SQLite is primary, JSON kept for compatibility)
     sqlite_db_path: Path = None
@@ -77,6 +82,9 @@ class DatabaseConfig:
 
         self.facenet_index_path = self.facenet_index_path or self.data_dir / "face_facenet.voy"
         self.arcface_index_path = self.arcface_index_path or self.data_dir / "face_arcface.voy"
+        self.adaface_index_path = self.adaface_index_path or self.data_dir / "face_adaface.voy"
+        self.tattoo_index_path = self.tattoo_index_path or self.data_dir / "tattoo_embeddings.voy"
+        self.tattoo_json_path = self.tattoo_json_path or self.data_dir / "tattoo_embeddings.json"
         self.sqlite_db_path = self.sqlite_db_path or self.data_dir / "performers.db"
         self.faces_json_path = self.faces_json_path or self.data_dir / "faces.json"
         self.performers_json_path = self.performers_json_path or self.data_dir / "performers.json"
@@ -87,14 +95,14 @@ class DatabaseConfig:
 class MultiSignalConfig:
     """Configuration for multi-signal identification."""
     enable_body: bool = True
-    enable_tattoo: bool = True
+    enable_tattoo: str = "auto"  # "true", "false", or "auto" (auto-detect based on index)
     face_candidates: int = 20
 
     @classmethod
     def from_env(cls) -> "MultiSignalConfig":
         return cls(
             enable_body=os.environ.get("ENABLE_BODY_SIGNAL", "true").lower() == "true",
-            enable_tattoo=os.environ.get("ENABLE_TATTOO_SIGNAL", "false").lower() == "true",
+            enable_tattoo=os.environ.get("ENABLE_TATTOO_SIGNAL", "auto").lower(),
             face_candidates=int(os.environ.get("FACE_CANDIDATES", "20")),
         )
 
