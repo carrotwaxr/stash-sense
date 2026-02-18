@@ -47,6 +47,22 @@ def main():
         result = sidecar_post(sidecar_url, "/database/update", timeout=10)
     elif mode == "db_update_status":
         result = sidecar_get(sidecar_url, "/database/update/status")
+    elif mode == "search_performers":
+        query = args.get("query", "")
+        result = sidecar_post(sidecar_url, "/stash/search-performers", {"query": query})
+    elif mode == "create_performer_from_stashbox":
+        result = sidecar_post(sidecar_url, "/stash/create-performer", {
+            "scene_id": str(args.get("scene_id", "")),
+            "endpoint": args.get("endpoint", ""),
+            "stashdb_id": args.get("stashdb_id", ""),
+        }, timeout=30)
+    elif mode == "link_performer_stashbox":
+        result = sidecar_post(sidecar_url, "/stash/link-performer", {
+            "scene_id": str(args.get("scene_id", "")),
+            "performer_id": str(args.get("performer_id", "")),
+            "stash_ids": args.get("stash_ids", []),
+            "update_metadata": args.get("update_metadata", False),
+        })
     elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:

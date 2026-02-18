@@ -4,8 +4,10 @@ Provides REST API endpoints for:
 - Face recognition (identify performers in images)
 - Recommendations engine (library analysis and curation)
 """
+import asyncio
 import base64
 import json
+import logging
 import os
 from collections import defaultdict
 
@@ -44,7 +46,107 @@ from frame_extractor import (
 )
 from matching import MatchingConfig
 from recommendations_router import router as recommendations_router, init_recommendations, save_scene_fingerprint, save_image_fingerprint, set_db_version
+from stashbox_client import StashBoxClient
 from database_updater import DatabaseUpdater, UpdateStatus
+
+logger = logging.getLogger(__name__)
+
+# StashBox endpoint configuration
+ENDPOINT_URLS = {
+    "stashdb.org": "https://stashdb.org/graphql",
+    "fansdb.cc": "https://fansdb.cc/graphql",
+    "theporndb.net": "https://theporndb.net/graphql",
+    "pmvstash.org": "https://pmvstash.org/graphql",
+    "javstash.org": "https://javstash.org/graphql",
+}
+
+ENDPOINT_API_KEY_ENVS = {
+    "stashdb.org": "STASHDB_API_KEY",
+    "fansdb.cc": "FANSDB_API_KEY",
+    "theporndb.net": "THEPORNDB_API_KEY",
+    "pmvstash.org": "PMVSTASH_API_KEY",
+    "javstash.org": "JAVSTASH_API_KEY",
+}
+
+# Lazily initialized StashBox clients
+_stashbox_clients: dict[str, StashBoxClient] = {}
+
+# Image URL cache keyed by universal_id
+_image_cache: dict[str, Optional[str]] = {}
+
+
+def _get_stashbox_client(endpoint_domain: str) -> Optional[StashBoxClient]:
+    """Get or create a StashBox client for the given endpoint domain."""
+    if endpoint_domain in _stashbox_clients:
+        return _stashbox_clients[endpoint_domain]
+
+    url = ENDPOINT_URLS.get(endpoint_domain)
+    env_key = ENDPOINT_API_KEY_ENVS.get(endpoint_domain)
+    if not url or not env_key:
+        return None
+
+    api_key = os.environ.get(env_key, "")
+    if not api_key:
+        return None
+
+    client = StashBoxClient(url, api_key)
+    _stashbox_clients[endpoint_domain] = client
+    return client
+
+
+def _extract_endpoint(universal_id: str | None) -> str | None:
+    """Extract endpoint domain from universal_id (e.g. 'stashdb.org:uuid' -> 'stashdb.org')."""
+    if universal_id and ":" in universal_id:
+        return universal_id.split(":")[0]
+    return None
+
+
+async def _fetch_image_for_match(match: PerformerMatch) -> None:
+    """Fetch and cache image URL for a single match from StashBox."""
+    uid = match.universal_id
+    if uid in _image_cache:
+        match.image_url = _image_cache[uid]
+        return
+
+    endpoint = _extract_endpoint(uid)
+    if not endpoint:
+        return
+
+    client = _get_stashbox_client(endpoint)
+    if not client:
+        return
+
+    try:
+        performer = await client.get_performer(match.stashdb_id)
+        if performer:
+            images = performer.get("images") or []
+            image_url = images[0].get("url") if images else None
+            _image_cache[uid] = image_url
+            match.image_url = image_url
+        else:
+            _image_cache[uid] = None
+    except Exception as e:
+        logger.debug(f"Failed to fetch image for {uid}: {e}")
+        _image_cache[uid] = None
+
+
+async def _fetch_missing_images(all_matches: list[PerformerMatch]) -> None:
+    """Fetch missing image URLs from StashBox for matches that have None."""
+    needs_fetch = [
+        m for m in all_matches
+        if m.image_url is None and m.universal_id not in _image_cache
+    ]
+
+    # Apply cache hits for already-cached entries
+    for m in all_matches:
+        if m.image_url is None and m.universal_id in _image_cache:
+            m.image_url = _image_cache[m.universal_id]
+
+    if not needs_fetch:
+        return
+
+    tasks = [_fetch_image_for_match(m) for m in needs_fetch]
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # Pydantic models for API
@@ -67,6 +169,7 @@ class PerformerMatchResponse(BaseModel):
     arcface_distance: float
     country: Optional[str] = None
     image_url: Optional[str] = Field(None, description="StashDB profile image URL")
+    endpoint: Optional[str] = Field(None, description="StashBox endpoint domain (e.g. 'stashdb.org')")
     already_tagged: bool = Field(False, description="Whether this performer is already tagged on the scene")
 
 
@@ -116,6 +219,7 @@ class GalleryPerformerResult(BaseModel):
     image_ids: list[str] = Field(description="Stash image IDs where performer was found")
     country: Optional[str] = None
     image_url: Optional[str] = Field(None, description="StashDB profile image URL")
+    endpoint: Optional[str] = Field(None, description="StashBox endpoint domain")
 
 
 class GalleryIdentifyRequest(BaseModel):
@@ -347,6 +451,24 @@ app.add_middleware(
 app.include_router(recommendations_router)
 
 
+def _match_to_response(m, **overrides) -> "PerformerMatchResponse":
+    """Convert a PerformerMatch (or MultiSignalMatch or PerformerMatchResponse) to PerformerMatchResponse."""
+    uid = getattr(m, "universal_id", None)
+    score = getattr(m, "combined_score", getattr(m, "distance", 0))
+    return PerformerMatchResponse(
+        stashdb_id=m.stashdb_id,
+        name=m.name,
+        confidence=distance_to_confidence(score),
+        distance=score,
+        facenet_distance=m.facenet_distance,
+        arcface_distance=m.arcface_distance,
+        country=m.country,
+        image_url=m.image_url,
+        endpoint=_extract_endpoint(uid) or getattr(m, "endpoint", None),
+        **overrides,
+    )
+
+
 def distance_to_confidence(distance: float) -> float:
     """Convert distance score to confidence (0-1, higher is better)."""
     # Cosine distance ranges from 0 (identical) to 2 (opposite)
@@ -487,6 +609,10 @@ async def identify_performers(request: IdentifyRequest, _=Depends(require_db_ava
             use_body=request.use_body,
             use_tattoo=request.use_tattoo,
         )
+        # Fetch missing images from StashBox
+        all_matches = [m for mr in multi_results for m in mr.matches]
+        await _fetch_missing_images(all_matches)
+
         # Convert to response format
         faces = []
         for mr in multi_results:
@@ -499,19 +625,7 @@ async def identify_performers(request: IdentifyRequest, _=Depends(require_db_ava
                 confidence=mr.face.confidence,
             )
 
-            matches = [
-                PerformerMatchResponse(
-                    stashdb_id=m.stashdb_id,
-                    name=m.name,
-                    confidence=distance_to_confidence(m.combined_score),
-                    distance=m.combined_score,
-                    facenet_distance=m.facenet_distance,
-                    arcface_distance=m.arcface_distance,
-                    country=m.country,
-                    image_url=m.image_url,
-                )
-                for m in mr.matches
-            ]
+            matches = [_match_to_response(m) for m in mr.matches]
 
             faces.append(FaceResult(box=face_box, matches=matches))
 
@@ -528,6 +642,10 @@ async def identify_performers(request: IdentifyRequest, _=Depends(require_db_ava
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
 
+    # Fetch missing images from StashBox
+    all_matches = [m for r in results for m in r.matches]
+    await _fetch_missing_images(all_matches)
+
     # Convert to response format
     faces = []
     for result in results:
@@ -540,19 +658,7 @@ async def identify_performers(request: IdentifyRequest, _=Depends(require_db_ava
             confidence=result.face.confidence,
         )
 
-        matches = [
-            PerformerMatchResponse(
-                stashdb_id=m.stashdb_id,
-                name=m.name,
-                confidence=distance_to_confidence(m.combined_score),
-                distance=m.combined_score,
-                facenet_distance=m.facenet_distance,
-                arcface_distance=m.arcface_distance,
-                country=m.country,
-                image_url=m.image_url,
-            )
-            for m in result.matches
-        ]
+        matches = [_match_to_response(m) for m in result.matches]
 
         faces.append(FaceResult(box=face_box, matches=matches))
 
@@ -619,6 +725,10 @@ async def identify_image(request: ImageIdentifyRequest, _=Depends(require_db_ava
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
 
+        # Fetch missing images from StashBox
+        all_ms_matches = [m for mr in multi_results for m in mr.matches]
+        await _fetch_missing_images(all_ms_matches)
+
         faces = []
         img_h, img_w = image.shape[:2]
         # Also build results list for fingerprint saving
@@ -633,19 +743,7 @@ async def identify_image(request: ImageIdentifyRequest, _=Depends(require_db_ava
                 confidence=mr.face.confidence,
             )
 
-            matches = [
-                PerformerMatchResponse(
-                    stashdb_id=m.stashdb_id,
-                    name=m.name,
-                    confidence=distance_to_confidence(m.combined_score),
-                    distance=m.combined_score,
-                    facenet_distance=m.facenet_distance,
-                    arcface_distance=m.arcface_distance,
-                    country=m.country,
-                    image_url=m.image_url,
-                )
-                for m in mr.matches
-            ]
+            matches = [_match_to_response(m) for m in mr.matches]
 
             faces.append(FaceResult(box=face_box, matches=matches))
             # Build RecognitionResult for fingerprint
@@ -662,6 +760,10 @@ async def identify_image(request: ImageIdentifyRequest, _=Depends(require_db_ava
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Recognition failed: {e}")
 
+        # Fetch missing images from StashBox
+        all_fo_matches = [m for r in results for m in r.matches]
+        await _fetch_missing_images(all_fo_matches)
+
         faces = []
         img_h, img_w = image.shape[:2]
 
@@ -675,19 +777,7 @@ async def identify_image(request: ImageIdentifyRequest, _=Depends(require_db_ava
                 confidence=result.face.confidence,
             )
 
-            matches = [
-                PerformerMatchResponse(
-                    stashdb_id=m.stashdb_id,
-                    name=m.name,
-                    confidence=distance_to_confidence(m.combined_score),
-                    distance=m.combined_score,
-                    facenet_distance=m.facenet_distance,
-                    arcface_distance=m.arcface_distance,
-                    country=m.country,
-                    image_url=m.image_url,
-                )
-                for m in result.matches
-            ]
+            matches = [_match_to_response(m) for m in result.matches]
 
             faces.append(FaceResult(box=face_box, matches=matches))
 
@@ -805,6 +895,7 @@ async def identify_gallery(request: GalleryIdentifyRequest, _=Depends(require_db
                                 "distance": best.combined_score,
                                 "country": best.country,
                                 "image_url": best.image_url,
+                                "endpoint": _extract_endpoint(best.universal_id),
                             }
 
                 if (i + 1) % 10 == 0:
@@ -838,6 +929,7 @@ async def identify_gallery(request: GalleryIdentifyRequest, _=Depends(require_db
             image_ids=image_ids,
             country=info.get("country"),
             image_url=info.get("image_url"),
+            endpoint=info.get("endpoint"),
         ))
 
     # Sort by image count desc, then best distance asc
@@ -1233,15 +1325,10 @@ def aggregate_matches(
         adjusted_score = avg_score / (appearance_ratio ** 0.5)
 
         match = match_info[stashdb_id]
-        aggregated.append(PerformerMatchResponse(
-            stashdb_id=match.stashdb_id,
-            name=match.name,
+        aggregated.append(_match_to_response(
+            match,
             confidence=distance_to_confidence(adjusted_score),
             distance=adjusted_score,
-            facenet_distance=np.mean([m.facenet_distance for m in [match_info[stashdb_id]] * len(scores)]),
-            arcface_distance=np.mean([m.arcface_distance for m in [match_info[stashdb_id]] * len(scores)]),
-            country=match.country,
-            image_url=match.image_url,
         ))
 
     # Sort by adjusted score (lower is better)
@@ -1337,29 +1424,16 @@ def frequency_based_matching(
     persons = []
     for i, p in enumerate(performer_scores[:top_k]):
         match = p["best_match"]
+        resp = _match_to_response(
+            match,
+            confidence=distance_to_confidence(p["avg_distance"]),
+            distance=p["avg_distance"],
+        )
         persons.append(PersonResult(
             person_id=i,
             frame_count=p["unique_frames"],
-            best_match=PerformerMatchResponse(
-                stashdb_id=match.stashdb_id,
-                name=match.name,
-                confidence=distance_to_confidence(p["avg_distance"]),
-                distance=p["avg_distance"],
-                facenet_distance=match.facenet_distance,
-                arcface_distance=match.arcface_distance,
-                country=match.country,
-                image_url=match.image_url,
-            ),
-            all_matches=[PerformerMatchResponse(
-                stashdb_id=match.stashdb_id,
-                name=match.name,
-                confidence=distance_to_confidence(p["avg_distance"]),
-                distance=p["avg_distance"],
-                facenet_distance=match.facenet_distance,
-                arcface_distance=match.arcface_distance,
-                country=match.country,
-                image_url=match.image_url,
-            )],
+            best_match=resp,
+            all_matches=[resp],
         ))
 
     return persons
@@ -1491,15 +1565,10 @@ def clustered_frequency_matching(
         # Build all_matches list: best first, then alternatives (up to top_k)
         def _to_match_response(c: dict) -> PerformerMatchResponse:
             m = c["best_match"]
-            return PerformerMatchResponse(
-                stashdb_id=m.stashdb_id,
-                name=m.name,
+            return _match_to_response(
+                m,
                 confidence=distance_to_confidence(c["avg_distance"]),
                 distance=c["avg_distance"],
-                facenet_distance=m.facenet_distance,
-                arcface_distance=m.arcface_distance,
-                country=m.country,
-                image_url=m.image_url,
                 already_tagged=c["is_tagged"],
             )
 
@@ -1653,29 +1722,16 @@ def hybrid_matching(
     persons = []
     for i, p in enumerate(filtered_scores):
         match = p["match"]
+        resp = _match_to_response(
+            match,
+            confidence=distance_to_confidence(p["distance"]),
+            distance=p["distance"],
+        )
         persons.append(PersonResult(
             person_id=i,
             frame_count=p["frame_count"],
-            best_match=PerformerMatchResponse(
-                stashdb_id=match.stashdb_id,
-                name=match.name,
-                confidence=distance_to_confidence(p["distance"]),
-                distance=p["distance"],
-                facenet_distance=match.facenet_distance,
-                arcface_distance=match.arcface_distance,
-                country=match.country,
-                image_url=match.image_url,
-            ),
-            all_matches=[PerformerMatchResponse(
-                stashdb_id=match.stashdb_id,
-                name=match.name,
-                confidence=distance_to_confidence(p["distance"]),
-                distance=p["distance"],
-                facenet_distance=match.facenet_distance,
-                arcface_distance=match.arcface_distance,
-                country=match.country,
-                image_url=match.image_url,
-            )],
+            best_match=resp,
+            all_matches=[resp],
         ))
 
     return persons
@@ -1868,6 +1924,10 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
         except Exception as e:
             print(f"[identify_scene] Screenshot processing failed: {e}")
 
+    # Fetch missing images from StashBox for all detected matches
+    scene_all_matches = [m for _, r in all_results for m in r.matches]
+    await _fetch_missing_images(scene_all_matches)
+
     # Extract multi-signal data (body + tattoo) from representative frames
     scene_body_ratios = None
     scene_tattoo_result = None
@@ -2057,6 +2117,320 @@ async def ffmpeg_health():
         "ffmpeg_available": available,
         "v2_endpoint_ready": available,
     }
+
+
+# ==================== StashBox / Stash Performer Endpoints ====================
+
+
+class StashBoxPerformerResponse(BaseModel):
+    """Performer data from StashBox, mapped to Stash's PerformerCreateInput field names."""
+    name: str
+    disambiguation: Optional[str] = None
+    alias_list: list[str] = []
+    gender: Optional[str] = None
+    birthdate: Optional[str] = None
+    death_date: Optional[str] = None
+    ethnicity: Optional[str] = None
+    country: Optional[str] = None
+    eye_color: Optional[str] = None
+    hair_color: Optional[str] = None
+    height_cm: Optional[int] = None
+    measurements: Optional[str] = None
+    fake_tits: Optional[str] = None
+    career_length: Optional[str] = None
+    tattoos: Optional[str] = None
+    piercings: Optional[str] = None
+    details: Optional[str] = None
+    urls: list[str] = []
+    image: Optional[str] = None
+    weight: Optional[int] = None
+    stash_ids: list[dict] = []
+
+
+def _map_stashbox_to_stash(performer: dict, endpoint_url: str, stashdb_id: str) -> StashBoxPerformerResponse:
+    """Map StashBox performer fields to Stash's PerformerCreateInput field names."""
+    # breast_type mapping
+    breast_type = performer.get("breast_type")
+    fake_tits = None
+    if breast_type:
+        fake_tits = {"NATURAL": "Natural", "FAKE": "Augmented"}.get(breast_type.upper())
+
+    # measurements: "{band}{cup}-{waist}-{hip}"
+    cup = performer.get("cup_size")
+    band = performer.get("band_size")
+    waist = performer.get("waist_size")
+    hip = performer.get("hip_size")
+    measurements = None
+    if any([cup, band, waist, hip]):
+        bust = f"{band or ''}{cup or ''}"
+        parts = [bust, str(waist) if waist else "", str(hip) if hip else ""]
+        measurements = "-".join(parts).strip("-") or None
+
+    # career_length: "YYYY-YYYY" or "YYYY-"
+    start = performer.get("career_start_year")
+    end = performer.get("career_end_year")
+    career_length = None
+    if start:
+        career_length = f"{start}-{end}" if end else f"{start}-"
+
+    # tattoos/piercings: "location: description" semicolon-separated
+    def _format_body_mods(mods):
+        if not mods:
+            return None
+        parts = []
+        for mod in mods:
+            loc = mod.get("location", "")
+            desc = mod.get("description", "")
+            if loc and desc:
+                parts.append(f"{loc}: {desc}")
+            elif loc:
+                parts.append(loc)
+            elif desc:
+                parts.append(desc)
+        return "; ".join(parts) if parts else None
+
+    # urls: extract URL strings
+    url_list = [u.get("url") for u in (performer.get("urls") or []) if u.get("url")]
+
+    # image: first image URL
+    images = performer.get("images") or []
+    image_url = images[0].get("url") if images else None
+
+    return StashBoxPerformerResponse(
+        name=performer.get("name", ""),
+        disambiguation=performer.get("disambiguation"),
+        alias_list=performer.get("aliases") or [],
+        gender=performer.get("gender"),
+        birthdate=performer.get("birth_date"),
+        death_date=performer.get("death_date"),
+        ethnicity=performer.get("ethnicity"),
+        country=performer.get("country"),
+        eye_color=performer.get("eye_color"),
+        hair_color=performer.get("hair_color"),
+        height_cm=performer.get("height"),
+        measurements=measurements,
+        fake_tits=fake_tits,
+        career_length=career_length,
+        tattoos=_format_body_mods(performer.get("tattoos")),
+        piercings=_format_body_mods(performer.get("piercings")),
+        urls=url_list,
+        image=image_url,
+        stash_ids=[{"endpoint": endpoint_url, "stash_id": stashdb_id}],
+    )
+
+
+@app.get("/stashbox/performer/{endpoint}/{stashdb_id}", response_model=StashBoxPerformerResponse)
+async def get_stashbox_performer(endpoint: str, stashdb_id: str):
+    """Get performer from StashBox, mapped to Stash field names."""
+    client = _get_stashbox_client(endpoint)
+    if not client:
+        raise HTTPException(status_code=400, detail=f"Unknown or unconfigured endpoint: {endpoint}")
+
+    performer = await client.get_performer(stashdb_id)
+    if not performer:
+        raise HTTPException(status_code=404, detail="Performer not found on StashBox")
+
+    endpoint_url = ENDPOINT_URLS[endpoint]
+    return _map_stashbox_to_stash(performer, endpoint_url, stashdb_id)
+
+
+class SearchPerformersRequest(BaseModel):
+    query: str
+
+
+class SearchPerformerResult(BaseModel):
+    id: str
+    name: str
+    disambiguation: Optional[str] = None
+    alias_list: list[str] = []
+    image_path: Optional[str] = None
+
+
+@app.post("/stash/search-performers", response_model=list[SearchPerformerResult])
+async def search_stash_performers(request: SearchPerformersRequest):
+    """Search performers in local Stash library."""
+    if not STASH_URL:
+        raise HTTPException(status_code=400, detail="STASH_URL not configured")
+
+    from stash_client_unified import StashClientUnified
+    stash_client = StashClientUnified(STASH_URL, STASH_API_KEY)
+
+    query = """
+    query FindPerformers($filter: FindFilterType) {
+        findPerformers(filter: $filter) {
+            performers {
+                id name disambiguation alias_list image_path
+            }
+        }
+    }
+    """
+    data = await stash_client._execute(query, {
+        "filter": {"q": request.query, "per_page": 10, "sort": "name", "direction": "ASC"}
+    })
+    performers = data.get("findPerformers", {}).get("performers", [])
+    return [SearchPerformerResult(**p) for p in performers]
+
+
+class CreatePerformerRequest(BaseModel):
+    scene_id: str
+    endpoint: str
+    stashdb_id: str
+
+
+class CreatePerformerResponse(BaseModel):
+    performer_id: str
+    name: str
+    success: bool
+
+
+@app.post("/stash/create-performer", response_model=CreatePerformerResponse)
+async def create_performer_from_stashbox(request: CreatePerformerRequest):
+    """Create a performer in Stash from StashBox data, then add to scene."""
+    if not STASH_URL:
+        raise HTTPException(status_code=400, detail="STASH_URL not configured")
+
+    # 1. Fetch performer data from StashBox
+    client = _get_stashbox_client(request.endpoint)
+    if not client:
+        raise HTTPException(status_code=400, detail=f"Unknown or unconfigured endpoint: {request.endpoint}")
+
+    performer = await client.get_performer(request.stashdb_id)
+    if not performer:
+        raise HTTPException(status_code=404, detail="Performer not found on StashBox")
+
+    endpoint_url = ENDPOINT_URLS[request.endpoint]
+    mapped = _map_stashbox_to_stash(performer, endpoint_url, request.stashdb_id)
+
+    # 2. Create performer in Stash
+    from stash_client_unified import StashClientUnified
+    stash_client = StashClientUnified(STASH_URL, STASH_API_KEY)
+
+    create_input = {
+        "name": mapped.name,
+        "stash_ids": mapped.stash_ids,
+    }
+    # Add optional fields
+    if mapped.disambiguation:
+        create_input["disambiguation"] = mapped.disambiguation
+    if mapped.alias_list:
+        create_input["alias_list"] = mapped.alias_list
+    if mapped.gender:
+        create_input["gender"] = mapped.gender
+    if mapped.birthdate:
+        create_input["birthdate"] = mapped.birthdate
+    if mapped.death_date:
+        create_input["death_date"] = mapped.death_date
+    if mapped.ethnicity:
+        create_input["ethnicity"] = mapped.ethnicity
+    if mapped.country:
+        create_input["country"] = mapped.country
+    if mapped.eye_color:
+        create_input["eye_color"] = mapped.eye_color
+    if mapped.hair_color:
+        create_input["hair_color"] = mapped.hair_color
+    if mapped.height_cm is not None:
+        create_input["height_cm"] = mapped.height_cm
+    if mapped.measurements:
+        create_input["measurements"] = mapped.measurements
+    if mapped.fake_tits:
+        create_input["fake_tits"] = mapped.fake_tits
+    if mapped.career_length:
+        create_input["career_length"] = mapped.career_length
+    if mapped.tattoos:
+        create_input["tattoos"] = mapped.tattoos
+    if mapped.piercings:
+        create_input["piercings"] = mapped.piercings
+    if mapped.image:
+        create_input["image"] = mapped.image
+    if mapped.urls:
+        create_input["url"] = mapped.urls[0]  # Stash only accepts single URL on create
+
+    create_query = """
+    mutation PerformerCreate($input: PerformerCreateInput!) {
+        performerCreate(input: $input) {
+            id name
+        }
+    }
+    """
+    from rate_limiter import Priority
+    data = await stash_client._execute(create_query, {"input": create_input}, priority=Priority.CRITICAL)
+    new_performer = data["performerCreate"]
+
+    # 3. Add performer to scene
+    get_query = """
+    query GetScene($id: ID!) {
+        findScene(id: $id) { performers { id } }
+    }
+    """
+    scene_data = await stash_client._execute(get_query, {"id": request.scene_id})
+    current_ids = [p["id"] for p in scene_data["findScene"]["performers"]]
+    if new_performer["id"] not in current_ids:
+        current_ids.append(new_performer["id"])
+        await stash_client.update_scene_performers(request.scene_id, current_ids)
+
+    return CreatePerformerResponse(
+        performer_id=new_performer["id"],
+        name=new_performer["name"],
+        success=True,
+    )
+
+
+class LinkPerformerRequest(BaseModel):
+    scene_id: str
+    performer_id: str
+    stash_ids: list[dict] = []
+    update_metadata: bool = False
+
+
+class LinkPerformerResponse(BaseModel):
+    success: bool
+
+
+@app.post("/stash/link-performer", response_model=LinkPerformerResponse)
+async def link_performer_to_scene(request: LinkPerformerRequest):
+    """Add an existing Stash performer to a scene. Optionally update stash_ids."""
+    if not STASH_URL:
+        raise HTTPException(status_code=400, detail="STASH_URL not configured")
+
+    from stash_client_unified import StashClientUnified
+    stash_client = StashClientUnified(STASH_URL, STASH_API_KEY)
+
+    # Add performer to scene
+    get_query = """
+    query GetScene($id: ID!) {
+        findScene(id: $id) { performers { id } }
+    }
+    """
+    scene_data = await stash_client._execute(get_query, {"id": request.scene_id})
+    current_ids = [p["id"] for p in scene_data["findScene"]["performers"]]
+    if request.performer_id not in current_ids:
+        current_ids.append(request.performer_id)
+        await stash_client.update_scene_performers(request.scene_id, current_ids)
+
+    # Optionally update performer's stash_ids
+    if request.update_metadata and request.stash_ids:
+        # Get current stash_ids
+        perf_query = """
+        query GetPerformer($id: ID!) {
+            findPerformer(id: $id) { stash_ids { endpoint stash_id } }
+        }
+        """
+        perf_data = await stash_client._execute(perf_query, {"id": request.performer_id})
+        current_stash_ids = perf_data["findPerformer"]["stash_ids"]
+
+        # Merge new stash_ids (avoid duplicates)
+        existing = {(s["endpoint"], s["stash_id"]) for s in current_stash_ids}
+        merged = list(current_stash_ids)
+        for new_sid in request.stash_ids:
+            key = (new_sid["endpoint"], new_sid["stash_id"])
+            if key not in existing:
+                merged.append(new_sid)
+
+        if len(merged) > len(current_stash_ids):
+            from rate_limiter import Priority
+            await stash_client.update_performer(request.performer_id, stash_ids=merged)
+
+    return LinkPerformerResponse(success=True)
 
 
 if __name__ == "__main__":

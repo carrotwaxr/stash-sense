@@ -1,11 +1,11 @@
 /* Stash Sense Plugin Styles */
 
-/* Identify Button */
+/* Identify Button (icon-only) */
 .ss-identify-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  justify-content: center;
+  padding: 6px 8px;
   font-size: 14px;
   border-radius: 4px;
   cursor: pointer;
@@ -435,11 +435,16 @@
 
 .ss-other-matches ul {
   margin: 8px 0 0 0;
-  padding-left: 20px;
+  padding-left: 0;
+  list-style: none;
 }
 
 .ss-other-matches li {
   margin-bottom: 4px;
+}
+
+.ss-other-matches li.ss-alt-match-item {
+  margin-bottom: 6px;
 }
 
 .ss-other-matches a {
@@ -455,6 +460,156 @@
   color: var(--bs-secondary-color, #888);
   font-size: 12px;
   margin-left: 8px;
+}
+
+/* Actionable Alt Match Items */
+.ss-alt-match-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  gap: 8px;
+}
+
+.ss-alt-match-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ss-alt-match-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Small button variant for alt matches */
+.ss-btn-sm {
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+}
+
+/* Create performer button */
+.ss-btn-create {
+  background: var(--bs-success, #198754);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.ss-btn-create:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.ss-btn-create:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Link-as button */
+.ss-btn-link-as {
+  background: var(--bs-secondary-bg, #6c757d);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.ss-btn-link-as:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+
+/* Search panel (Add as...) */
+.ss-search-panel {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bs-body-bg, #1a1a1a);
+  border: 1px solid var(--bs-border-color, #444);
+  border-radius: 6px;
+}
+
+.ss-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border: 1px solid var(--bs-border-color, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-size: 13px;
+}
+
+.ss-search-input:focus {
+  outline: none;
+  border-color: var(--bs-primary, #0d6efd);
+}
+
+.ss-search-results {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ss-search-result-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.ss-search-result-item:hover {
+  background: var(--bs-tertiary-bg, #2a2a2a);
+}
+
+.ss-search-result-img {
+  width: 30px;
+  height: 40px;
+  border-radius: 2px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.ss-search-loading,
+.ss-search-empty,
+.ss-search-error {
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--bs-secondary-color, #888);
+}
+
+.ss-search-error {
+  color: #dc3545;
+}
+
+/* Update metadata checkbox */
+.ss-update-meta-label {
+  font-size: 12px;
+  color: var(--bs-secondary-color, #888);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.ss-update-meta-label input[type="checkbox"] {
+  accent-color: var(--bs-primary, #0d6efd);
 }
 
 /* Error State */
@@ -509,12 +664,8 @@
     height: 100px;
   }
 
-  .ss-btn-text {
-    display: none;
-  }
-
   .ss-identify-btn {
-    padding: 8px;
+    padding: 6px;
   }
 }
 

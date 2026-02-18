@@ -347,7 +347,66 @@
           });
         });
 
+        // "Add to Stash + Scene" handlers
+        resultsDiv.querySelectorAll('.ss-btn-create').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const { endpoint, stashdbId, sceneId: targetSceneId } = btn.dataset;
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
+            try {
+              const settings = await SS.getSettings();
+              const result = await SS.runPluginOperation('create_performer_from_stashbox', {
+                endpoint,
+                stashdb_id: stashdbId,
+                scene_id: targetSceneId,
+                sidecar_url: settings.sidecarUrl,
+              });
+
+              if (result.error) throw new Error(result.error);
+
+              btn.textContent = 'Added!';
+              btn.classList.add('ss-btn-success');
+              // Hide the "Add as..." button next to it
+              const linkAsBtn = btn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-btn-link-as');
+              if (linkAsBtn) linkAsBtn.style.display = 'none';
+              // Update "Not in library" text
+              const notInLib = btn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-not-in-library');
+              if (notInLib) {
+                notInLib.textContent = `Created: ${result.name || 'performer'}`;
+                notInLib.classList.remove('ss-not-in-library');
+              }
+            } catch (err) {
+              btn.textContent = 'Failed';
+              btn.classList.add('ss-btn-error');
+              btn.disabled = false;
+              console.error('Failed to create performer:', err);
+            }
+          });
+        });
+
+        // "Add as..." handlers
+        resultsDiv.querySelectorAll('.ss-btn-link-as').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._openSearchPanel(btn);
+          });
+        });
+
         resultsDiv.style.display = 'block';
+      },
+
+      // Build stashbox performer URL from endpoint domain
+      _stashboxPerformerUrl(endpoint, stashdbId) {
+        const domain = endpoint || 'stashdb.org';
+        return `https://${domain}/performers/${stashdbId}`;
+      },
+
+      // Get GraphQL endpoint URL from domain
+      _stashboxGraphqlUrl(endpoint) {
+        const domain = endpoint || 'stashdb.org';
+        return `https://${domain}/graphql`;
       },
 
       async _renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds) {
@@ -368,11 +427,14 @@
         const match = person.best_match;
         const confidence = this.distanceToConfidence(match.distance || (1 - match.confidence) || 0.5);
         const confidenceClass = SS.getConfidenceClass(confidence);
+        const endpoint = match.endpoint || 'stashdb.org';
+        const stashboxUrl = this._stashboxPerformerUrl(endpoint, match.stashdb_id);
+        const graphqlUrl = this._stashboxGraphqlUrl(endpoint);
 
         // Check if already tagged (from API flag or local cross-reference)
         const isAlreadyTagged = match.already_tagged || taggedStashDBIds.has(match.stashdb_id);
 
-        const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id);
+        const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id, graphqlUrl);
         const isLocallyTagged = localPerformer && scenePerformerLocalIds.has(localPerformer.id);
         const showAlreadyTagged = isAlreadyTagged || isLocallyTagged;
 
@@ -386,7 +448,20 @@
             </button>
             <span class="ss-local-status">In library as: ${localPerformer.name}</span>`;
         } else {
-          actionsHtml = `<span class="ss-local-status ss-not-in-library">Not in library</span>`;
+          actionsHtml = `
+            <button class="ss-btn ss-btn-create"
+                    data-endpoint="${endpoint}"
+                    data-stashdb-id="${match.stashdb_id}"
+                    data-scene-id="${sceneId}">
+              Add to Stash + Scene
+            </button>
+            <button class="ss-btn ss-btn-link-as"
+                    data-endpoint="${endpoint}"
+                    data-stashdb-id="${match.stashdb_id}"
+                    data-scene-id="${sceneId}">
+              Add as...
+            </button>
+            <span class="ss-local-status ss-not-in-library">Not in library</span>`;
         }
 
         personDiv.innerHTML = `
@@ -404,8 +479,8 @@
               <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>${person.signals_used && person.signals_used.includes('tattoo') ? '<span class="ss-signal-badge ss-signal-tattoo">tattoo match</span>' : ''}
               ${match.country ? `<div class="ss-country">${match.country}</div>` : ''}
               <div class="ss-links">
-                <a href="https://stashdb.org/performers/${match.stashdb_id}" target="_blank" rel="noopener" class="ss-link">
-                  View on StashDB
+                <a href="${stashboxUrl}" target="_blank" rel="noopener" class="ss-link">
+                  View on ${endpoint}
                 </a>
               </div>
               <div class="ss-actions">
@@ -413,29 +488,198 @@
               </div>
             </div>
           </div>
-          ${person.all_matches && person.all_matches.length > 1 ? `
-            <details class="ss-other-matches">
-              <summary>Other possible matches (${person.all_matches.length - 1})</summary>
-              <ul>
-                ${person.all_matches.slice(1).map(m => {
-                  const altConf = this.distanceToConfidence(m.distance || (1 - m.confidence) || 0.5);
-                  const altTagged = m.already_tagged || taggedStashDBIds.has(m.stashdb_id);
-                  return `
-                    <li>
-                      <a href="https://stashdb.org/performers/${m.stashdb_id}" target="_blank" rel="noopener">
-                        ${m.name}
-                      </a>
-                      <span class="ss-alt-confidence">${altConf}%</span>
-                      ${altTagged ? '<span class="ss-tagged-badge ss-tagged-badge-sm">Tagged</span>' : ''}
-                    </li>
-                  `;
-                }).join('')}
-              </ul>
-            </details>
-          ` : ''}
         `;
 
+        // Build alt matches section with action buttons
+        if (person.all_matches && person.all_matches.length > 1) {
+          const details = document.createElement('details');
+          details.className = 'ss-other-matches';
+          details.innerHTML = `<summary>Other possible matches (${person.all_matches.length - 1})</summary>`;
+
+          const ul = document.createElement('ul');
+          for (const m of person.all_matches.slice(1)) {
+            const altConf = this.distanceToConfidence(m.distance || (1 - m.confidence) || 0.5);
+            const altEndpoint = m.endpoint || 'stashdb.org';
+            const altStashboxUrl = this._stashboxPerformerUrl(altEndpoint, m.stashdb_id);
+            const altGraphqlUrl = this._stashboxGraphqlUrl(altEndpoint);
+            const altTagged = m.already_tagged || taggedStashDBIds.has(m.stashdb_id);
+
+            const altLocalPerformer = await SS.findPerformerByStashDBId(m.stashdb_id, altGraphqlUrl);
+            const altIsLocallyTagged = altLocalPerformer && scenePerformerLocalIds.has(altLocalPerformer.id);
+            const altShowAlreadyTagged = altTagged || altIsLocallyTagged;
+
+            let altActionsHtml;
+            if (altShowAlreadyTagged) {
+              altActionsHtml = `<span class="ss-local-status ss-already-tagged">Already tagged</span>`;
+            } else if (altLocalPerformer) {
+              altActionsHtml = `
+                <button class="ss-btn ss-btn-add ss-btn-sm" data-performer-id="${altLocalPerformer.id}" data-scene-id="${sceneId}">
+                  Add to Scene
+                </button>`;
+            } else {
+              altActionsHtml = `
+                <button class="ss-btn ss-btn-create ss-btn-sm"
+                        data-endpoint="${altEndpoint}"
+                        data-stashdb-id="${m.stashdb_id}"
+                        data-scene-id="${sceneId}">
+                  Add to Stash + Scene
+                </button>
+                <button class="ss-btn ss-btn-link-as ss-btn-sm"
+                        data-endpoint="${altEndpoint}"
+                        data-stashdb-id="${m.stashdb_id}"
+                        data-scene-id="${sceneId}">
+                  Add as...
+                </button>`;
+            }
+
+            const li = document.createElement('li');
+            li.className = 'ss-alt-match-item';
+            li.innerHTML = `
+              <div class="ss-alt-match-left">
+                <a href="${altStashboxUrl}" target="_blank" rel="noopener">${m.name}</a>
+                <span class="ss-alt-confidence">${altConf}%</span>
+                ${altShowAlreadyTagged ? '<span class="ss-tagged-badge ss-tagged-badge-sm">Tagged</span>' : ''}
+              </div>
+              <div class="ss-alt-match-actions">
+                ${altActionsHtml}
+              </div>
+            `;
+            ul.appendChild(li);
+          }
+          details.appendChild(ul);
+          personDiv.appendChild(details);
+        }
+
         return personDiv;
+      },
+
+      _openSearchPanel(triggerBtn) {
+        // Close any existing panel
+        const existing = document.querySelector('.ss-search-panel');
+        if (existing) {
+          const wasSameTrigger = existing._triggerBtn === triggerBtn;
+          existing.remove();
+          if (wasSameTrigger) return; // Toggle off
+        }
+
+        const panel = document.createElement('div');
+        panel.className = 'ss-search-panel';
+        panel._triggerBtn = triggerBtn;
+        const endpoint = triggerBtn.dataset.endpoint;
+        const stashdbId = triggerBtn.dataset.stashdbId;
+        const sceneId = triggerBtn.dataset.sceneId;
+        const graphqlUrl = this._stashboxGraphqlUrl(endpoint);
+
+        panel.innerHTML = `
+          <input type="text" class="ss-search-input" placeholder="Search performers in library..." />
+          <label class="ss-update-meta-label">
+            <input type="checkbox" class="ss-update-meta-checkbox" checked />
+            Link StashBox ID to performer
+          </label>
+          <ul class="ss-search-results"></ul>
+        `;
+
+        // Insert after the parent actions div
+        const actionsDiv = triggerBtn.closest('.ss-actions') || triggerBtn.closest('.ss-alt-match-actions');
+        if (actionsDiv && actionsDiv.parentElement) {
+          actionsDiv.parentElement.insertBefore(panel, actionsDiv.nextSibling);
+        } else {
+          triggerBtn.parentElement.appendChild(panel);
+        }
+
+        const input = panel.querySelector('.ss-search-input');
+        const resultsList = panel.querySelector('.ss-search-results');
+        const updateMetaCheckbox = panel.querySelector('.ss-update-meta-checkbox');
+        const self = this;
+
+        let debounceTimer;
+        input.addEventListener('input', () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(async () => {
+            const query = input.value.trim();
+            if (query.length < 2) {
+              resultsList.innerHTML = '';
+              return;
+            }
+            resultsList.innerHTML = '<li class="ss-search-loading">Searching...</li>';
+
+            try {
+              const settings = await SS.getSettings();
+              const result = await SS.runPluginOperation('search_performers', {
+                query,
+                sidecar_url: settings.sidecarUrl,
+              });
+
+              if (result.error) throw new Error(result.error);
+
+              const performers = result.performers || result || [];
+              if (performers.length === 0) {
+                resultsList.innerHTML = '<li class="ss-search-empty">No performers found</li>';
+                return;
+              }
+
+              resultsList.innerHTML = performers.map(p => `
+                <li class="ss-search-result-item" data-performer-id="${p.id}" data-performer-name="${SS.escapeHtml ? SS.escapeHtml(p.name) : p.name}">
+                  ${p.image_path ? `<img src="${p.image_path}" class="ss-search-result-img" />` : ''}
+                  <span>${p.name}${p.disambiguation ? ` (${p.disambiguation})` : ''}</span>
+                </li>
+              `).join('');
+
+              // Click handlers for search results
+              resultsList.querySelectorAll('.ss-search-result-item').forEach(li => {
+                li.addEventListener('click', async () => {
+                  const performerId = li.dataset.performerId;
+                  const performerName = li.dataset.performerName;
+                  const updateMeta = updateMetaCheckbox.checked;
+
+                  panel.innerHTML = '<div class="ss-search-loading">Linking...</div>';
+
+                  try {
+                    const stashIds = updateMeta ? [{ endpoint: graphqlUrl, stash_id: stashdbId }] : [];
+                    const settings = await SS.getSettings();
+                    const linkResult = await SS.runPluginOperation('link_performer_stashbox', {
+                      scene_id: sceneId,
+                      performer_id: performerId,
+                      stash_ids: stashIds,
+                      update_metadata: updateMeta,
+                      sidecar_url: settings.sidecarUrl,
+                    });
+
+                    if (linkResult.error) throw new Error(linkResult.error);
+
+                    panel.remove();
+                    triggerBtn.style.display = 'none';
+                    // Hide the create button next to it
+                    const createBtn = triggerBtn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-btn-create');
+                    if (createBtn) createBtn.style.display = 'none';
+                    // Update status text
+                    const notInLib = triggerBtn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-not-in-library');
+                    if (notInLib) {
+                      notInLib.textContent = `Added as: ${performerName}`;
+                      notInLib.classList.remove('ss-not-in-library');
+                    }
+                  } catch (err) {
+                    panel.innerHTML = `<div class="ss-search-error">Failed: ${err.message}</div>`;
+                    console.error('Failed to link performer:', err);
+                  }
+                });
+              });
+            } catch (err) {
+              resultsList.innerHTML = `<li class="ss-search-error">Search failed: ${err.message}</li>`;
+            }
+          }, 300);
+        });
+
+        input.focus();
+
+        // Close on Escape
+        const escHandler = (e) => {
+          if (e.key === 'Escape') {
+            panel.remove();
+            document.removeEventListener('keydown', escHandler);
+          }
+        };
+        document.addEventListener('keydown', escHandler);
       },
 
       showError(modal, message) {
@@ -561,7 +805,10 @@
             const match = face.matches[0];
             const confidence = this.distanceToConfidence(match.distance);
             const confidenceClass = SS.getConfidenceClass(confidence);
-            const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id);
+            const imgEndpoint = match.endpoint || 'stashdb.org';
+            const imgStashboxUrl = this._stashboxPerformerUrl(imgEndpoint, match.stashdb_id);
+            const imgGraphqlUrl = this._stashboxGraphqlUrl(imgEndpoint);
+            const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id, imgGraphqlUrl);
 
             personDiv.innerHTML = `
               <div class="ss-person-header">
@@ -576,8 +823,8 @@
                   <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
                   ${match.country ? `<div class="ss-country">${match.country}</div>` : ''}
                   <div class="ss-links">
-                    <a href="https://stashdb.org/performers/${match.stashdb_id}" target="_blank" rel="noopener" class="ss-link">
-                      View on StashDB
+                    <a href="${imgStashboxUrl}" target="_blank" rel="noopener" class="ss-link">
+                      View on ${imgEndpoint}
                     </a>
                   </div>
                   <div class="ss-actions">
@@ -591,21 +838,31 @@
                   </div>
                 </div>
               </div>
-              ${face.matches.length > 1 ? `
-                <details class="ss-other-matches">
-                  <summary>Other possible matches (${face.matches.length - 1})</summary>
-                  <ul>
-                    ${face.matches.slice(1).map(m => {
-                      const altConf = this.distanceToConfidence(m.distance);
-                      return `<li>
-                        <a href="https://stashdb.org/performers/${m.stashdb_id}" target="_blank" rel="noopener">${m.name}</a>
-                        <span class="ss-alt-confidence">${altConf}%</span>
-                      </li>`;
-                    }).join('')}
-                  </ul>
-                </details>
-              ` : ''}
             `;
+
+            // Build alt matches with endpoint-aware links
+            if (face.matches.length > 1) {
+              const details = document.createElement('details');
+              details.className = 'ss-other-matches';
+              details.innerHTML = `<summary>Other possible matches (${face.matches.length - 1})</summary>`;
+              const ul = document.createElement('ul');
+              for (const m of face.matches.slice(1)) {
+                const altConf = this.distanceToConfidence(m.distance);
+                const altEp = m.endpoint || 'stashdb.org';
+                const altUrl = this._stashboxPerformerUrl(altEp, m.stashdb_id);
+                const li = document.createElement('li');
+                li.className = 'ss-alt-match-item';
+                li.innerHTML = `
+                  <div class="ss-alt-match-left">
+                    <a href="${altUrl}" target="_blank" rel="noopener">${m.name}</a>
+                    <span class="ss-alt-confidence">${altConf}%</span>
+                  </div>
+                `;
+                ul.appendChild(li);
+              }
+              details.appendChild(ul);
+              personDiv.appendChild(details);
+            }
           }
 
           personsDiv.appendChild(personDiv);
@@ -647,7 +904,6 @@
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
               </svg>
             </span>
-            <span class="ss-btn-text">Identify Performers</span>
           `,
         });
         btn.addEventListener('click', () => this.handleIdentify());
@@ -707,7 +963,6 @@
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
               </svg>
             </span>
-            <span class="ss-btn-text">Identify Performers</span>
           `,
         });
         btn.addEventListener('click', () => this.handleIdentifyImage());
@@ -861,7 +1116,10 @@
           const confidence = this.distanceToConfidence(performer.best_distance);
           const confidenceClass = SS.getConfidenceClass(confidence);
 
-          const localPerformer = await SS.findPerformerByStashDBId(performer.performer_id);
+          const galEndpoint = performer.endpoint || 'stashdb.org';
+          const galStashboxUrl = this._stashboxPerformerUrl(galEndpoint, performer.performer_id);
+          const galGraphqlUrl = this._stashboxGraphqlUrl(galEndpoint);
+          const localPerformer = await SS.findPerformerByStashDBId(performer.performer_id, galGraphqlUrl);
 
           personDiv.innerHTML = `
             <div class="ss-person-header">
@@ -876,8 +1134,8 @@
                 <div class="ss-confidence ${confidenceClass}">${confidence}% match</div>
                 ${performer.country ? `<div class="ss-country">${performer.country}</div>` : ''}
                 <div class="ss-links">
-                  <a href="https://stashdb.org/performers/${performer.performer_id}" target="_blank" rel="noopener" class="ss-link">
-                    View on StashDB
+                  <a href="${galStashboxUrl}" target="_blank" rel="noopener" class="ss-link">
+                    View on ${galEndpoint}
                   </a>
                 </div>
                 ${localPerformer ? `
@@ -975,7 +1233,6 @@
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
               </svg>
             </span>
-            <span class="ss-btn-text">Identify Performers</span>
           `,
         });
         btn.addEventListener('click', () => this.handleIdentifyGallery());

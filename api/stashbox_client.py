@@ -40,6 +40,7 @@ PERFORMER_FIELDS = """
     tattoos { location description }
     piercings { location description }
     urls { url type }
+    images { id url }
     is_favorite
     deleted
     merged_into_id
