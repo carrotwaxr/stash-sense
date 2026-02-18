@@ -157,13 +157,16 @@
 
     // Database update operations
     async checkUpdate() {
-      return SS.runPluginOperation('db_check_update', {});
+      const settings = await SS.getSettings();
+      return SS.runPluginOperation('db_check_update', { sidecar_url: settings.sidecarUrl });
     },
     async startUpdate() {
-      return SS.runPluginOperation('db_update', {});
+      const settings = await SS.getSettings();
+      return SS.runPluginOperation('db_update', { sidecar_url: settings.sidecarUrl });
     },
     async getUpdateStatus() {
-      return SS.runPluginOperation('db_update_status', {});
+      const settings = await SS.getSettings();
+      return SS.runPluginOperation('db_update_status', { sidecar_url: settings.sidecarUrl });
     },
 
     // User settings
