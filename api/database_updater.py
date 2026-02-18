@@ -170,26 +170,29 @@ class DatabaseUpdater:
             resp.raise_for_status()
             release = resp.json()
 
-        latest_tag: str = release["tag_name"]
+        latest_tag: str = release["tag_name"].lstrip("v")
         current = self._get_current_version()
 
         # Find the zip asset download URL
         download_url: Optional[str] = None
-        asset_size: Optional[int] = None
+        download_size_mb: Optional[int] = None
         for asset in release.get("assets", []):
             if asset["name"].endswith(".zip"):
                 download_url = asset["browser_download_url"]
-                asset_size = asset.get("size")
+                size_bytes = asset.get("size")
+                if size_bytes:
+                    download_size_mb = round(size_bytes / 1_000_000)
                 break
 
-        update_available = current is None or latest_tag > current
+        update_available = current is not None and latest_tag > current
 
         result: dict[str, Any] = {
             "update_available": update_available,
             "current_version": current,
             "latest_version": latest_tag,
+            "release_name": release.get("name"),
             "download_url": download_url,
-            "asset_size": asset_size,
+            "download_size_mb": download_size_mb,
             "published_at": release.get("published_at"),
         }
 
