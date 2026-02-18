@@ -430,6 +430,35 @@ class TestSwapFiles:
 
         assert (data_dir / "face_adaface.voy").read_bytes() == b"adaface-data"
 
+    def test_preserves_optional_files_absent_from_extract(self, tmp_path):
+        """Optional release files that exist locally but are absent from the
+        new release should be left untouched (not backed up and deleted)."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        for fname in REQUIRED_FILES:
+            (data_dir / fname).write_text(f"old-{fname}")
+        # Simulate existing tattoo files from a previous release
+        (data_dir / "tattoo_embeddings.voy").write_bytes(b"tattoo-index")
+        (data_dir / "tattoo_embeddings.json").write_text('["mapping"]')
+
+        updater = DatabaseUpdater(data_dir=data_dir, reload_fn=MagicMock(return_value=True))
+
+        extract_dir = tmp_path / "extract"
+        extract_dir.mkdir()
+        # New release only has required files — no tattoo files
+        for fname in REQUIRED_FILES:
+            (extract_dir / fname).write_text(f"new-{fname}")
+
+        backup_dir = updater._swap_files(extract_dir)
+
+        # Tattoo files should still be in data dir, untouched
+        assert (data_dir / "tattoo_embeddings.voy").read_bytes() == b"tattoo-index"
+        assert (data_dir / "tattoo_embeddings.json").read_text() == '["mapping"]'
+        # Tattoo files should NOT be in backup
+        assert not (backup_dir / "tattoo_embeddings.voy").exists()
+        assert not (backup_dir / "tattoo_embeddings.json").exists()
+
 
 class TestRollback:
     """_rollback restores files from backup."""

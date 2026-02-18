@@ -363,8 +363,11 @@ class DatabaseUpdater:
     def _swap_files(self, extract_dir: Path) -> Path:
         """Move old data files into a backup dir, then move new files in.
 
-        Only touches files in ``RELEASE_FILES``.  ``stash_sense.db`` and
-        any other non-release artefacts are left untouched.
+        Only backs up files that have a replacement in the new release.
+        Files in ``RELEASE_FILES`` that exist locally but are absent from
+        the new release are left untouched (e.g. optional tattoo indices).
+        ``stash_sense.db`` and any other non-release artefacts are never
+        touched.
 
         Returns the backup directory path.
         """
@@ -372,16 +375,22 @@ class DatabaseUpdater:
         backup_dir = self._data_dir / f"backup_{timestamp}"
         backup_dir.mkdir(parents=True)
 
-        # Phase 1: back up existing release files
-        for fname in RELEASE_FILES:
+        # Determine which release files are in the new release
+        new_files = {
+            item.name for item in extract_dir.iterdir()
+            if item.name in RELEASE_FILES
+        }
+
+        # Phase 1: back up only files that will be replaced
+        for fname in new_files:
             src = self._data_dir / fname
             if src.exists():
                 shutil.move(str(src), str(backup_dir / fname))
 
         # Phase 2: move new files into data dir
-        for item in extract_dir.iterdir():
-            if item.name in RELEASE_FILES:
-                shutil.move(str(item), str(self._data_dir / item.name))
+        for fname in new_files:
+            src = extract_dir / fname
+            shutil.move(str(src), str(self._data_dir / fname))
 
         return backup_dir
 
