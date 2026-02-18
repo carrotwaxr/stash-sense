@@ -318,7 +318,7 @@
               ${updateInfo && updateInfo.update_available ? `
                 <div class="ss-update-badge" id="ss-update-badge">
                   <span class="ss-update-badge-text">v${updateInfo.latest_version} available</span>
-                  <button class="ss-update-btn" id="ss-update-btn">Update</button>
+                  <button class="ss-update-btn" id="ss-update-btn">Update DB</button>
                 </div>
               ` : ''}
             </div>
@@ -389,52 +389,54 @@
       // Database update button handler
       const updateBtn = document.getElementById('ss-update-btn');
       if (updateBtn) {
-        updateBtn.addEventListener('click', async () => {
-          if (!confirm(`Download ~${updateInfo.download_size_mb || '???'} MB and update database?\n\nFace recognition will be briefly unavailable during the swap.`)) {
-            return;
-          }
-          updateBtn.disabled = true;
-          updateBtn.textContent = 'Starting...';
+        updateBtn.addEventListener('click', () => {
+          showConfirmModal(
+            `Download ~${updateInfo.download_size_mb || '???'} MB and update to v${updateInfo.latest_version}? Face recognition will be briefly unavailable during the swap.`,
+            async () => {
+              updateBtn.disabled = true;
+              updateBtn.textContent = 'Starting...';
 
-          const startResult = await RecommendationsAPI.startUpdate();
-          if (startResult.error) {
-            alert('Update failed to start: ' + startResult.error);
-            updateBtn.disabled = false;
-            updateBtn.textContent = 'Update';
-            return;
-          }
-
-          // Replace badge with progress display
-          const badge = document.getElementById('ss-update-badge');
-          if (badge) {
-            badge.innerHTML = '<div class="ss-update-progress"><div class="ss-spinner ss-spinner-small"></div><span id="ss-update-progress-text">Starting download...</span></div>';
-          }
-
-          // Poll for progress
-          const pollInterval = setInterval(async () => {
-            const status = await RecommendationsAPI.getUpdateStatus();
-            const textEl = document.getElementById('ss-update-progress-text');
-            if (!textEl) { clearInterval(pollInterval); return; }
-
-            const labels = {
-              downloading: 'Downloading... ' + (status.progress_pct || 0) + '%',
-              extracting: 'Extracting...',
-              verifying: 'Verifying checksums...',
-              swapping: 'Swapping database...',
-              reloading: 'Reloading...',
-              complete: 'Updated to v' + (status.target_version || '') + '!',
-              failed: 'Failed: ' + (status.error || 'Unknown error'),
-            };
-            textEl.textContent = labels[status.status] || status.status;
-
-            if (status.status === 'complete' || status.status === 'failed') {
-              clearInterval(pollInterval);
-              if (status.status === 'complete') {
-                badge.innerHTML = '<span class="ss-update-complete">Updated to v' + status.target_version + '</span>';
-                setTimeout(() => renderDashboard(container), 2000);
+              const startResult = await RecommendationsAPI.startUpdate();
+              if (startResult.error) {
+                showConfirmModal('Update failed to start: ' + startResult.error, () => {});
+                updateBtn.disabled = false;
+                updateBtn.textContent = 'Update DB';
+                return;
               }
+
+              // Replace badge with progress display
+              const badge = document.getElementById('ss-update-badge');
+              if (badge) {
+                badge.innerHTML = '<div class="ss-update-progress"><div class="ss-spinner ss-spinner-small"></div><span id="ss-update-progress-text">Starting download...</span></div>';
+              }
+
+              // Poll for progress
+              const pollInterval = setInterval(async () => {
+                const status = await RecommendationsAPI.getUpdateStatus();
+                const textEl = document.getElementById('ss-update-progress-text');
+                if (!textEl) { clearInterval(pollInterval); return; }
+
+                const labels = {
+                  downloading: 'Downloading... ' + (status.progress_pct || 0) + '%',
+                  extracting: 'Extracting...',
+                  verifying: 'Verifying checksums...',
+                  swapping: 'Swapping database...',
+                  reloading: 'Reloading...',
+                  complete: 'Updated to v' + (status.target_version || '') + '!',
+                  failed: 'Failed: ' + (status.error || 'Unknown error'),
+                };
+                textEl.textContent = labels[status.status] || status.status;
+
+                if (status.status === 'complete' || status.status === 'failed') {
+                  clearInterval(pollInterval);
+                  if (status.status === 'complete') {
+                    badge.innerHTML = '<span class="ss-update-complete">Updated to v' + status.target_version + '</span>';
+                    setTimeout(() => renderDashboard(container), 2000);
+                  }
+                }
+              }, 2000);
             }
-          }, 2000);
+          );
         });
       }
 
