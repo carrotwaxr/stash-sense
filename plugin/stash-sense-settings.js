@@ -343,9 +343,8 @@
     const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
 
     const loadingRow = SS.createElement('div', {
-      className: 'ss-setting-row',
+      className: 'ss-setting-row ss-setting-hint',
       textContent: 'Loading stash-box endpoints...',
-      style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
     });
     body.appendChild(loadingRow);
     section.appendChild(body);
@@ -361,17 +360,15 @@
 
       if (endpoints.length === 0) {
         const emptyRow = SS.createElement('div', {
-          className: 'ss-setting-row',
-          style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+          className: 'ss-setting-row ss-setting-hint',
+          textContent: 'No stash-box endpoints configured. Configure them in Stash Settings \u2192 Metadata Providers.',
         });
-        emptyRow.textContent = 'No stash-box endpoints configured. Configure them in Stash Settings → Metadata Providers.';
         body.appendChild(emptyRow);
       } else {
         const helpRow = SS.createElement('div', {
-          className: 'ss-setting-row',
-          style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+          className: 'ss-setting-row ss-setting-hint',
+          textContent: 'Configure which fields are monitored for upstream changes per endpoint.',
         });
-        helpRow.textContent = 'Configure which fields are monitored for upstream changes per endpoint.';
         body.appendChild(helpRow);
 
         for (const ep of endpoints) {
@@ -387,10 +384,10 @@
 
   function renderEndpointFieldConfig(ep) {
     const displayName = ep.name || (() => { try { return new URL(ep.endpoint).hostname; } catch (_) { return ep.endpoint; } })();
-    const row = SS.createElement('div', { className: 'ss-setting-row', style: 'flex-direction: column; align-items: stretch;' });
+    const row = SS.createElement('div', { className: 'ss-setting-row-vertical' });
 
     // Header row with name and toggle
-    const headerRow = SS.createElement('div', { style: 'display:flex;align-items:center;justify-content:space-between;width:100%;' });
+    const headerRow = SS.createElement('div', { className: 'ss-setting-row-header' });
 
     const info = SS.createElement('div', { className: 'ss-setting-info' });
     info.innerHTML = `
@@ -402,13 +399,13 @@
     const toggleBtn = SS.createElement('button', {
       className: 'ss-setting-reset',
       textContent: 'Show Fields',
-      style: 'padding: 4px 12px;',
     });
     headerRow.appendChild(toggleBtn);
     row.appendChild(headerRow);
 
     // Fields wrapper (hidden initially)
-    const fieldsWrapper = SS.createElement('div', { style: 'display:none;width:100%;margin-top:12px;' });
+    const fieldsWrapper = SS.createElement('div', { className: 'ss-upstream-fields-wrapper' });
+    fieldsWrapper.style.display = 'none';
     row.appendChild(fieldsWrapper);
 
     let fieldsLoaded = false;
@@ -421,7 +418,7 @@
       if (isHidden && !fieldsLoaded) {
         fieldsLoaded = true;
         const loading = SS.createElement('div', {
-          style: 'color: var(--bs-secondary-color, #888); font-size: 13px; padding: 4px 0;',
+          className: 'ss-setting-hint',
           textContent: 'Loading field config...',
         });
         fieldsWrapper.appendChild(loading);
@@ -448,18 +445,16 @@
           fieldsWrapper.appendChild(fieldsGrid);
 
           // Save button
-          const actionsDiv = SS.createElement('div', { style: 'display:flex;align-items:center;margin-top:10px;gap:8px;' });
+          const actionsDiv = SS.createElement('div', { className: 'ss-setting-control' });
           const saveBtn = SS.createElement('button', {
-            className: 'ss-btn ss-btn-primary',
+            className: 'ss-btn ss-btn-primary ss-btn-sm',
             textContent: 'Save Field Config',
-            style: 'padding: 6px 14px; font-size: 13px;',
           });
-          const saveStatus = SS.createElement('span', { style: 'font-size: 13px;' });
+          const saveStatus = SS.createElement('span', { className: 'ss-setting-hint' });
 
           saveBtn.addEventListener('click', async () => {
             saveBtn.disabled = true;
             saveStatus.textContent = 'Saving...';
-            saveStatus.style.color = 'var(--bs-secondary-color, #888)';
             const configs = {};
             fieldsGrid.querySelectorAll('input[type="checkbox"]').forEach(cb => {
               configs[cb.dataset.field] = cb.checked;
@@ -468,7 +463,7 @@
               await apiCall('rec_set_field_config', { endpoint: ep.endpoint, field_configs: configs });
               saveStatus.textContent = 'Saved!';
               saveStatus.style.color = '#22c55e';
-              setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+              setTimeout(() => { saveStatus.textContent = ''; saveStatus.style.color = ''; }, 2000);
             } catch (e) {
               saveStatus.textContent = `Error: ${e.message}`;
               saveStatus.style.color = '#ef4444';
@@ -491,6 +486,27 @@
 
   // ==================== Job Schedules ====================
 
+  let scheduleTimeouts = {};
+
+  function saveSchedule(type, enabled, intervalHours, row) {
+    if (scheduleTimeouts[type]) {
+      clearTimeout(scheduleTimeouts[type]);
+    }
+    scheduleTimeouts[type] = setTimeout(async () => {
+      try {
+        await apiCall('queue_update_schedule', {
+          type,
+          enabled,
+          interval_hours: intervalHours,
+        });
+        showSaveIndicator(row, 'Saved');
+      } catch (e) {
+        showSaveIndicator(row, 'Error', true);
+        console.error(`Failed to save schedule ${type}:`, e);
+      }
+    }, 500);
+  }
+
   async function renderSchedulesCategory(container) {
     const section = SS.createElement('div', { className: 'ss-settings-category' });
 
@@ -503,8 +519,7 @@
     const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
 
     const desc = SS.createElement('div', {
-      className: 'ss-setting-row',
-      style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+      className: 'ss-setting-row ss-setting-hint',
       textContent: 'Configure automatic job schedules. Jobs will run at the specified intervals.',
     });
     body.appendChild(desc);
@@ -520,8 +535,7 @@
 
       if (schedules.length === 0) {
         const emptyRow = SS.createElement('div', {
-          className: 'ss-setting-row',
-          style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+          className: 'ss-setting-row ss-setting-hint',
           textContent: 'No schedules configured. They will be created automatically on next sidecar restart.',
         });
         body.appendChild(emptyRow);
@@ -533,20 +547,19 @@
       for (const schedule of schedules) {
         const typeInfo = types.find(t => t.type_id === schedule.type);
         const displayName = typeInfo ? typeInfo.display_name : schedule.type;
+        const description = typeInfo?.description || '';
+        const allowedIntervals = typeInfo?.allowed_intervals || [];
 
         const row = SS.createElement('div', { className: 'ss-setting-row' });
 
         const info = SS.createElement('div', { className: 'ss-setting-info' });
         info.innerHTML = `
           <label class="ss-setting-label">${displayName}</label>
-          <span class="ss-setting-desc">Runs every ${schedule.interval_hours || 24} hours</span>
+          <span class="ss-setting-desc">${description}</span>
         `;
         row.appendChild(info);
 
         const control = SS.createElement('div', { className: 'ss-setting-control' });
-        const controlGroup = SS.createElement('div', {
-          styles: { display: 'flex', alignItems: 'center', gap: '12px' },
-        });
 
         // Enable toggle
         const toggle = SS.createElement('label', { className: 'ss-toggle' });
@@ -557,88 +570,55 @@
         const slider = SS.createElement('span', { className: 'ss-toggle-slider' });
         toggle.appendChild(checkbox);
         toggle.appendChild(slider);
-        controlGroup.appendChild(toggle);
+        control.appendChild(toggle);
 
-        // Interval input
-        const intervalLabel = SS.createElement('span', {
-          styles: { fontSize: '13px', color: 'var(--bs-secondary-color, #888)', marginLeft: '4px' },
-          textContent: 'every',
-        });
-        controlGroup.appendChild(intervalLabel);
+        // Interval select dropdown
+        const select = SS.createElement('select', { className: 'ss-select' });
+        const currentHours = schedule.interval_hours || 24;
 
-        const intervalInput = SS.createElement('input', {
-          attrs: {
-            type: 'number',
-            value: String(schedule.interval_hours || 24),
-            min: '0.5',
-            step: '0.5',
-          },
-          styles: {
-            width: '80px',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            border: '1px solid var(--bs-border-color, #444)',
-            background: 'var(--bs-body-bg, #1a1a2e)',
-            color: 'var(--bs-body-color, #eee)',
-            fontSize: '13px',
-          },
-        });
-        controlGroup.appendChild(intervalInput);
-
-        const hoursLabel = SS.createElement('span', {
-          styles: { fontSize: '13px', color: 'var(--bs-secondary-color, #888)' },
-          textContent: 'hours',
-        });
-        controlGroup.appendChild(hoursLabel);
-
-        // Save button
-        const saveBtn = SS.createElement('button', {
-          className: 'ss-btn ss-btn-primary',
-          textContent: 'Save',
-          styles: { padding: '4px 12px', fontSize: '13px' },
-        });
-
-        const saveStatus = SS.createElement('span', { styles: { fontSize: '13px' } });
-
-        saveBtn.addEventListener('click', async () => {
-          saveBtn.disabled = true;
-          saveStatus.textContent = 'Saving...';
-          saveStatus.style.color = 'var(--bs-secondary-color, #888)';
-          try {
-            await apiCall('queue_update_schedule', {
-              type: schedule.type,
-              enabled: checkbox.checked,
-              interval_hours: parseFloat(intervalInput.value),
-            });
-            saveStatus.textContent = 'Saved!';
-            saveStatus.style.color = '#22c55e';
-            // Update the description text
-            const descSpan = info.querySelector('.ss-setting-desc');
-            if (descSpan) {
-              descSpan.textContent = `Runs every ${intervalInput.value} hours`;
-            }
-            setTimeout(() => { saveStatus.textContent = ''; }, 2000);
-          } catch (e) {
-            saveStatus.textContent = 'Error';
-            saveStatus.style.color = '#ef4444';
-            setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+        for (const interval of allowedIntervals) {
+          const option = SS.createElement('option', {
+            attrs: { value: String(interval.hours) },
+            textContent: interval.label,
+          });
+          if (interval.hours === currentHours) {
+            option.selected = true;
           }
-          saveBtn.disabled = false;
+          select.appendChild(option);
+        }
+
+        // If current value isn't in the allowed list, add it as a fallback
+        if (allowedIntervals.length > 0 && !allowedIntervals.some(i => i.hours === currentHours)) {
+          const fallback = SS.createElement('option', {
+            attrs: { value: String(currentHours), selected: 'selected' },
+            textContent: `Every ${currentHours} hours`,
+          });
+          select.insertBefore(fallback, select.firstChild);
+        }
+
+        select.disabled = !schedule.enabled;
+        control.appendChild(select);
+
+        // Auto-save on toggle change
+        checkbox.addEventListener('change', () => {
+          select.disabled = !checkbox.checked;
+          saveSchedule(schedule.type, checkbox.checked, parseFloat(select.value), row);
         });
 
-        controlGroup.appendChild(saveBtn);
-        controlGroup.appendChild(saveStatus);
+        // Auto-save on interval change
+        select.addEventListener('change', () => {
+          saveSchedule(schedule.type, checkbox.checked, parseFloat(select.value), row);
+        });
 
-        control.appendChild(controlGroup);
         row.appendChild(control);
         body.appendChild(row);
       }
     } catch (e) {
       const errorRow = SS.createElement('div', {
-        className: 'ss-setting-row',
-        style: 'color: #ef4444; font-size: 13px;',
+        className: 'ss-setting-row ss-setting-hint',
         textContent: `Failed to load schedules: ${e.message}`,
       });
+      errorRow.style.color = '#ef4444';
       body.appendChild(errorRow);
     }
 

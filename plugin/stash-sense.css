@@ -2366,7 +2366,12 @@
 
 .ss-number-input input::-webkit-inner-spin-button,
 .ss-number-input input::-webkit-outer-spin-button {
-  opacity: 1;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.ss-number-input input[type="number"] {
+  -moz-appearance: textbox;
 }
 
 .ss-number-input input:focus {
@@ -2378,6 +2383,76 @@
   font-size: 11px;
   color: var(--bs-secondary-color, #666);
   white-space: nowrap;
+}
+
+/* Select Dropdown */
+.ss-select {
+  padding: 6px 10px;
+  background: var(--bs-body-bg, #1a1a1a);
+  border: 1px solid var(--bs-border-color, #444);
+  border-radius: 6px;
+  color: var(--bs-body-color, #fff);
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.ss-select:focus {
+  outline: none;
+  border-color: var(--bs-primary, #0d6efd);
+}
+
+.ss-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Hint Text (reusable muted description) */
+.ss-setting-hint {
+  color: var(--bs-secondary-color, #888);
+  font-size: 13px;
+}
+
+/* Vertical Setting Row (stacks children) */
+.ss-setting-row-vertical {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 16px;
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border-radius: 8px;
+  position: relative;
+}
+
+.ss-setting-row-vertical:first-child {
+  border-radius: 8px 8px 2px 2px;
+}
+
+.ss-setting-row-vertical:last-child {
+  border-radius: 2px 2px 8px 8px;
+}
+
+.ss-setting-row-vertical:only-child {
+  border-radius: 8px;
+}
+
+/* Row Header (flex row with space-between) */
+.ss-setting-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+/* Upstream Fields Wrapper */
+.ss-upstream-fields-wrapper {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.ss-upstream-fields-wrapper .ss-setting-control {
+  margin-top: 10px;
 }
 
 /* Toggle Switch */
