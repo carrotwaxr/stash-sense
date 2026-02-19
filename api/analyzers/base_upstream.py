@@ -143,11 +143,19 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
         }
 
     def _create_stashbox_client(self, endpoint: str, api_key: str):
-        """Create a StashBoxClient for the given endpoint.
+        """Get or create a StashBoxClient for the given endpoint.
 
-        Subclasses can override to control which StashBoxClient class is used,
-        enabling test patching at the subclass module level.
+        Prefers the connection manager (which provides per-endpoint rate limiting).
+        Falls back to creating a bare client if the manager isn't available.
         """
+        try:
+            from stashbox_connection_manager import get_connection_manager
+            mgr = get_connection_manager()
+            client = mgr.get_client(endpoint)
+            if client:
+                return client
+        except RuntimeError:
+            pass
         from stashbox_client import StashBoxClient
         return StashBoxClient(endpoint, api_key)
 

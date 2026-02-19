@@ -54,7 +54,7 @@ class TestUpstreamSyncIntegration:
 
         # First scan: height changed from 165 -> 168
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(
                 return_value=make_upstream(168, "2026-01-15T10:00:00Z")
@@ -66,7 +66,7 @@ class TestUpstreamSyncIntegration:
 
         # Second scan: height changed again 168 -> 170
         analyzer2 = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(
                 return_value=make_upstream(170, "2026-01-16T10:00:00Z")
@@ -111,7 +111,7 @@ class TestUpstreamSyncIntegration:
 
         # First scan creates recommendation
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(
                 return_value=make_upstream(168, "2026-01-15T10:00:00Z")
@@ -127,7 +127,7 @@ class TestUpstreamSyncIntegration:
 
         # New scan with newer upstream changes
         analyzer2 = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(
                 return_value=make_upstream(170, "2026-01-16T10:00:00Z")
