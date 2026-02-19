@@ -1,12 +1,13 @@
 name: Stash Sense
 description: AI-powered performer identification using face recognition against StashDB database
-version: 0.1.0
+version: 0.3.0
 url: https://github.com/carrotwaxr/stash-sense
 
 ui:
   javascript:
     - stash-sense-core.js
     - stash-sense-recommendations.js
+    - stash-sense-settings.js
     - stash-sense.js
   css:
     - stash-sense.css
