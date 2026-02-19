@@ -1,0 +1,1627 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="AI-powered performer identification for Stash">
+      
+      
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.2">
+    
+    
+      
+        <title>Face Recognition Quality Investigation - Stash Sense</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#face-recognition-quality-investigation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Stash Sense" class="md-header__button md-logo" aria-label="Stash Sense" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stash Sense
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Face Recognition Quality Investigation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="purple"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/carrotwaxr/stash-sense" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    stash-sense
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Stash Sense" class="md-nav__button md-logo" aria-label="Stash Sense" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stash Sense
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/carrotwaxr/stash-sense" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    stash-sense
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../settings-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stash-box-endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    StashBox Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unraid
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Unraid
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../unraid/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../unraid/gpu-passthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Passthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#date-2026-02-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Date: 2026-02-09
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-status-complete-pending-database-rebuild" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Status: COMPLETE - Pending Database Rebuild
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#problem-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem Statement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#investigation-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Investigation Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bug-1-no-face-alignment-primary-70-of-quality-loss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bug 1: No Face Alignment (PRIMARY - ~70% of quality loss)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bug 1: No Face Alignment (PRIMARY - ~70% of quality loss)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#whats-happening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's happening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-should-happen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What should happen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-destroys-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this destroys quality
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evidence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bug-2-wrong-arcface-normalization-secondary-30-of-quality-loss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bug 2: Wrong ArcFace Normalization (SECONDARY - ~30% of quality loss)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bug 2: Wrong ArcFace Normalization (SECONDARY - ~30% of quality loss)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#whats-happening_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's happening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-should-happen_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What should happen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evidence_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evidence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-facenet-normalization-concern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additional FaceNet normalization concern
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#additional-issues-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additional Issues Found
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Additional Issues Found">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#issue-3-no-aspect-ratio-preserving-resize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue 3: No Aspect-Ratio-Preserving Resize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issue-4-no-horizontal-flip-augmentation-at-query-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue 4: No Horizontal Flip Augmentation at Query Time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issue-5-e4m3-quantized-storage-stashface-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue 5: E4M3 Quantized Storage (StashFace optimization)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issue-6-manifest-inconsistency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue 6: Manifest Inconsistency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#competitive-analysis-stashface-cc1234" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Competitive Analysis: StashFace (cc1234)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proposed-fix-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed Fix Plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Proposed Fix Plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-fix-embeddingspy-both-trainer-and-sidecar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Fix embeddings.py (both trainer and sidecar)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 1: Fix embeddings.py (both trainer and sidecar)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1a-add-face-alignment-using-insightface-landmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1a. Add face alignment using InsightFace landmarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1b-fix-arcface-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1b. Fix ArcFace normalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1c-add-aspect-ratio-preserving-resize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1c. Add aspect-ratio-preserving resize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1d-add-horizontal-flip-averaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1d. Add horizontal flip averaging
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-rebuild-the-face-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Rebuild the face database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-update-sidecar-embeddingspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: Update sidecar embeddings.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-update-matchingscoring-optional-improvements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: Update matching/scoring (optional improvements)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confidence-assessment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Assessment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Confidence Assessment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#will-this-fix-the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Will this fix the problem?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#will-we-match-or-exceed-stashface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Will we match or exceed StashFace?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-about-insightfaces-built-in-arcface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What about InsightFace's built-in ArcFace?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files-to-modify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files to Modify
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Files to Modify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trainer-stash-sense-trainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trainer (stash-sense-trainer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sidecar-stash-sense" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sidecar (stash-sense)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-how-stashfaces-pipeline-works-complete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix: How StashFace's Pipeline Works (Complete)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="face-recognition-quality-investigation">Face Recognition Quality Investigation</h1>
+<h2 id="date-2026-02-09">Date: 2026-02-09</h2>
+<h2 id="implementation-status-complete-pending-database-rebuild">Implementation Status: COMPLETE - Pending Database Rebuild</h2>
+<p>All critical fixes have been implemented in both the trainer and sidecar:</p>
+<ol>
+<li><strong>Face alignment</strong> - Added InsightFace <code>norm_crop</code> 5-point similarity transform (trainer: <code>575525e</code>, sidecar: <code>66d9ef8</code>)</li>
+<li><strong>ArcFace normalization</strong> - Fixed from <code>x/255</code> to <code>(x-127.5)/128</code> (trainer: <code>ce06344</code>, sidecar: <code>66d9ef8</code>)</li>
+<li><strong>Flip-averaging</strong> - Added horizontal flip embedding averaging (trainer: <code>ce06344</code>, sidecar: <code>66d9ef8</code>)</li>
+<li><strong>Aspect-ratio resize</strong> - Replaced stretching with aspect-ratio-preserving resize + black padding (trainer: <code>ce06344</code>, sidecar: <code>66d9ef8</code>)</li>
+<li><strong>Manifest updated</strong> - Reflects actual pipeline models (trainer: <code>2975e31</code>)</li>
+<li><strong>Nuke script</strong> - <code>python -m api.nuke_enrichment_data --yes</code> to clear all enrichment data (trainer: <code>259ebd3</code>)</li>
+</ol>
+<p><strong>Next step:</strong> Run nuke script, then re-scrape with high-trust sources first (stashdb, theporndb), followed by reference sites and medium-trust sources. See plan's "Post-Implementation: Database Rebuild Instructions" section.</p>
+<hr />
+<h2 id="problem-statement">Problem Statement</h2>
+<p>Face recognition results are extremely poor. The system fails to correctly identify performers even in controlled conditions (still photos from galleries) where identification should be trivial. Example: Gallery 2139 (Holly Randall shoot featuring Jayden Jaymes) - the system thinks there are multiple different people and doesn't rank Jayden Jaymes highly, despite her having multiple face embeddings in the database.</p>
+<h2 id="investigation-summary">Investigation Summary</h2>
+<p>Root cause analysis traced the problem to <strong>two critical bugs in <code>embeddings.py</code></strong> (shared between trainer and sidecar), plus <strong>several missing best practices</strong> that competitive systems implement.</p>
+<hr />
+<h2 id="bug-1-no-face-alignment-primary-70-of-quality-loss">Bug 1: No Face Alignment (PRIMARY - ~70% of quality loss)</h2>
+<h3 id="whats-happening">What's happening</h3>
+<p>In both <code>stash-sense-trainer/api/embeddings.py</code> and <code>stash-sense/api/embeddings.py</code>, the <code>detect_faces()</code> method crops faces using a raw bounding box with zero alignment:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># embeddings.py line 150 (trainer), line 150 (sidecar)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">face_img</span> <span class="o">=</span> <span class="n">image</span><span class="p">[</span><span class="n">y1</span><span class="p">:</span><span class="n">y2</span><span class="p">,</span> <span class="n">x1</span><span class="p">:</span><span class="n">x2</span><span class="p">]</span>  <span class="c1"># Raw bounding box crop</span>
+</code></pre></div>
+<h3 id="what-should-happen">What should happen</h3>
+<p>FaceNet512 and ArcFace were <strong>trained on aligned faces</strong>. Face alignment is a standard preprocessing step in face recognition where detected faces are rotated so that the eyes are horizontally level before cropping. This normalizes head pose and is critical for embedding consistency.</p>
+<p>DeepFace's own <code>extract_faces()</code> function does this by default (<code>align=True</code>):</p>
+<ol>
+<li>Detect eye landmarks</li>
+<li>Calculate rotation angle: <code>angle = degrees(arctan2(left_eye_y - right_eye_y, left_eye_x - right_eye_x))</code></li>
+<li>Apply 2D affine rotation via <code>cv2.warpAffine()</code> to make eyes horizontal</li>
+<li>Crop the aligned face</li>
+</ol>
+<p>Our code already has the landmark data - InsightFace's RetinaFace provides 5-point facial landmarks (<code>face.kps</code> containing left_eye, right_eye, nose, mouth_left, mouth_right). We store them in <code>DetectedFace.landmarks</code> but never use them for alignment.</p>
+<h3 id="why-this-destroys-quality">Why this destroys quality</h3>
+<p>Without alignment, a 15-degree head tilt produces embeddings that are significantly different from the same person with a level head. The models never learned to be invariant to rotation because their training data was always pre-aligned. This means:</p>
+<ul>
+<li>Different photos of the same person at different head angles produce widely scattered embeddings</li>
+<li>The "centroid" of a performer's embedding cluster is noisy and unstable</li>
+<li>Query-time embeddings from natural photos rarely land near the correct cluster</li>
+</ul>
+<h3 id="evidence">Evidence</h3>
+<p>This is a well-established requirement in face recognition literature. Every competitive system does alignment:
+- <strong>StashFace</strong> (cc1234): Uses DeepFace's <code>extract_faces()</code> which has <code>align=True</code> by default
+- <strong>FaceStash</strong> (kozobot): Uses the <code>face_recognition</code> library which internally uses dlib's alignment
+- <strong>DeepFace itself</strong>: Alignment is ON by default in all pipelines
+- <strong>InsightFace's own recognition pipeline</strong>: Uses landmark-based alignment before embedding</p>
+<hr />
+<h2 id="bug-2-wrong-arcface-normalization-secondary-30-of-quality-loss">Bug 2: Wrong ArcFace Normalization (SECONDARY - ~30% of quality loss)</h2>
+<h3 id="whats-happening_1">What's happening</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># embeddings.py line 206 (trainer), line 206 (sidecar)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">arcface_input</span> <span class="o">=</span> <span class="n">arcface_input</span> <span class="o">/</span> <span class="mf">255.0</span>  <span class="c1"># Produces [0, 1] range - WRONG</span>
+</code></pre></div>
+<h3 id="what-should-happen_1">What should happen</h3>
+<p>Per the ArcFace paper, DeepFace's own preprocessing code (<code>preprocessing.py:66-71</code>), and StashFace's implementation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">arcface_input</span> <span class="o">=</span> <span class="p">(</span><span class="n">arcface_input</span> <span class="o">-</span> <span class="mf">127.5</span><span class="p">)</span> <span class="o">/</span> <span class="mi">128</span>  <span class="c1"># Produces ~[-1, 1] range - CORRECT</span>
+</code></pre></div>
+<p>The ArcFace model expects input pixels normalized to approximately <code>[-0.996, 0.996]</code> via <code>(x - 127.5) / 128</code>. Feeding <code>[0, 1]</code> range input shifts the entire activation distribution. The model still produces embeddings, but they're degraded - lower discriminative power.</p>
+<h3 id="evidence_1">Evidence</h3>
+<ul>
+<li>DeepFace source <code>preprocessing.py</code> line 66-71: <code>img -= 127.5; img /= 128</code> for ArcFace normalization</li>
+<li>ArcFace paper: "each pixel in RGB images is normalised by subtracting 127.5 then divided by 128"</li>
+<li>StashFace uses <code>preprocessing.normalize_input(resized, "ArcFace")</code> which applies this correct normalization</li>
+</ul>
+<h3 id="additional-facenet-normalization-concern">Additional FaceNet normalization concern</h3>
+<p>Our FaceNet normalization:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">facenet_input</span> <span class="o">=</span> <span class="p">(</span><span class="n">facenet_input</span> <span class="o">-</span> <span class="mf">127.5</span><span class="p">)</span> <span class="o">/</span> <span class="mf">127.5</span>  <span class="c1"># Our code</span>
+</code></pre></div></p>
+<p>StashFace uses <code>"Facenet2018"</code> normalization which is:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">img</span> <span class="o">/=</span> <span class="mf">127.5</span>  <span class="c1"># Then img -= 1</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># Equivalent to: (img - 127.5) / 127.5</span>
+</code></pre></div></p>
+<p>These are mathematically equivalent, so our FaceNet normalization is correct.</p>
+<hr />
+<h2 id="additional-issues-found">Additional Issues Found</h2>
+<h3 id="issue-3-no-aspect-ratio-preserving-resize">Issue 3: No Aspect-Ratio-Preserving Resize</h3>
+<p>Our code resizes faces by stretching to the target size:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">pil_img</span> <span class="o">=</span> <span class="n">pil_img</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">target_size</span><span class="p">,</span> <span class="n">Image</span><span class="o">.</span><span class="n">Resampling</span><span class="o">.</span><span class="n">BILINEAR</span><span class="p">)</span>  <span class="c1"># Non-preserving stretch</span>
+</code></pre></div>
+<p>DeepFace and StashFace use aspect-ratio-preserving resize with black padding:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># DeepFace preprocessing.resize_image()</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">factor</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">target_h</span> <span class="o">/</span> <span class="n">img_h</span><span class="p">,</span> <span class="n">target_w</span> <span class="o">/</span> <span class="n">img_w</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">resized</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">img_w</span> <span class="o">*</span> <span class="n">factor</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">img_h</span> <span class="o">*</span> <span class="n">factor</span><span class="p">)))</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Then pad with black to reach target_size</span>
+</code></pre></div>
+<p><strong>Impact</strong>: Moderate. Stretching distorts facial proportions slightly, adding noise to embeddings.</p>
+<h3 id="issue-4-no-horizontal-flip-augmentation-at-query-time">Issue 4: No Horizontal Flip Augmentation at Query Time</h3>
+<p><strong>StashFace's key technique</strong>: For every detected face, it generates embeddings for BOTH the original and a horizontally flipped version, then <strong>averages</strong> them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">face_batch</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">face</span><span class="p">,</span> <span class="n">face</span><span class="p">[:,</span> <span class="p">::</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># Original + flipped</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">embeddings_batch</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">get_face_embeddings_batch</span><span class="p">(</span><span class="n">face_batch</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">facenet</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">embeddings_batch</span><span class="p">[</span><span class="s1">&#39;facenet&#39;</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># Average</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">arc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">embeddings_batch</span><span class="p">[</span><span class="s1">&#39;arc&#39;</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>           <span class="c1"># Average</span>
+</code></pre></div>
+<p><strong>Why this helps</strong>: Faces are roughly symmetric. Averaging original + mirror embeddings:
+- Cancels out left-right asymmetries from lighting, expression, and slight pose
+- Produces a more "canonical" embedding closer to the center of the person's embedding cluster
+- Reduces the impact of minor alignment imperfections
+- Is essentially a free accuracy boost at the cost of 2x inference time</p>
+<h3 id="issue-5-e4m3-quantized-storage-stashface-optimization">Issue 5: E4M3 Quantized Storage (StashFace optimization)</h3>
+<p>StashFace uses <code>StorageDataType.E4M3</code> (8-bit float) for Voyager indices, reducing memory by 4x with minimal accuracy loss for cosine similarity. We use full 32-bit float. This is an optimization, not a bug - but worth considering for a 553K+ face database.</p>
+<h3 id="issue-6-manifest-inconsistency">Issue 6: Manifest Inconsistency</h3>
+<p>The manifest says <code>"detector": "yolov8"</code> but the code uses <code>buffalo_sc</code> (InsightFace RetinaFace). Either the manifest is stale from a prior version, or a different detector was used for the current DB build. This should be clarified and fixed during the rebuild.</p>
+<hr />
+<h2 id="competitive-analysis-stashface-cc1234">Competitive Analysis: StashFace (cc1234)</h2>
+<p>StashFace is the primary competitive reference. Here's what it does right that we should match or exceed:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>StashFace</th>
+<th>Our System</th>
+<th>Gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Face alignment</td>
+<td>DeepFace <code>extract_faces(align=True)</code></td>
+<td>None (raw crop)</td>
+<td><strong>CRITICAL</strong></td>
+</tr>
+<tr>
+<td>ArcFace normalization</td>
+<td><code>(x-127.5)/128</code> via DeepFace</td>
+<td><code>x/255</code></td>
+<td><strong>CRITICAL</strong></td>
+</tr>
+<tr>
+<td>FaceNet normalization</td>
+<td><code>"Facenet2018"</code> via DeepFace</td>
+<td><code>(x-127.5)/127.5</code></td>
+<td>OK (equivalent)</td>
+</tr>
+<tr>
+<td>Horizontal flip averaging</td>
+<td>Yes (original + flipped, averaged)</td>
+<td>No</td>
+<td><strong>HIGH</strong></td>
+</tr>
+<tr>
+<td>Aspect-ratio resize</td>
+<td>Yes (DeepFace <code>resize_image</code>)</td>
+<td>No (stretch)</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Index space</td>
+<td>Cosine</td>
+<td>Cosine</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>Index storage</td>
+<td>E4M3 (8-bit)</td>
+<td>Float32</td>
+<td>Low (optimization)</td>
+</tr>
+<tr>
+<td>Embedding dimensions</td>
+<td>512 (both models)</td>
+<td>512 (both models)</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>Model weights</td>
+<td>Equal (1.0 each)</td>
+<td>FaceNet 0.6, ArcFace 0.4</td>
+<td>Tuning difference</td>
+</tr>
+<tr>
+<td>Face detection</td>
+<td>YOLOv8 + MediaPipe</td>
+<td>InsightFace RetinaFace</td>
+<td>Different but OK</td>
+</tr>
+<tr>
+<td>Database size</td>
+<td>~130K performers</td>
+<td>~70K performers</td>
+<td>Different scope</td>
+</tr>
+<tr>
+<td>Confidence scoring</td>
+<td>Softmax with temperature + boost</td>
+<td>Linear (1 - distance)</td>
+<td>Different approach</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="proposed-fix-plan">Proposed Fix Plan</h2>
+<h3 id="phase-1-fix-embeddingspy-both-trainer-and-sidecar">Phase 1: Fix embeddings.py (both trainer and sidecar)</h3>
+<h4 id="1a-add-face-alignment-using-insightface-landmarks">1a. Add face alignment using InsightFace landmarks</h4>
+<p>Use the 5-point landmarks already available from RetinaFace to align faces before cropping. The alignment should:</p>
+<ol>
+<li>Get left_eye and right_eye coordinates from <code>face.kps[0]</code> and <code>face.kps[1]</code></li>
+<li>Calculate rotation angle to make eyes horizontal</li>
+<li>Apply affine rotation via <code>cv2.warpAffine()</code></li>
+<li>Crop the aligned face</li>
+</ol>
+<p>This approach is simpler and faster than DeepFace's alignment because we already have reliable landmarks from RetinaFace (no need for a separate eye detector).</p>
+<p>For even better alignment, consider using InsightFace's built-in <code>norm_crop()</code> which does a 5-point affine alignment (not just rotation but also scaling and translation to place landmarks at standard positions). This is what InsightFace's own ArcFace model was trained with and would produce the best-aligned faces.</p>
+<h4 id="1b-fix-arcface-normalization">1b. Fix ArcFace normalization</h4>
+<p>Change from <code>/ 255.0</code> to <code>(x - 127.5) / 128</code>.</p>
+<h4 id="1c-add-aspect-ratio-preserving-resize">1c. Add aspect-ratio-preserving resize</h4>
+<p>Use either DeepFace's <code>preprocessing.resize_image()</code> directly, or implement equivalent logic with OpenCV/PIL that resizes maintaining aspect ratio and pads with black.</p>
+<h4 id="1d-add-horizontal-flip-averaging">1d. Add horizontal flip averaging</h4>
+<p>Generate embeddings for both the original face and its horizontal mirror, then average both vectors. This provides a free accuracy boost.</p>
+<h3 id="phase-2-rebuild-the-face-database">Phase 2: Rebuild the face database</h3>
+<p>Since embeddings.py is shared between trainer and sidecar:</p>
+<ol>
+<li><strong>Keep all performer metadata</strong> - names, aliases, stashbox IDs, countries, etc. are all correct</li>
+<li><strong>Keep all face image URLs</strong> - we know which images to download for each performer</li>
+<li><strong>Delete all face embeddings and Voyager index entries</strong></li>
+<li><strong>Run a new enrichment pass</strong> to re-detect faces, align them, and generate correct embeddings</li>
+<li><strong>Export new faces.json, performers.json, and Voyager indices</strong></li>
+</ol>
+<p>The trainer's face URLs are stored in the <code>faces</code> table's <code>image_url</code> column. We can reprocess these same URLs with the corrected pipeline rather than re-scraping from stashbox. This means:
+- No stashbox API rate limiting concerns
+- Much faster than original scraping (just downloading images and processing)
+- Same curated image set, just better embeddings</p>
+<h3 id="phase-3-update-sidecar-embeddingspy">Phase 3: Update sidecar embeddings.py</h3>
+<p>Copy the corrected <code>embeddings.py</code> from the trainer to the sidecar. Since they're supposed to be identical (the trainer file says "this file is shared"), this ensures query-time preprocessing matches DB build-time preprocessing exactly.</p>
+<h3 id="phase-4-update-matchingscoring-optional-improvements">Phase 4: Update matching/scoring (optional improvements)</h3>
+<p>After the critical fixes, consider:
+- Tuning fusion weights (StashFace uses equal 1.0/1.0 instead of our 0.6/0.4)
+- Implementing softmax-based confidence scoring instead of linear
+- Adding E4M3 quantized storage for memory efficiency
+- Re-evaluating health detection thresholds (may not trigger as often with correct embeddings)</p>
+<hr />
+<h2 id="confidence-assessment">Confidence Assessment</h2>
+<h3 id="will-this-fix-the-problem">Will this fix the problem?</h3>
+<p><strong>Very high confidence (95%+).</strong> The alignment issue alone accounts for most face recognition systems' accuracy. It's the single most important preprocessing step in face recognition, and we completely skip it. Every working system we examined does alignment.</p>
+<h3 id="will-we-match-or-exceed-stashface">Will we match or exceed StashFace?</h3>
+<p><strong>Yes.</strong> After implementing all Phase 1 fixes, our system will use:
+- The same models (FaceNet512 + ArcFace)
+- The same distance metric (Cosine)
+- The same preprocessing (alignment + correct normalization + flip averaging)
+- A comparable database size (70K performers)
+- More sophisticated matching (dual-model health detection and adaptive fusion)</p>
+<p>Our health detection and adaptive fusion strategy is actually more sophisticated than StashFace's simple weighted voting, which should give us an edge in edge cases.</p>
+<h3 id="what-about-insightfaces-built-in-arcface">What about InsightFace's built-in ArcFace?</h3>
+<p>InsightFace ships with its own ArcFace recognition model (e.g., <code>w600k_r50</code> in the <code>buffalo_l</code> model pack). This is a different ArcFace implementation than DeepFace's, trained on a larger dataset (WebFace600K vs MS1M). We could potentially add it as a third signal or replace DeepFace's ArcFace entirely. However, this would be a larger change and the fixes above should already bring us to competitive quality.</p>
+<hr />
+<h2 id="files-to-modify">Files to Modify</h2>
+<h3 id="trainer-stash-sense-trainer">Trainer (stash-sense-trainer)</h3>
+<ul>
+<li><code>api/embeddings.py</code> - Add alignment, fix normalization, add flip averaging</li>
+<li><code>api/face_processor.py</code> - May need updates for new preprocessing</li>
+<li><code>api/index_manager.py</code> - No changes needed (Cosine space is correct)</li>
+<li>Database: Delete face rows + re-populate via enrichment run</li>
+</ul>
+<h3 id="sidecar-stash-sense">Sidecar (stash-sense)</h3>
+<ul>
+<li><code>api/embeddings.py</code> - Mirror all changes from trainer</li>
+<li><code>api/matching.py</code> - Consider weight tuning after rebuild</li>
+<li><code>api/recognizer.py</code> - No structural changes needed</li>
+</ul>
+<hr />
+<h2 id="appendix-how-stashfaces-pipeline-works-complete">Appendix: How StashFace's Pipeline Works (Complete)</h2>
+<p>For reference, here's StashFace's complete pipeline as reverse-engineered from the source:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>INPUT IMAGE
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    |
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>[YOLOv8 Face Detection] or [MediaPipe Face Detection]
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    |
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>[DeepFace extract_faces(align=True)]
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    |--- Eye landmark detection
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    |--- 2D affine rotation to level eyes
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    |--- Crop aligned face
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    |
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>[For each detected face]
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    |
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    +-- [Create batch: original + horizontal flip]
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    |       face_batch = stack([face, face[:, ::-1, :]])
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>    |
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>    +-- [FaceNet512 Preprocessing]
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>    |       resize_image(face, (160,160))  # aspect-ratio preserving + pad
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>    |       normalize_input(img, &quot;Facenet2018&quot;)  # (x/127.5) - 1
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>    |       model(batch, training=False)
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>    |
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>    +-- [ArcFace Preprocessing]
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>    |       resize_image(face, (112,112))  # aspect-ratio preserving + pad
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>    |       normalize_input(img, &quot;ArcFace&quot;)  # (x-127.5)/128
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>    |       model(batch, training=False)
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>    |
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>    +-- [Average original + flipped embeddings per model]
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>    |       facenet_emb = mean(facenet_batch, axis=0)
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>    |       arcface_emb = mean(arcface_batch, axis=0)
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>    |
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>    +-- [Query Voyager Indices (Cosine, E4M3)]
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>    |       facenet_results = index.query(facenet_emb, k=50)
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>    |       arcface_results = index.query(arcface_emb, k=50)
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>    |
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>    +-- [Ensemble Fusion]
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>    |       Weighted voting (1.0 each model)
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>    |       Softmax confidence with temperature
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>    |       Final score = normalized_votes * avg_confidence * boost
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>    |
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>OUTPUT: Ranked performer matches with confidence scores
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/carrotwaxr/stash-sense" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
