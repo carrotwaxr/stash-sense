@@ -159,8 +159,12 @@ class QueueManager:
 
     async def _dispatch_loop(self):
         """Main loop — dispatch jobs every second."""
+        tick_count = 0
         while not self.is_shutting_down:
             try:
+                tick_count += 1
+                if tick_count % 60 == 0:
+                    self._check_schedules()
                 await self._dispatch_once()
                 await self._check_completed()
             except asyncio.CancelledError:
@@ -236,3 +240,19 @@ class QueueManager:
     def _create_job_instance(self, type_id: str):
         """Create a job instance by type. Override in tests."""
         raise NotImplementedError(f"No job implementation registered for {type_id}")
+
+    def _check_schedules(self):
+        """Check for due schedules and submit jobs."""
+        due = self._db.get_due_schedules()
+        for schedule in due:
+            type_id = schedule["type"]
+            if type_id not in JOB_REGISTRY:
+                continue
+            job_id = self._db.submit_job(
+                type=type_id,
+                priority=schedule["priority"],
+                triggered_by="schedule",
+            )
+            if job_id:
+                self._db.update_schedule_last_run(type_id)
+                logger.warning(f"Scheduled job queued: {type_id} (id={job_id})")

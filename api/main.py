@@ -51,6 +51,7 @@ from database_updater import DatabaseUpdater, UpdateStatus
 from hardware import init_hardware
 from settings import init_settings, get_setting, migrate_env_vars
 from settings_router import router as settings_router, init_settings_router
+from queue_router import router as queue_router
 
 logger = logging.getLogger(__name__)
 
@@ -442,12 +443,31 @@ async def lifespan(app: FastAPI):
     )
     logger.warning(f"Settings initialized: tier={hw_profile.tier}, overrides={override_count}")
 
+    # Initialize queue manager
+    from queue_manager import QueueManager
+    from queue_router import init_queue_router
+    queue_mgr = QueueManager(get_rec_db())
+    queue_mgr.recover_on_startup()
+    init_queue_router(queue_mgr)
+    await queue_mgr.start()
+    logger.warning("Queue manager started")
+
+    import signal
+    def handle_sigterm(signum, frame):
+        logger.warning("SIGTERM received, initiating graceful shutdown...")
+        queue_mgr.request_shutdown()
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
     if STASH_URL:
         print(f"Stash connection configured: {STASH_URL}")
     else:
         print("Warning: STASH_URL not set - recommendations analysis will not work")
 
     yield
+
+    # Graceful shutdown — wait for jobs to checkpoint
+    await queue_mgr.stop(timeout=30.0)
+    logger.warning("Queue manager stopped")
 
     # Cleanup
     recognizer = None
@@ -472,6 +492,7 @@ app.add_middleware(
 # Include routers
 app.include_router(recommendations_router)
 app.include_router(settings_router)
+app.include_router(queue_router)
 
 
 def _match_to_response(m, **overrides) -> "PerformerMatchResponse":
