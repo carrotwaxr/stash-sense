@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import Optional
 
@@ -44,11 +44,13 @@ class JobDefinition:
 
     type_id: str
     display_name: str
+    description: str
     resource: ResourceType
     default_priority: JobPriority
     supports_incremental: bool
     schedulable: bool
     default_interval_hours: Optional[int] = None
+    allowed_intervals: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass
@@ -111,6 +113,30 @@ class JobRecord:
 
 
 # ---------------------------------------------------------------------------
+# Predefined interval tiers
+# ---------------------------------------------------------------------------
+
+INTERVALS_FREQUENT: tuple[tuple[int, str], ...] = (
+    (6, "Every 6 hours"),
+    (12, "Every 12 hours"),
+    (24, "Every day"),
+    (48, "Every 2 days"),
+    (72, "Every 3 days"),
+    (168, "Every week"),
+    (336, "Every 2 weeks"),
+)
+
+INTERVALS_INFREQUENT: tuple[tuple[int, str], ...] = (
+    (24, "Every day"),
+    (48, "Every 2 days"),
+    (72, "Every 3 days"),
+    (168, "Every week"),
+    (336, "Every 2 weeks"),
+    (720, "Every month"),
+)
+
+
+# ---------------------------------------------------------------------------
 # Job type registry
 # ---------------------------------------------------------------------------
 
@@ -120,75 +146,91 @@ JOB_REGISTRY: dict[str, JobDefinition] = {}
 def _register(
     type_id: str,
     display_name: str,
+    description: str,
     resource: ResourceType,
     default_priority: JobPriority,
     supports_incremental: bool = False,
     schedulable: bool = False,
     default_interval_hours: Optional[int] = None,
+    allowed_intervals: tuple[tuple[int, str], ...] = (),
 ) -> None:
     """Register a job definition in the global registry."""
     JOB_REGISTRY[type_id] = JobDefinition(
         type_id=type_id,
         display_name=display_name,
+        description=description,
         resource=resource,
         default_priority=default_priority,
         supports_incremental=supports_incremental,
         schedulable=schedulable,
         default_interval_hours=default_interval_hours,
+        allowed_intervals=allowed_intervals,
     )
 
 
 _register(
     "duplicate_performer",
     "Duplicate Performer Detection",
+    "Finds performers that may be duplicates",
     ResourceType.LIGHT,
     JobPriority.NORMAL,
     schedulable=True,
     default_interval_hours=168,
+    allowed_intervals=INTERVALS_INFREQUENT,
 )
 
 _register(
     "duplicate_scene_files",
     "Duplicate Scene File Detection",
+    "Finds scenes with identical file fingerprints",
     ResourceType.LIGHT,
     JobPriority.NORMAL,
     schedulable=True,
     default_interval_hours=168,
+    allowed_intervals=INTERVALS_INFREQUENT,
 )
 
 _register(
     "duplicate_scenes",
     "Duplicate Scene Detection",
+    "Finds scenes that may be the same content",
     ResourceType.LIGHT,
     JobPriority.NORMAL,
     schedulable=True,
     default_interval_hours=168,
+    allowed_intervals=INTERVALS_INFREQUENT,
 )
 
 _register(
     "upstream_performer_changes",
     "Upstream Performer Change Detection",
+    "Detects field changes from stash-box sources",
     ResourceType.NETWORK,
     JobPriority.NORMAL,
     supports_incremental=True,
     schedulable=True,
     default_interval_hours=24,
+    allowed_intervals=INTERVALS_FREQUENT,
 )
 
 _register(
     "fingerprint_generation",
     "Fingerprint Generation",
+    "Generates face recognition fingerprints for scenes",
     ResourceType.GPU,
     JobPriority.LOW,
     supports_incremental=True,
     schedulable=True,
+    allowed_intervals=INTERVALS_INFREQUENT,
 )
 
 _register(
     "database_update",
     "Database Update",
+    "Checks for updated face recognition data",
     ResourceType.LIGHT,
     JobPriority.HIGH,
     schedulable=True,
     default_interval_hours=24,
+    allowed_intervals=INTERVALS_FREQUENT,
 )

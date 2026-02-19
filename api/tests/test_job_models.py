@@ -6,6 +6,8 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from job_models import (
+    INTERVALS_FREQUENT,
+    INTERVALS_INFREQUENT,
     JOB_REGISTRY,
     JobDefinition,
     JobPriority,
@@ -91,6 +93,7 @@ class TestJobDefinition:
         defn = JobDefinition(
             type_id="test_job",
             display_name="Test Job",
+            description="A test job",
             resource=ResourceType.LIGHT,
             default_priority=JobPriority.NORMAL,
             supports_incremental=False,
@@ -99,6 +102,7 @@ class TestJobDefinition:
         )
         assert defn.type_id == "test_job"
         assert defn.display_name == "Test Job"
+        assert defn.description == "A test job"
         assert defn.resource == ResourceType.LIGHT
         assert defn.default_priority == JobPriority.NORMAL
         assert defn.supports_incremental is False
@@ -109,6 +113,7 @@ class TestJobDefinition:
         defn = JobDefinition(
             type_id="test_job",
             display_name="Test Job",
+            description="A test job",
             resource=ResourceType.GPU,
             default_priority=JobPriority.HIGH,
             supports_incremental=False,
@@ -121,12 +126,40 @@ class TestJobDefinition:
         defn = JobDefinition(
             type_id="x",
             display_name="X",
+            description="desc",
             resource=ResourceType.LIGHT,
             default_priority=JobPriority.NORMAL,
             supports_incremental=False,
             schedulable=False,
         )
         assert defn.default_interval_hours is None
+
+    def test_allowed_intervals_default_empty(self):
+        defn = JobDefinition(
+            type_id="x",
+            display_name="X",
+            description="desc",
+            resource=ResourceType.LIGHT,
+            default_priority=JobPriority.NORMAL,
+            supports_incremental=False,
+            schedulable=False,
+        )
+        assert defn.allowed_intervals == ()
+
+    def test_allowed_intervals(self):
+        intervals = ((24, "Every day"), (168, "Every week"))
+        defn = JobDefinition(
+            type_id="x",
+            display_name="X",
+            description="desc",
+            resource=ResourceType.LIGHT,
+            default_priority=JobPriority.NORMAL,
+            supports_incremental=False,
+            schedulable=True,
+            allowed_intervals=intervals,
+        )
+        assert defn.allowed_intervals == intervals
+        assert defn.allowed_intervals[0] == (24, "Every day")
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +307,38 @@ class TestJobRecord:
 # ---------------------------------------------------------------------------
 
 
+class TestIntervalTiers:
+    def test_frequent_intervals_ascending(self):
+        hours = [h for h, _ in INTERVALS_FREQUENT]
+        assert hours == sorted(hours)
+
+    def test_infrequent_intervals_ascending(self):
+        hours = [h for h, _ in INTERVALS_INFREQUENT]
+        assert hours == sorted(hours)
+
+    def test_frequent_has_expected_options(self):
+        hours = {h for h, _ in INTERVALS_FREQUENT}
+        assert 6 in hours
+        assert 24 in hours
+        assert 168 in hours
+
+    def test_infrequent_has_expected_options(self):
+        hours = {h for h, _ in INTERVALS_INFREQUENT}
+        assert 24 in hours
+        assert 168 in hours
+        assert 720 in hours
+
+    def test_infrequent_minimum_is_daily(self):
+        min_hours = min(h for h, _ in INTERVALS_INFREQUENT)
+        assert min_hours >= 24
+
+    def test_all_intervals_have_labels(self):
+        for hours, label in INTERVALS_FREQUENT + INTERVALS_INFREQUENT:
+            assert isinstance(hours, int)
+            assert isinstance(label, str)
+            assert len(label) > 0
+
+
 class TestJobRegistry:
     def test_registered_types(self):
         expected = {
@@ -293,6 +358,8 @@ class TestJobRegistry:
         assert d.supports_incremental is False
         assert d.schedulable is True
         assert d.default_interval_hours == 168
+        assert d.description != ""
+        assert d.allowed_intervals == INTERVALS_INFREQUENT
 
     def test_duplicate_scene_files(self):
         d = JOB_REGISTRY["duplicate_scene_files"]
@@ -300,6 +367,7 @@ class TestJobRegistry:
         assert d.default_priority == JobPriority.NORMAL
         assert d.schedulable is True
         assert d.default_interval_hours == 168
+        assert d.allowed_intervals == INTERVALS_INFREQUENT
 
     def test_duplicate_scenes(self):
         d = JOB_REGISTRY["duplicate_scenes"]
@@ -307,6 +375,7 @@ class TestJobRegistry:
         assert d.default_priority == JobPriority.NORMAL
         assert d.schedulable is True
         assert d.default_interval_hours == 168
+        assert d.allowed_intervals == INTERVALS_INFREQUENT
 
     def test_upstream_performer_changes(self):
         d = JOB_REGISTRY["upstream_performer_changes"]
@@ -315,6 +384,7 @@ class TestJobRegistry:
         assert d.supports_incremental is True
         assert d.schedulable is True
         assert d.default_interval_hours == 24
+        assert d.allowed_intervals == INTERVALS_FREQUENT
 
     def test_fingerprint_generation(self):
         d = JOB_REGISTRY["fingerprint_generation"]
@@ -323,6 +393,7 @@ class TestJobRegistry:
         assert d.supports_incremental is True
         assert d.schedulable is True
         assert d.default_interval_hours is None
+        assert d.allowed_intervals == INTERVALS_INFREQUENT
 
     def test_database_update(self):
         d = JOB_REGISTRY["database_update"]
@@ -331,6 +402,7 @@ class TestJobRegistry:
         assert d.supports_incremental is False
         assert d.schedulable is True
         assert d.default_interval_hours == 24
+        assert d.allowed_intervals == INTERVALS_FREQUENT
 
     def test_all_definitions_frozen(self):
         for type_id, defn in JOB_REGISTRY.items():
@@ -340,3 +412,25 @@ class TestJobRegistry:
     def test_type_id_matches_key(self):
         for key, defn in JOB_REGISTRY.items():
             assert key == defn.type_id, f"Registry key '{key}' != definition type_id '{defn.type_id}'"
+
+    def test_all_schedulable_have_description(self):
+        for defn in JOB_REGISTRY.values():
+            if defn.schedulable:
+                assert defn.description, f"{defn.type_id} is schedulable but has no description"
+
+    def test_all_schedulable_have_allowed_intervals(self):
+        for defn in JOB_REGISTRY.values():
+            if defn.schedulable:
+                assert len(defn.allowed_intervals) > 0, (
+                    f"{defn.type_id} is schedulable but has no allowed_intervals"
+                )
+
+    def test_default_interval_in_allowed(self):
+        """Each job's default interval should be within its allowed options."""
+        for defn in JOB_REGISTRY.values():
+            if defn.default_interval_hours and defn.allowed_intervals:
+                allowed_hours = {h for h, _ in defn.allowed_intervals}
+                assert defn.default_interval_hours in allowed_hours, (
+                    f"{defn.type_id} default_interval_hours={defn.default_interval_hours} "
+                    f"not in allowed_intervals"
+                )

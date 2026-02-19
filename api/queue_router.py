@@ -77,11 +77,16 @@ async def get_job_types():
         types.append({
             "type_id": defn.type_id,
             "display_name": defn.display_name,
+            "description": defn.description,
             "resource": defn.resource.value,
             "default_priority": int(defn.default_priority),
             "supports_incremental": defn.supports_incremental,
             "schedulable": defn.schedulable,
             "default_interval_hours": defn.default_interval_hours,
+            "allowed_intervals": [
+                {"hours": hours, "label": label}
+                for hours, label in defn.allowed_intervals
+            ],
         })
     return {"types": types}
 

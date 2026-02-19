@@ -81,3 +81,33 @@ class TestQueueRouter:
         assert resp.status_code == 200
         types = resp.json()["types"]
         assert any(t["type_id"] == "duplicate_performer" for t in types)
+
+    def test_job_types_include_description(self, client):
+        resp = client.get("/queue/types")
+        types = resp.json()["types"]
+        for t in types:
+            assert "description" in t
+            assert isinstance(t["description"], str)
+
+    def test_job_types_include_allowed_intervals(self, client):
+        resp = client.get("/queue/types")
+        types = resp.json()["types"]
+        db_update = next(t for t in types if t["type_id"] == "database_update")
+        assert "allowed_intervals" in db_update
+        intervals = db_update["allowed_intervals"]
+        assert len(intervals) > 0
+        # Each interval has hours (int) and label (str)
+        for interval in intervals:
+            assert "hours" in interval
+            assert "label" in interval
+            assert isinstance(interval["hours"], int)
+            assert isinstance(interval["label"], str)
+
+    def test_job_types_interval_format(self, client):
+        """Verify the serialized interval format matches what the frontend expects."""
+        resp = client.get("/queue/types")
+        types = resp.json()["types"]
+        dup = next(t for t in types if t["type_id"] == "duplicate_performer")
+        # Infrequent tier starts at 24h
+        hours_list = [i["hours"] for i in dup["allowed_intervals"]]
+        assert min(hours_list) >= 24
