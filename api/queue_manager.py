@@ -238,8 +238,20 @@ class QueueManager:
             self._db.fail_job(job_id, str(e))
 
     def _create_job_instance(self, type_id: str):
-        """Create a job instance by type. Override in tests."""
-        raise NotImplementedError(f"No job implementation registered for {type_id}")
+        """Create a job instance by type."""
+        from jobs.analysis_jobs import AnalysisJob
+        from jobs.fingerprint_job import FingerprintGenerationJob
+        from jobs.database_update_job import DatabaseUpdateJob
+        from job_models import JOB_REGISTRY
+
+        if type_id not in JOB_REGISTRY:
+            raise ValueError(f"Unknown job type: {type_id}")
+
+        if type_id == "fingerprint_generation":
+            return FingerprintGenerationJob()
+        if type_id == "database_update":
+            return DatabaseUpdateJob()
+        return AnalysisJob(type_id)
 
     def _check_schedules(self):
         """Check for due schedules and submit jobs."""

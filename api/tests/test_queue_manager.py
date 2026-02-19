@@ -92,3 +92,58 @@ class TestQueueManager:
     def test_request_shutdown(self, mgr):
         mgr.request_shutdown()
         assert mgr.is_shutting_down is True
+
+
+from job_models import JOB_REGISTRY
+
+class TestJobFactory:
+    def test_create_analysis_job(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        mgr = QueueManager(db)
+        job = mgr._create_job_instance("duplicate_performer")
+        from jobs.analysis_jobs import AnalysisJob
+        assert isinstance(job, AnalysisJob)
+
+    def test_create_fingerprint_job(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        mgr = QueueManager(db)
+        job = mgr._create_job_instance("fingerprint_generation")
+        from jobs.fingerprint_job import FingerprintGenerationJob
+        assert isinstance(job, FingerprintGenerationJob)
+
+    def test_create_database_update_job(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        mgr = QueueManager(db)
+        job = mgr._create_job_instance("database_update")
+        from jobs.database_update_job import DatabaseUpdateJob
+        assert isinstance(job, DatabaseUpdateJob)
+
+    def test_create_unknown_raises(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        mgr = QueueManager(db)
+        with pytest.raises(ValueError):
+            mgr._create_job_instance("nonexistent")
+
+
+class TestScheduleSeeding:
+    def test_seeds_default_schedules(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        mgr = QueueManager(db)
+        mgr.seed_default_schedules()
+        schedules = db.get_all_job_schedules()
+        schedulable_types = [t for t, d in JOB_REGISTRY.items() if d.schedulable]
+        assert len(schedules) == len(schedulable_types)
+
+    def test_seed_preserves_user_overrides(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        db.upsert_job_schedule("duplicate_performer", True, 999.0, 50)
+        mgr = QueueManager(db)
+        mgr.seed_default_schedules()
+        schedule = db.get_job_schedule("duplicate_performer")
+        assert schedule["interval_hours"] == 999.0
