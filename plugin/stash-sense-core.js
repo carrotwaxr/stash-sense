@@ -454,6 +454,23 @@
     return div.innerHTML;
   }
 
+  // ==================== Tab URL State ====================
+
+  function getTabFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') || 'recommendations';
+  }
+
+  function setTabInUrl(tabName) {
+    const url = new URL(window.location.href);
+    if (tabName === 'recommendations') {
+      url.searchParams.delete('tab');
+    } else {
+      url.searchParams.set('tab', tabName);
+    }
+    history.replaceState(null, '', url.toString());
+  }
+
   // ==================== SPA Navigation ====================
 
   const navigationCallbacks = [];
@@ -513,6 +530,8 @@
     getRoute,
     onNavigate,
     initNavigationWatcher,
+    getTabFromUrl,
+    setTabInUrl,
 
     // Utilities
     formatSize,
