@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 import face_config
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
-from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer
+from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -377,6 +377,7 @@ ANALYZERS = {
     "duplicate_scene_files": DuplicateSceneFilesAnalyzer,
     "duplicate_scenes": DuplicateScenesAnalyzer,
     "upstream_performer_changes": UpstreamPerformerAnalyzer,
+    "upstream_tag_changes": UpstreamTagAnalyzer,
 }
 
 
@@ -785,6 +786,50 @@ async def update_performer_fields(request: UpdatePerformerRequest, entity_type: 
     try:
         result = await stash.update_performer(performer_id, **fields)
         return {"success": True, "performer": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpdateTagRequest(BaseModel):
+    """Request to apply upstream changes to a tag."""
+    tag_id: str
+    fields: dict
+
+
+@router.post("/actions/update-tag")
+async def update_tag_fields(request: UpdateTagRequest):
+    """Apply selected upstream changes to a tag.
+
+    Tags have simple 1:1 field mapping — no compound fields like performers.
+    Stash TagUpdateInput accepts: name, description, aliases directly.
+    """
+    stash = get_stash_client()
+    fields = dict(request.fields)
+    tag_id = request.tag_id
+
+    # Alias merge (_alias_add meta-key)
+    alias_additions = fields.pop("_alias_add", None)
+    if alias_additions:
+        # Fetch current tag to merge aliases
+        query = """
+        query GetTag($id: ID!) {
+          findTag(id: $id) { id aliases }
+        }
+        """
+        data = await stash._execute(query, {"id": tag_id})
+        current_tag = data.get("findTag") or {}
+        existing_aliases = current_tag.get("aliases") or []
+        seen = {a.lower() for a in existing_aliases}
+        merged = list(existing_aliases)
+        for alias in alias_additions:
+            if alias.lower() not in seen:
+                merged.append(alias)
+                seen.add(alias.lower())
+        fields["aliases"] = merged
+
+    try:
+        result = await stash.update_tag(tag_id, **fields)
+        return {"success": True, "tag": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

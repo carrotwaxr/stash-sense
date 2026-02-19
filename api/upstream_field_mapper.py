@@ -137,6 +137,72 @@ def register_entity_fields(entity_type: str, config: dict):
     ENTITY_FIELD_CONFIGS[entity_type] = config
 
 
+# ==================== Tag Field Config ====================
+
+DEFAULT_TAG_FIELDS: set[str] = {
+    "name",
+    "description",
+    "aliases",
+}
+
+TAG_FIELD_MERGE_TYPES: dict[str, str] = {
+    "name": "name",
+    "description": "text",
+    "aliases": "alias_list",
+}
+
+TAG_FIELD_LABELS: dict[str, str] = {
+    "name": "Name",
+    "description": "Description",
+    "aliases": "Aliases",
+}
+
+# Register tag fields in the entity config registry
+ENTITY_FIELD_CONFIGS["tag"] = {
+    "default_fields": DEFAULT_TAG_FIELDS,
+    "labels": TAG_FIELD_LABELS,
+    "merge_types": TAG_FIELD_MERGE_TYPES,
+}
+
+
+def normalize_upstream_tag(upstream: dict) -> dict:
+    """Convert stash-box tag data to normalized dict using local Stash field names.
+
+    Handles:
+    - Direct field mappings (name, description)
+    - Aliases normalized from None to empty list
+    - Category stored for reference but not diffed
+    """
+    result = {}
+
+    for field_name in ("name", "description"):
+        if field_name in upstream:
+            result[field_name] = upstream[field_name]
+
+    # Aliases: normalize None to empty list
+    if "aliases" in upstream:
+        result["aliases"] = upstream["aliases"] if upstream["aliases"] is not None else []
+
+    return result
+
+
+def diff_tag_fields(
+    local: dict,
+    upstream: dict,
+    snapshot: Optional[dict],
+    enabled_fields: set[str],
+) -> list[dict]:
+    """Convenience wrapper: 3-way diff using tag field config."""
+    return diff_fields(
+        local=local,
+        upstream=upstream,
+        snapshot=snapshot,
+        enabled_fields=enabled_fields,
+        merge_types=TAG_FIELD_MERGE_TYPES,
+        labels=TAG_FIELD_LABELS,
+    )
+
+
 # ==================== Performer-Specific Mapping Constants ====================
 
 # Fields that map directly from upstream to local with the same name
