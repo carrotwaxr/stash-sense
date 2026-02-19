@@ -138,9 +138,13 @@
       return apiCall('fp_stop');
     },
 
-    // Upstream performer sync operations
+    // Upstream sync operations
     async updatePerformer(performerId, fields) {
       return apiCall('rec_update_performer', { performer_id: performerId, fields });
+    },
+
+    async updateTag(tagId, fields) {
+      return apiCall('rec_update_tag', { tag_id: tagId, fields });
     },
 
     async dismissUpstream(recId, reason, permanent) {
@@ -487,6 +491,11 @@
           icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 6V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>`,
           description: 'Performer fields updated on StashDB since last sync',
         },
+        upstream_tag_changes: {
+          title: 'Upstream Tag Changes',
+          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`,
+          description: 'Tag fields updated on StashDB since last sync',
+        },
       };
 
       for (const [type, typeCounts] of Object.entries(counts.counts)) {
@@ -525,7 +534,7 @@
 
       // Render analysis buttons with progress support
       const analysisButtons = container.querySelector('.ss-analysis-buttons');
-      const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files', 'upstream_performer_changes'];
+      const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files', 'upstream_performer_changes', 'upstream_tag_changes'];
       const sortedTypes = [...analysisTypes.types].sort((a, b) => {
         const aIdx = buttonOrder.indexOf(a.type);
         const bIdx = buttonOrder.indexOf(b.type);
@@ -823,6 +832,7 @@
       duplicate_performer: 'Duplicate Performers',
       duplicate_scene_files: 'Duplicate Scene Files',
       upstream_performer_changes: 'Upstream Performer Changes',
+      upstream_tag_changes: 'Upstream Tag Changes',
     };
 
     container.innerHTML = `
@@ -1022,6 +1032,30 @@
       });
     }
 
+    if (rec.type === 'upstream_tag_changes') {
+      const realChanges = filterRealChanges(details.changes);
+      const changeCount = realChanges.length;
+      const changedFields = realChanges.map(c => c.field_label).join(', ');
+
+      return SS.createElement('div', {
+        className: 'ss-rec-card ss-rec-upstream',
+        innerHTML: `
+          <div class="ss-rec-card-header">
+            <div class="ss-rec-tag-icon">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+            </div>
+            <div class="ss-rec-card-info">
+              <div class="ss-rec-card-title">Upstream Changes: ${details.tag_name || 'Unknown'}</div>
+              <div class="ss-rec-card-subtitle">
+                ${changeCount} field${changeCount !== 1 ? 's' : ''} changed · ${details.endpoint_name || ''}
+              </div>
+              <div class="ss-rec-card-fields">${changedFields}</div>
+            </div>
+          </div>
+        `,
+      });
+    }
+
     // Fallback for unknown types
     return SS.createElement('div', {
       className: 'ss-rec-card',
@@ -1070,6 +1104,8 @@
       renderDuplicateSceneFilesDetail(content, rec);
     } else if (rec.type === 'upstream_performer_changes') {
       await renderUpstreamPerformerDetail(content, rec);
+    } else if (rec.type === 'upstream_tag_changes') {
+      await renderUpstreamTagDetail(content, rec);
     } else {
       content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
     }
@@ -1952,6 +1988,313 @@
         errorDiv.style.display = 'block';
         applyBtn.textContent = 'Apply Selected Changes';
         applyBtn.classList.remove('ss-btn-error');
+        applyBtn.disabled = false;
+      }
+    });
+  }
+
+  /**
+   * Upstream Tag Detail View
+   * Simpler than performer — only name, description, aliases. No image, no compound fields.
+   */
+  async function renderUpstreamTagDetail(container, rec) {
+    const details = rec.details;
+    const rawChanges = details.changes || [];
+    const tagId = details.tag_id;
+
+    const changes = filterRealChanges(rawChanges);
+
+    // If all changes were filtered out, auto-resolve and go back
+    if (changes.length === 0) {
+      try {
+        await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', { note: 'All differences were cosmetic' });
+      } catch (_) {}
+      currentState.view = 'list';
+      currentState.selectedRec = null;
+      renderCurrentView(document.getElementById('ss-recommendations'));
+      return;
+    }
+
+    // Display value helper
+    function displayValue(val) {
+      return formatFieldValue(val);
+    }
+
+    // Smart default: prefer upstream (stash-box is source of truth)
+    function smartDefault(localVal, upstreamVal) {
+      const upstreamEmpty = upstreamVal === null || upstreamVal === undefined || upstreamVal === '';
+      if (!upstreamEmpty) return 'upstream';
+      return 'local';
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ss-detail-upstream-performer'; // reuse performer styles
+
+    // Header (tag icon instead of image)
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'ss-upstream-header';
+    headerDiv.innerHTML = `
+      <div class="ss-rec-tag-icon" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,0.05);flex-shrink:0;">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+      </div>
+      <div style="flex:1;">
+        <h2 style="margin: 0 0 4px 0;">
+          <a href="/tags/${tagId}" target="_blank">${details.tag_name || 'Unknown'}</a>
+        </h2>
+        <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
+      </div>
+    `;
+    wrapper.appendChild(headerDiv);
+
+    // Quick select buttons
+    const quickActions = document.createElement('div');
+    quickActions.className = 'ss-upstream-quick-actions';
+    const keepAllBtn = document.createElement('button');
+    keepAllBtn.textContent = 'Keep All Local';
+    const acceptAllBtn = document.createElement('button');
+    acceptAllBtn.textContent = 'Accept All Upstream';
+    quickActions.appendChild(keepAllBtn);
+    quickActions.appendChild(acceptAllBtn);
+    wrapper.appendChild(quickActions);
+
+    // Build field rows
+    changes.forEach((change, idx) => {
+      const mergeType = change.merge_type || 'simple';
+      const fieldRow = document.createElement('div');
+      fieldRow.className = 'ss-upstream-field-row';
+      fieldRow.dataset.fieldIndex = idx;
+      fieldRow.dataset.fieldKey = change.field;
+      fieldRow.dataset.mergeType = mergeType;
+
+      const label = document.createElement('div');
+      label.className = 'ss-upstream-field-label';
+      label.textContent = change.field_label || change.field;
+      fieldRow.appendChild(label);
+
+      if (mergeType === 'alias_list') {
+        renderAliasListField(fieldRow, change, idx);
+      } else {
+        renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault);
+      }
+
+      wrapper.appendChild(fieldRow);
+    });
+
+    // Validation errors
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'ss-upstream-validation-errors';
+    errorDiv.className = 'ss-upstream-validation-error';
+    errorDiv.style.display = 'none';
+    wrapper.appendChild(errorDiv);
+
+    // Action bar
+    const actionBar = document.createElement('div');
+    actionBar.className = 'ss-upstream-action-bar';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'ss-btn ss-upstream-apply-btn';
+    applyBtn.textContent = 'Apply Selected Changes';
+
+    // Dismiss dropdown (reuse performer pattern)
+    const dismissDropdown = document.createElement('div');
+    dismissDropdown.style.cssText = 'position:relative;';
+    const dismissToggle = document.createElement('button');
+    dismissToggle.className = 'ss-btn ss-upstream-dismiss-btn';
+    dismissToggle.textContent = 'Dismiss';
+    const dismissMenu = document.createElement('div');
+    dismissMenu.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px 0;min-width:220px;z-index:10;';
+
+    const dismissOptions = [
+      { label: 'Dismiss this update', permanent: false },
+      { label: 'Never show for this tag', permanent: true },
+    ];
+
+    dismissOptions.forEach(opt => {
+      const optBtn = document.createElement('button');
+      optBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:#fff;cursor:pointer;font-size:0.85rem;';
+      optBtn.textContent = opt.label;
+      optBtn.addEventListener('mouseenter', () => { optBtn.style.background = 'rgba(255,255,255,0.05)'; });
+      optBtn.addEventListener('mouseleave', () => { optBtn.style.background = 'none'; });
+      optBtn.addEventListener('click', async () => {
+        dismissMenu.style.display = 'none';
+        dismissToggle.disabled = true;
+        dismissToggle.textContent = 'Dismissing...';
+        try {
+          await RecommendationsAPI.dismissUpstream(rec.id, 'User dismissed', opt.permanent);
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        } catch (e) {
+          dismissToggle.textContent = `Failed: ${e.message}`;
+          dismissToggle.disabled = false;
+        }
+      });
+      dismissMenu.appendChild(optBtn);
+    });
+
+    dismissToggle.addEventListener('click', () => {
+      dismissMenu.style.display = dismissMenu.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.addEventListener('click', function closeDismissMenu(e) {
+      if (!dismissToggle.contains(e.target) && !dismissMenu.contains(e.target)) {
+        dismissMenu.style.display = 'none';
+      }
+      if (!document.contains(container)) {
+        document.removeEventListener('click', closeDismissMenu);
+      }
+    });
+
+    dismissDropdown.appendChild(dismissToggle);
+    dismissDropdown.appendChild(dismissMenu);
+    actionBar.appendChild(applyBtn);
+    actionBar.appendChild(dismissDropdown);
+    wrapper.appendChild(actionBar);
+
+    container.innerHTML = '';
+    container.appendChild(wrapper);
+
+    // === Quick select wiring ===
+    keepAllBtn.addEventListener('click', () => {
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const mt = row.dataset.mergeType;
+        if (mt === 'alias_list') {
+          row.querySelectorAll('.ss-upstream-alias-item').forEach(item => {
+            const cb = item.querySelector('input[type="checkbox"]');
+            cb.checked = item.classList.contains('local-only') || item.classList.contains('both');
+          });
+          updateAliasResultSummary(row);
+        } else {
+          const localCb = row.querySelector('.ss-upstream-cb-local');
+          const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (localCb && upstreamCb && resultInput) {
+            localCb.checked = true;
+            upstreamCb.checked = false;
+            const change = changes[parseInt(row.dataset.fieldIndex)];
+            resultInput.value = formatFieldValue(change.local_value) === '(empty)' ? '' : formatFieldValue(change.local_value);
+          }
+        }
+      });
+    });
+
+    acceptAllBtn.addEventListener('click', () => {
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const mt = row.dataset.mergeType;
+        if (mt === 'alias_list') {
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+          updateAliasResultSummary(row);
+        } else {
+          const localCb = row.querySelector('.ss-upstream-cb-local');
+          const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (localCb && upstreamCb && resultInput) {
+            localCb.checked = false;
+            upstreamCb.checked = true;
+            const change = changes[parseInt(row.dataset.fieldIndex)];
+            resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : formatFieldValue(change.upstream_value);
+          }
+          const aliasOpt = row.querySelector('.ss-upstream-name-alias-cb');
+          if (aliasOpt) aliasOpt.checked = true;
+        }
+      });
+    });
+
+    // === Apply handler ===
+    applyBtn.addEventListener('click', async () => {
+      errorDiv.style.display = 'none';
+      errorDiv.innerHTML = '';
+      const fields = {};
+
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const fieldKey = row.dataset.fieldKey;
+        const mergeType = row.dataset.mergeType;
+        const fieldIndex = parseInt(row.dataset.fieldIndex);
+        const change = changes[fieldIndex];
+
+        if (mergeType === 'alias_list') {
+          const checkedAliases = [];
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]:checked').forEach(cb => {
+            checkedAliases.push(cb.value);
+          });
+          fields[fieldKey] = checkedAliases;
+        } else {
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (!resultInput) return;
+
+          const resultVal = resultInput.value.trim();
+          const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+
+          // Skip if result equals local (no change)
+          if (resultVal === localStr) {
+            if (mergeType === 'name') {
+              const aliasCb = row.querySelector('.ss-upstream-name-alias-cb');
+              if (aliasCb && aliasCb.checked) {
+                const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+                if (upstreamCb && !upstreamCb.checked) {
+                  fields['_alias_add'] = fields['_alias_add'] || [];
+                  fields['_alias_add'].push(String(change.upstream_value || ''));
+                }
+              }
+            }
+            return;
+          }
+
+          fields[fieldKey] = resultVal;
+
+          if (mergeType === 'name') {
+            const aliasCb = row.querySelector('.ss-upstream-name-alias-cb');
+            if (aliasCb && aliasCb.checked) {
+              const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+              if (upstreamCb && upstreamCb.checked) {
+                fields['_alias_add'] = fields['_alias_add'] || [];
+                fields['_alias_add'].push(String(change.local_value || ''));
+              }
+            }
+          }
+        }
+      });
+
+      const hasChanges = Object.keys(fields).length > 0;
+      if (!hasChanges) {
+        try {
+          applyBtn.disabled = true;
+          applyBtn.textContent = 'Resolving...';
+          await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
+          applyBtn.textContent = 'Done!';
+          applyBtn.classList.add('ss-btn-success');
+          setTimeout(() => {
+            currentState.view = 'list';
+            currentState.selectedRec = null;
+            renderCurrentView(document.getElementById('ss-recommendations'));
+          }, 1500);
+        } catch (e) {
+          applyBtn.textContent = `Failed: ${e.message}`;
+          applyBtn.classList.add('ss-btn-error');
+          applyBtn.disabled = false;
+        }
+        return;
+      }
+
+      // No name uniqueness validation needed for tags — just apply
+      try {
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying...';
+        await RecommendationsAPI.updateTag(tagId, fields);
+        await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
+
+        applyBtn.textContent = 'Applied!';
+        applyBtn.classList.add('ss-btn-success');
+
+        setTimeout(() => {
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        }, 1500);
+      } catch (e) {
+        errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
+        errorDiv.style.display = 'block';
+        applyBtn.textContent = 'Apply Selected Changes';
         applyBtn.disabled = false;
       }
     });

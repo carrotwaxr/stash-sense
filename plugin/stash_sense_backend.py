@@ -541,6 +541,18 @@ def handle_recommendations(mode, args, sidecar_url):
             timeout=60,
         )
 
+    elif mode == "rec_update_tag":
+        tag_id = args.get("tag_id")
+        fields = args.get("fields", {})
+        if not tag_id:
+            return {"error": "tag_id required"}
+        return sidecar_post(
+            sidecar_url,
+            "/recommendations/actions/update-tag",
+            {"tag_id": tag_id, "fields": fields},
+            timeout=60,
+        )
+
     elif mode == "rec_dismiss_upstream":
         rec_id = args.get("rec_id")
         if not rec_id:

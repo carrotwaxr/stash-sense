@@ -49,6 +49,22 @@ PERFORMER_FIELDS = """
     updated
 """
 
+# Fragment with all tag fields used by get_tag
+TAG_FIELDS = """
+    id
+    name
+    description
+    aliases
+    category {
+        id
+        name
+        group
+    }
+    deleted
+    created
+    updated
+"""
+
 
 class StashBoxClient:
     """
@@ -160,6 +176,27 @@ class StashBoxClient:
         data = await self._execute(query, variables=variables)
         result = data["queryPerformers"]
         return result["performers"], result["count"]
+
+    async def get_tag(self, tag_id: str) -> Optional[dict]:
+        """
+        Get a single tag by ID from the stash-box endpoint.
+
+        Args:
+            tag_id: The stash-box tag UUID
+
+        Returns:
+            Tag dict if found, None otherwise
+        """
+        query = f"""
+        query FindTag($id: ID!) {{
+            findTag(id: $id) {{
+                {TAG_FIELDS}
+            }}
+        }}
+        """
+
+        data = await self._execute(query, variables={"id": tag_id})
+        return data.get("findTag")
 
     async def get_performer(self, performer_id: str) -> Optional[dict]:
         """

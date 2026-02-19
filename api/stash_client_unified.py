@@ -525,6 +525,57 @@ class StashClientUnified:
         data = await self._execute(query)
         return data["allTags"]
 
+    async def get_tags_for_endpoint(self, endpoint: str) -> list[dict]:
+        """Query local Stash for all tags linked to a specific stash-box endpoint."""
+        query = """
+        query TagsForEndpoint($tag_filter: TagFilterType) {
+          findTags(tag_filter: $tag_filter, filter: { per_page: -1 }) {
+            tags {
+              id
+              name
+              description
+              aliases
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            "tag_filter": {
+                "stash_id_endpoint": {
+                    "endpoint": endpoint,
+                    "modifier": "NOT_NULL",
+                }
+            }
+        }
+        data = await self._execute(query, variables)
+        return data["findTags"]["tags"]
+
+    async def update_tag(self, tag_id: str, **fields) -> dict:
+        """
+        Generic tag update via TagUpdateInput mutation.
+
+        Args:
+            tag_id: The ID of the tag to update.
+            **fields: Arbitrary tag fields to update (e.g. name, description, aliases).
+
+        Returns:
+            The tagUpdate result dict.
+        """
+        query = """
+        mutation TagUpdate($input: TagUpdateInput!) {
+          tagUpdate(input: $input) {
+            id
+          }
+        }
+        """
+        input_dict = {"id": tag_id, **fields}
+        data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
+        return data["tagUpdate"]
+
     # ==================== Configuration ====================
 
     async def get_stashbox_connections(self) -> list[dict]:
