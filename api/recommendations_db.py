@@ -10,8 +10,7 @@ See: docs/plans/2026-01-28-recommendations-engine-design.md
 import sqlite3
 import json
 from contextlib import contextmanager
-from dataclasses import dataclass, asdict
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Iterator, Any
 

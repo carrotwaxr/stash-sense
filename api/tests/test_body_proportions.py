@@ -1,7 +1,13 @@
 """Tests for body proportion extraction using MediaPipe Pose."""
 
-import numpy as np
 import pytest
+import numpy as np
+
+try:
+    import mediapipe
+    _has_mediapipe = True
+except ImportError:
+    _has_mediapipe = False
 
 
 class TestBodyProportions:
@@ -49,6 +55,7 @@ class TestBodyProportions:
 class TestBodyProportionExtractor:
     """Tests for BodyProportionExtractor class."""
 
+    @pytest.mark.skipif(not _has_mediapipe, reason="mediapipe not installed")
     def test_extract_returns_none_for_blank_image(self):
         """Test that extract returns None for a blank image with no pose."""
         from body_proportions import BodyProportionExtractor

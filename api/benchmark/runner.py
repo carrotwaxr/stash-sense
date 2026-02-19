@@ -7,7 +7,6 @@ checkpoint/resume support.
 
 import os
 import json
-import random
 from typing import TYPE_CHECKING
 
 from benchmark.models import (
@@ -15,7 +14,6 @@ from benchmark.models import (
     BenchmarkState,
     SceneResult,
     TestScene,
-    AggregateMetrics,
 )
 
 if TYPE_CHECKING:
@@ -146,7 +144,7 @@ class BenchmarkRunner:
 
             # Check stopping criteria
             if not self._should_continue(current_accuracy, previous_accuracy, round_num):
-                print(f"Stopping: improvement threshold not met or max rounds reached")
+                print("Stopping: improvement threshold not met or max rounds reached")
                 break
 
             previous_accuracy = current_accuracy

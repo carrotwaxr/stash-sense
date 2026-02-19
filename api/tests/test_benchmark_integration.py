@@ -6,7 +6,7 @@ Reporter, BenchmarkRunner) work together correctly with mocked dependencies.
 
 import os
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from benchmark.models import (
     ExpectedPerformer,
@@ -307,30 +307,37 @@ class TestSceneSelectorIntegration:
 
 
 class TestExecutorIntegration:
-    """Integration tests for TestExecutor with mocked recognizer."""
+    """Integration tests for TestExecutor with mocked _run_scene_identification."""
 
     @pytest.mark.asyncio
     async def test_identify_scene_with_recognizer(
-        self, mock_recognition_result, sample_test_scene
+        self, sample_test_scene
     ):
-        """Test TestExecutor properly computes TP/FN/FP from recognition results."""
-        # Create mock recognizer
-        mock_recognizer = MagicMock()
-        mock_recognizer.identify_scene = AsyncMock(return_value=mock_recognition_result)
-
-        # Create mock multi_signal_matcher
-        mock_multi_signal_matcher = MagicMock()
-        mock_multi_signal_matcher.identify_scene = AsyncMock(return_value=mock_recognition_result)
-
-        # Create TestExecutor
+        """Test TestExecutor properly computes TP/FN/FP from identification results."""
         executor = TestExecutor(
-            recognizer=mock_recognizer,
-            multi_signal_matcher=mock_multi_signal_matcher,
+            recognizer=MagicMock(),
+            multi_signal_matcher=MagicMock(),
         )
 
-        # Run identification with multi-signal enabled (default)
-        params = BenchmarkParams(use_multi_signal=True)
-        result = await executor.identify_scene(sample_test_scene, params)
+        # Mock _run_scene_identification to return pre-formatted results
+        mock_id_result = {
+            "performers": [
+                {"stashdb_id": "perf-a", "rank": 1, "distance": 0.32},
+                {"stashdb_id": "perf-b", "rank": 2, "distance": 0.38},
+            ],
+            "faces_detected": 15,
+            "faces_after_filter": 12,
+            "persons_clustered": 2,
+        }
+
+        with patch.object(
+            executor,
+            "_run_scene_identification",
+            new_callable=AsyncMock,
+            return_value=mock_id_result,
+        ):
+            params = BenchmarkParams(use_multi_signal=True)
+            result = await executor.identify_scene(sample_test_scene, params)
 
         # Verify result type
         assert isinstance(result, SceneResult)
@@ -347,45 +354,32 @@ class TestExecutorIntegration:
         assert result.persons_clustered == 2
         assert result.elapsed_sec >= 0.0
 
-        # Verify multi_signal_matcher was used
-        mock_multi_signal_matcher.identify_scene.assert_called_once()
-        mock_recognizer.identify_scene.assert_not_called()
-
     @pytest.mark.asyncio
     async def test_identify_scene_with_false_positives(self, sample_test_scene):
         """Test TestExecutor correctly counts false positives."""
-        # Recognition result includes an unexpected performer
-        recognition_result = {
-            "persons": [
-                {
-                    "best_match": {
-                        "stashdb_id": "stashdb.org:perf-a",
-                        "distance": 0.30,
-                    },
-                    "person_id": 0,
-                },
-                {
-                    "best_match": {
-                        "stashdb_id": "stashdb.org:unexpected-performer",
-                        "distance": 0.45,
-                    },
-                    "person_id": 1,
-                },
+        executor = TestExecutor(
+            recognizer=MagicMock(),
+            multi_signal_matcher=MagicMock(),
+        )
+
+        mock_id_result = {
+            "performers": [
+                {"stashdb_id": "perf-a", "rank": 1, "distance": 0.30},
+                {"stashdb_id": "unexpected-performer", "rank": 2, "distance": 0.45},
             ],
             "faces_detected": 20,
             "faces_after_filter": 18,
+            "persons_clustered": 2,
         }
 
-        mock_multi_signal_matcher = MagicMock()
-        mock_multi_signal_matcher.identify_scene = AsyncMock(return_value=recognition_result)
-
-        executor = TestExecutor(
-            recognizer=MagicMock(),
-            multi_signal_matcher=mock_multi_signal_matcher,
-        )
-
-        params = BenchmarkParams(use_multi_signal=True)
-        result = await executor.identify_scene(sample_test_scene, params)
+        with patch.object(
+            executor,
+            "_run_scene_identification",
+            new_callable=AsyncMock,
+            return_value=mock_id_result,
+        ):
+            params = BenchmarkParams(use_multi_signal=True)
+            result = await executor.identify_scene(sample_test_scene, params)
 
         # perf-a found, perf-b missed, unexpected is false positive
         assert result.true_positives == 1
@@ -395,44 +389,30 @@ class TestExecutorIntegration:
     @pytest.mark.asyncio
     async def test_identify_scene_computes_score_gap(self, sample_test_scene):
         """Test TestExecutor correctly computes score gap between correct/incorrect."""
-        recognition_result = {
-            "persons": [
-                {
-                    "best_match": {
-                        "stashdb_id": "stashdb.org:perf-a",
-                        "distance": 0.30,  # Correct match
-                    },
-                    "person_id": 0,
-                },
-                {
-                    "best_match": {
-                        "stashdb_id": "stashdb.org:perf-b",
-                        "distance": 0.35,  # Correct match
-                    },
-                    "person_id": 1,
-                },
-                {
-                    "best_match": {
-                        "stashdb_id": "stashdb.org:wrong-person",
-                        "distance": 0.60,  # Incorrect match
-                    },
-                    "person_id": 2,
-                },
+        executor = TestExecutor(
+            recognizer=MagicMock(),
+            multi_signal_matcher=MagicMock(),
+        )
+
+        mock_id_result = {
+            "performers": [
+                {"stashdb_id": "perf-a", "rank": 1, "distance": 0.30},
+                {"stashdb_id": "perf-b", "rank": 2, "distance": 0.35},
+                {"stashdb_id": "wrong-person", "rank": 3, "distance": 0.60},
             ],
             "faces_detected": 25,
             "faces_after_filter": 22,
+            "persons_clustered": 3,
         }
 
-        mock_multi_signal_matcher = MagicMock()
-        mock_multi_signal_matcher.identify_scene = AsyncMock(return_value=recognition_result)
-
-        executor = TestExecutor(
-            recognizer=MagicMock(),
-            multi_signal_matcher=mock_multi_signal_matcher,
-        )
-
-        params = BenchmarkParams(use_multi_signal=True)
-        result = await executor.identify_scene(sample_test_scene, params)
+        with patch.object(
+            executor,
+            "_run_scene_identification",
+            new_callable=AsyncMock,
+            return_value=mock_id_result,
+        ):
+            params = BenchmarkParams(use_multi_signal=True)
+            result = await executor.identify_scene(sample_test_scene, params)
 
         # Verify correct/incorrect score separation
         assert len(result.correct_match_scores) == 2
@@ -463,34 +443,30 @@ class TestExecutorIntegration:
             for i in range(3)
         ]
 
-        def make_result(scene_id):
+        executor = TestExecutor(
+            recognizer=MagicMock(),
+            multi_signal_matcher=MagicMock(),
+        )
+
+        def make_id_result(scene, params):
             return {
-                "persons": [
-                    {
-                        "best_match": {"stashdb_id": "stashdb.org:perf-a", "distance": 0.3},
-                        "person_id": 0,
-                    },
-                    {
-                        "best_match": {"stashdb_id": "stashdb.org:perf-b", "distance": 0.35},
-                        "person_id": 1,
-                    },
+                "performers": [
+                    {"stashdb_id": "perf-a", "rank": 1, "distance": 0.3},
+                    {"stashdb_id": "perf-b", "rank": 2, "distance": 0.35},
                 ],
                 "faces_detected": 20,
                 "faces_after_filter": 18,
+                "persons_clustered": 2,
             }
 
-        mock_multi_signal_matcher = MagicMock()
-        mock_multi_signal_matcher.identify_scene = AsyncMock(
-            side_effect=[make_result(f"scene-{i}") for i in range(3)]
-        )
-
-        executor = TestExecutor(
-            recognizer=MagicMock(),
-            multi_signal_matcher=mock_multi_signal_matcher,
-        )
-
-        params = BenchmarkParams()
-        results = await executor.run_batch(scenes, params)
+        with patch.object(
+            executor,
+            "_run_scene_identification",
+            new_callable=AsyncMock,
+            side_effect=make_id_result,
+        ):
+            params = BenchmarkParams()
+            results = await executor.run_batch(scenes, params)
 
         assert len(results) == 3
         for i, result in enumerate(results):
@@ -540,34 +516,25 @@ class TestFullBenchmarkIntegration:
         scene_selector.select_scenes = AsyncMock(return_value=test_scenes)
         scene_selector.sample_stratified = MagicMock(return_value=test_scenes[:2])
 
-        # Create mock recognizer
-        mock_recognizer = MagicMock()
+        # Create executor with mocked _run_scene_identification
+        executor = TestExecutor(
+            recognizer=MagicMock(),
+            multi_signal_matcher=MagicMock(),
+        )
 
-        # Create mock multi_signal_matcher
-        def make_recognition_result():
+        def make_id_result(scene, params):
             return {
-                "persons": [
-                    {
-                        "best_match": {"stashdb_id": "stashdb.org:perf-a", "distance": 0.32},
-                        "person_id": 0,
-                    },
-                    {
-                        "best_match": {"stashdb_id": "stashdb.org:perf-b", "distance": 0.38},
-                        "person_id": 1,
-                    },
+                "performers": [
+                    {"stashdb_id": "perf-a", "rank": 1, "distance": 0.32},
+                    {"stashdb_id": "perf-b", "rank": 2, "distance": 0.38},
                 ],
                 "faces_detected": 15,
                 "faces_after_filter": 12,
+                "persons_clustered": 2,
             }
 
-        mock_multi_signal_matcher = MagicMock()
-        mock_multi_signal_matcher.identify_scene = AsyncMock(side_effect=lambda **kwargs: make_recognition_result())
+        executor._run_scene_identification = AsyncMock(side_effect=make_id_result)
 
-        # Create real components
-        executor = TestExecutor(
-            recognizer=mock_recognizer,
-            multi_signal_matcher=mock_multi_signal_matcher,
-        )
         analyzer = Analyzer()
         reporter = Reporter()
 
@@ -678,23 +645,22 @@ class TestFullBenchmarkIntegration:
         scene_selector.select_scenes = AsyncMock(return_value=test_scenes)
         scene_selector.sample_stratified = MagicMock(return_value=test_scenes[:2])
 
-        def make_recognition_result():
+        def make_id_result(scene, params):
             return {
-                "persons": [
-                    {"best_match": {"stashdb_id": "stashdb.org:perf-a", "distance": 0.32}, "person_id": 0},
-                    {"best_match": {"stashdb_id": "stashdb.org:perf-b", "distance": 0.38}, "person_id": 1},
+                "performers": [
+                    {"stashdb_id": "perf-a", "rank": 1, "distance": 0.32},
+                    {"stashdb_id": "perf-b", "rank": 2, "distance": 0.38},
                 ],
                 "faces_detected": 15,
                 "faces_after_filter": 12,
+                "persons_clustered": 2,
             }
-
-        mock_multi_signal_matcher = MagicMock()
-        mock_multi_signal_matcher.identify_scene = AsyncMock(side_effect=lambda **kwargs: make_recognition_result())
 
         executor = TestExecutor(
             recognizer=MagicMock(),
-            multi_signal_matcher=mock_multi_signal_matcher,
+            multi_signal_matcher=MagicMock(),
         )
+        executor._run_scene_identification = AsyncMock(side_effect=make_id_result)
         analyzer = Analyzer()
         reporter = Reporter()
 

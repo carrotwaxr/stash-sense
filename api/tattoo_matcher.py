@@ -11,7 +11,6 @@ similarity matching against 230k+ tattoo embeddings.
 
 import logging
 from collections import defaultdict
-from typing import Optional
 
 import numpy as np
 

@@ -225,16 +225,15 @@
 
         document.body.appendChild(modal);
 
-        const closeModal = () => modal.remove();
+        const escHandler = (e) => {
+          if (e.key === 'Escape') closeModal();
+        };
+        const closeModal = () => {
+          document.removeEventListener('keydown', escHandler);
+          modal.remove();
+        };
         closeBtn.addEventListener('click', closeModal);
         backdrop.addEventListener('click', closeModal);
-
-        const escHandler = (e) => {
-          if (e.key === 'Escape') {
-            closeModal();
-            document.removeEventListener('keydown', escHandler);
-          }
-        };
         document.addEventListener('keydown', escHandler);
 
         return modal;
@@ -659,13 +658,13 @@
                       notInLib.classList.remove('ss-not-in-library');
                     }
                   } catch (err) {
-                    panel.innerHTML = `<div class="ss-search-error">Failed: ${err.message}</div>`;
+                    panel.innerHTML = `<div class="ss-search-error">Failed: ${SS.escapeHtml(err.message)}</div>`;
                     console.error('Failed to link performer:', err);
                   }
                 });
               });
             } catch (err) {
-              resultsList.innerHTML = `<li class="ss-search-error">Search failed: ${err.message}</li>`;
+              resultsList.innerHTML = `<li class="ss-search-error">Search failed: ${SS.escapeHtml(err.message)}</li>`;
             }
           }, 300);
         });
@@ -705,9 +704,9 @@
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
             </svg>
           </div>
-          <p class="ss-error-title">${title}</p>
-          <p class="ss-error-message">${message}</p>
-          <p class="ss-error-hint">${hint}</p>
+          <p class="ss-error-title">${SS.escapeHtml(title)}</p>
+          <p class="ss-error-message">${SS.escapeHtml(message)}</p>
+          <p class="ss-error-hint">${SS.escapeHtml(hint)}</p>
         `;
         errorDiv.style.display = 'block';
       },
@@ -1327,15 +1326,17 @@
         injectButton(route);
       });
 
-      // Periodic health check
-      setInterval(async () => {
-        const health = await SS.checkHealth();
-        const newStatus = health ? true : false;
-        if (newStatus !== SS.getSidecarStatus()) {
-          SS.setSidecarStatus(newStatus);
-          FaceRecognition.updateButtonStatus(newStatus);
-        }
-      }, 60000);
+      // Periodic health check — guard against duplicate intervals
+      if (!window._ssHealthCheckInterval) {
+        window._ssHealthCheckInterval = setInterval(async () => {
+          const health = await SS.checkHealth();
+          const newStatus = health ? true : false;
+          if (newStatus !== SS.getSidecarStatus()) {
+            SS.setSidecarStatus(newStatus);
+            FaceRecognition.updateButtonStatus(newStatus);
+          }
+        }, 60000);
+      }
 
       console.log(`[${SS.PLUGIN_NAME}] Initialized`);
     }

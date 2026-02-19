@@ -327,6 +327,11 @@
   }
 
   async function refreshContent(container) {
+    // Bail out if container has been removed from DOM (navigation away)
+    if (!document.contains(container)) {
+      stopPolling();
+      return;
+    }
     try {
       const [statusResult, jobsResult] = await Promise.all([
         QueueAPI.getStatus(),
@@ -334,7 +339,7 @@
       ]);
       renderContent(container, statusResult, jobsResult.jobs || []);
     } catch (e) {
-      // Silently fail on poll errors
+      console.error('[Stash Sense] Operations poll error:', e);
     }
   }
 

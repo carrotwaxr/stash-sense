@@ -1,6 +1,5 @@
 """Tests for queue API router."""
 import pytest
-from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from queue_router import router, init_queue_router

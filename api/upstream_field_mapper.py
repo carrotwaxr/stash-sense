@@ -1,8 +1,11 @@
-"""Field mapping and 3-way diff engine for upstream performer sync.
+"""Field mapping and 3-way diff engine for upstream entity sync.
 
 Maps fields between stash-box schema and local Stash schema,
 and computes 3-way diffs (local vs upstream vs previous snapshot)
 to detect meaningful upstream changes.
+
+Supports a registry pattern so new entity types can register their
+field configurations alongside performers.
 """
 
 import re
@@ -89,6 +92,52 @@ FIELD_LABELS: dict[str, str] = {
     "details": "Details",
     "favorite": "Favorite",
 }
+
+# ==================== Entity Field Config Registry ====================
+#
+# Registry of field configurations keyed by entity type.
+# Each entry contains:
+#   - default_fields: set of field names monitored by default
+#   - labels: dict mapping field name to human-readable label
+#   - merge_types: dict mapping field name to merge type string
+#
+# New entity types can be registered via register_entity_fields().
+ENTITY_FIELD_CONFIGS: dict[str, dict] = {
+    "performer": {
+        "default_fields": DEFAULT_PERFORMER_FIELDS,
+        "labels": FIELD_LABELS,
+        "merge_types": FIELD_MERGE_TYPES,
+    },
+}
+
+
+def get_field_config(entity_type: str) -> dict:
+    """Get field configuration for an entity type.
+
+    Returns a dict with keys: default_fields, labels, merge_types.
+    Raises KeyError if the entity type is not registered.
+    """
+    if entity_type not in ENTITY_FIELD_CONFIGS:
+        raise KeyError(f"Unknown entity type: {entity_type!r}. "
+                       f"Registered types: {list(ENTITY_FIELD_CONFIGS.keys())}")
+    return ENTITY_FIELD_CONFIGS[entity_type]
+
+
+def register_entity_fields(entity_type: str, config: dict):
+    """Register field configuration for a new entity type.
+
+    Args:
+        entity_type: The entity type string (e.g. 'tag', 'studio').
+        config: Dict with keys 'default_fields', 'labels', 'merge_types'.
+    """
+    required_keys = {"default_fields", "labels", "merge_types"}
+    missing = required_keys - set(config.keys())
+    if missing:
+        raise ValueError(f"Missing required config keys: {missing}")
+    ENTITY_FIELD_CONFIGS[entity_type] = config
+
+
+# ==================== Performer-Specific Mapping Constants ====================
 
 # Fields that map directly from upstream to local with the same name
 _DIRECT_FIELDS = [
@@ -283,19 +332,29 @@ def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
     return local_value == upstream_value
 
 
-def diff_performer_fields(
+def diff_fields(
     local: dict,
     upstream: dict,
     snapshot: Optional[dict],
     enabled_fields: set[str],
+    merge_types: dict[str, str],
+    labels: dict[str, str],
 ) -> list[dict]:
-    """Compute 3-way diff between local, upstream, and previous snapshot.
+    """Generic 3-way diff between local, upstream, and previous snapshot.
 
     For each enabled field:
     - Skip if local == upstream (already in sync)
     - If snapshot exists: skip if upstream == snapshot (user intentionally
       set local differently; upstream hasn't changed)
     - If snapshot is None (first run): flag all differences
+
+    Args:
+        local: Local entity data dict.
+        upstream: Upstream entity data dict.
+        snapshot: Previous upstream snapshot dict, or None for first run.
+        enabled_fields: Set of field names to compare.
+        merge_types: Dict mapping field name to merge type string.
+        labels: Dict mapping field name to human-readable label.
 
     Returns a list of change dicts with keys:
         field, field_label, local_value, upstream_value,
@@ -304,7 +363,7 @@ def diff_performer_fields(
     changes = []
 
     for field_name in sorted(enabled_fields):
-        merge_type = FIELD_MERGE_TYPES.get(field_name, "simple")
+        merge_type = merge_types.get(field_name, "simple")
 
         local_value = local.get(field_name)
         upstream_value = upstream.get(field_name)
@@ -324,7 +383,7 @@ def diff_performer_fields(
 
         changes.append({
             "field": field_name,
-            "field_label": FIELD_LABELS.get(field_name, field_name),
+            "field_label": labels.get(field_name, field_name),
             "local_value": local_value,
             "upstream_value": upstream_value,
             "previous_upstream_value": previous_upstream_value,
@@ -332,3 +391,24 @@ def diff_performer_fields(
         })
 
     return changes
+
+
+def diff_performer_fields(
+    local: dict,
+    upstream: dict,
+    snapshot: Optional[dict],
+    enabled_fields: set[str],
+) -> list[dict]:
+    """Convenience wrapper: 3-way diff using performer field config.
+
+    Delegates to the generic diff_fields() with performer-specific
+    merge types and labels.
+    """
+    return diff_fields(
+        local=local,
+        upstream=upstream,
+        snapshot=snapshot,
+        enabled_fields=enabled_fields,
+        merge_types=FIELD_MERGE_TYPES,
+        labels=FIELD_LABELS,
+    )

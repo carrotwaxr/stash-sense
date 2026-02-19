@@ -1,6 +1,5 @@
 """Tests for duplicate detection data models."""
 
-import pytest
 
 
 class TestSceneFingerprint:

@@ -1,7 +1,4 @@
 """Integration tests for multi-signal identification."""
-import pytest
-import numpy as np
-from unittest.mock import Mock, patch
 
 
 class TestMultiSignalIntegration:
@@ -10,8 +7,8 @@ class TestMultiSignalIntegration:
     def test_identify_with_all_signals(self):
         """Test identification using face + body + tattoo signals."""
         # This is a smoke test - full integration requires running services
-        from body_proportions import BodyProportionExtractor, BodyProportions
-        from tattoo_detector import TattooDetector, TattooResult
+        from body_proportions import BodyProportions
+        from tattoo_detector import TattooResult
         from signal_scoring import body_ratio_penalty, tattoo_adjustment
 
         # Test scoring functions work together

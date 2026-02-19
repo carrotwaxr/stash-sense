@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from typing import Optional
 import numpy as np
 
-from voyager import Index, Space
+from voyager import Index
 
-from config import DatabaseConfig, FACENET_DIM, ARCFACE_DIM
+from config import DatabaseConfig
 from embeddings import FaceEmbeddingGenerator, DetectedFace, FaceEmbedding
 from matching import MatchingConfig, match_face, MatchingResult
 from database_reader import PerformerDatabaseReader

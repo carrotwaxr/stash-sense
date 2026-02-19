@@ -302,7 +302,8 @@
     try {
       const val = await apiCall('user_get_setting', { key: 'normalize_enum_display' });
       input.checked = val.value !== false;
-    } catch (_) {
+    } catch (e) {
+      console.error('[Stash Sense] Failed to load normalize_enum_display setting:', e);
       input.checked = true;
     }
 

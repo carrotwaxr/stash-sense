@@ -1,6 +1,5 @@
 """Tests for tattoo detection using YOLOv5."""
 
-import pytest
 
 
 class TestTattooResult:

@@ -1,16 +1,12 @@
 """Tests for the settings system."""
 
-import json
 import os
 import pytest
-import sqlite3
-from pathlib import Path
 from unittest.mock import patch
 
 from recommendations_db import RecommendationsDB
 from settings import (
     SettingsManager,
-    SettingType,
     SETTING_DEFS,
     TIER_DEFAULTS,
     ENV_VAR_MIGRATION,

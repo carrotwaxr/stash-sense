@@ -18,7 +18,6 @@ import time
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -32,8 +31,7 @@ from multi_signal_matcher import MultiSignalMatcher
 from benchmark.scene_selector import SceneSelector
 from benchmark.test_executor import TestExecutor
 from benchmark.analyzer import Analyzer
-from benchmark.reporter import Reporter
-from benchmark.models import BenchmarkParams, TestScene, SceneResult
+from benchmark.models import BenchmarkParams, TestScene
 
 
 @dataclass
@@ -133,7 +131,7 @@ async def run_comprehensive_benchmark():
 
     # Get DB stats
     db_stats = db_reader.get_stats()
-    print(f"\nDatabase stats:")
+    print("\nDatabase stats:")
     print(f"  Performers: {db_stats['performer_count']}")
     print(f"  Performers with faces: {db_stats['performers_with_faces']}")
     print(f"  Total faces: {db_stats['total_faces']}")
@@ -349,7 +347,7 @@ async def run_comprehensive_benchmark():
 
         if multi_on and multi_off:
             diff = multi_on.accuracy - multi_off.accuracy
-            f.write(f"### Multi-Signal Impact\n")
+            f.write("### Multi-Signal Impact\n")
             f.write(f"- Face+Body+Tattoo: **{multi_on.accuracy:.1%}**\n")
             f.write(f"- Face-only: {multi_off.accuracy:.1%}\n")
             f.write(f"- Improvement: **{diff:+.1%}**\n\n")

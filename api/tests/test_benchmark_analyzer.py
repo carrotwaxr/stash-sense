@@ -5,8 +5,6 @@ from benchmark.models import (
     ExpectedPerformer,
     TestScene,
     SceneResult,
-    AggregateMetrics,
-    PerformerResult,
 )
 from benchmark.analyzer import Analyzer, MIN_DB_COVERAGE
 

@@ -1,7 +1,6 @@
 """Tests for benchmark framework data models."""
 
 import json
-import pytest
 from benchmark.models import (
     ExpectedPerformer,
     TestScene,
@@ -108,15 +107,20 @@ class TestBenchmarkParams:
         params = BenchmarkParams()
 
         assert params.matching_mode == "frequency"
-        assert params.max_distance == 0.7
+        assert params.max_distance == 0.5
         assert params.min_face_size == 40
         assert params.use_multi_signal is True
-        assert params.num_frames == 40
+        assert params.num_frames == 60
         assert params.start_offset_pct == 0.05
         assert params.end_offset_pct == 0.95
         assert params.min_face_confidence == 0.5
         assert params.top_k == 5
         assert params.cluster_threshold == 0.6
+        assert params.facenet_weight == 0.5
+        assert params.arcface_weight == 0.5
+        assert params.min_appearances == 2
+        assert params.min_unique_frames == 2
+        assert params.min_confidence == 0.35
 
     def test_custom_values(self):
         """Test BenchmarkParams with custom values."""
@@ -146,15 +150,20 @@ class TestBenchmarkParams:
 
         assert isinstance(result, dict)
         assert result["matching_mode"] == "frequency"
-        assert result["max_distance"] == 0.7
+        assert result["max_distance"] == 0.5
         assert result["min_face_size"] == 40
         assert result["use_multi_signal"] is True
-        assert result["num_frames"] == 40
+        assert result["num_frames"] == 60
         assert result["start_offset_pct"] == 0.05
         assert result["end_offset_pct"] == 0.95
         assert result["min_face_confidence"] == 0.5
         assert result["top_k"] == 5
         assert result["cluster_threshold"] == 0.6
+        assert result["facenet_weight"] == 0.5
+        assert result["arcface_weight"] == 0.5
+        assert result["min_appearances"] == 2
+        assert result["min_unique_frames"] == 2
+        assert result["min_confidence"] == 0.35
 
 
 class TestSceneResult:

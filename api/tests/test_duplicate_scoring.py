@@ -1,6 +1,5 @@
 """Tests for duplicate detection scoring functions."""
 
-import pytest
 
 
 class TestMetadataScore:
@@ -232,7 +231,7 @@ class TestCombinedConfidence:
 
     def test_stashbox_match_returns_100(self):
         from duplicate_detection.scoring import calculate_duplicate_confidence
-        from duplicate_detection.models import SceneMetadata, SceneFingerprint, StashID
+        from duplicate_detection.models import SceneMetadata, StashID
 
         scene_a = SceneMetadata(
             scene_id="1",

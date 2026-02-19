@@ -19,7 +19,7 @@ from tattoo_detector import TattooResult
 if TYPE_CHECKING:
     from body_proportions import BodyProportionExtractor
     from database_reader import PerformerDatabaseReader
-    from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
+    from recognizer import FaceRecognizer
     from tattoo_detector import TattooDetector
     from tattoo_matcher import TattooMatcher
 

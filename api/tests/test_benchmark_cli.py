@@ -1,7 +1,5 @@
 """Tests for benchmark CLI interface and configuration."""
 
-import argparse
-import pytest
 
 from benchmark.config import BenchmarkConfig
 from benchmark.__main__ import parse_args

@@ -58,6 +58,9 @@ class ScheduleListResponse(BaseModel):
 class JobTypesResponse(BaseModel):
     types: list[dict]
 
+class MessageResponse(BaseModel):
+    message: str
+
 
 # ============================================================================
 # Endpoints — specific paths MUST come before /{job_id} to avoid conflicts
@@ -86,7 +89,7 @@ async def get_job_types():
 async def list_schedules():
     return {"schedules": _mgr()._db.get_all_job_schedules()}
 
-@router.put("/schedules/{type_id}")
+@router.put("/schedules/{type_id}", response_model=MessageResponse)
 async def update_schedule(type_id: str, request: UpdateScheduleRequest):
     defn = JOB_REGISTRY.get(type_id)
     if not defn:
@@ -138,17 +141,17 @@ async def get_job(job_id: int):
         raise HTTPException(status_code=404, detail="Job not found")
     return job
 
-@router.delete("/{job_id}")
+@router.delete("/{job_id}", response_model=MessageResponse)
 async def cancel_job(job_id: int):
     _mgr().cancel(job_id)
     return {"message": "Job cancelled"}
 
-@router.post("/{job_id}/stop")
+@router.post("/{job_id}/stop", response_model=MessageResponse)
 async def stop_job(job_id: int):
     _mgr().cancel(job_id)
     return {"message": "Stop requested"}
 
-@router.post("/{job_id}/retry")
+@router.post("/{job_id}/retry", response_model=SubmitJobResponse)
 async def retry_job(job_id: int):
     job = _mgr().get_job(job_id)
     if not job:

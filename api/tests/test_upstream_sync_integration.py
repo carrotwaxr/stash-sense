@@ -56,8 +56,8 @@ class TestUpstreamSyncIntegration:
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([make_upstream(168, "2026-01-15T10:00:00Z")], 1), ([], 0)]
+            mock_sbc.get_performer = AsyncMock(
+                return_value=make_upstream(168, "2026-01-15T10:00:00Z")
             )
             MockSBC.return_value = mock_sbc
             result1 = await analyzer.run(incremental=False)
@@ -68,8 +68,8 @@ class TestUpstreamSyncIntegration:
         analyzer2 = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([make_upstream(170, "2026-01-16T10:00:00Z")], 1), ([], 0)]
+            mock_sbc.get_performer = AsyncMock(
+                return_value=make_upstream(170, "2026-01-16T10:00:00Z")
             )
             MockSBC.return_value = mock_sbc
             result2 = await analyzer2.run(incremental=False)
@@ -113,8 +113,8 @@ class TestUpstreamSyncIntegration:
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([make_upstream(168, "2026-01-15T10:00:00Z")], 1), ([], 0)]
+            mock_sbc.get_performer = AsyncMock(
+                return_value=make_upstream(168, "2026-01-15T10:00:00Z")
             )
             MockSBC.return_value = mock_sbc
             await analyzer.run(incremental=False)
@@ -129,8 +129,8 @@ class TestUpstreamSyncIntegration:
         analyzer2 = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([make_upstream(170, "2026-01-16T10:00:00Z")], 1), ([], 0)]
+            mock_sbc.get_performer = AsyncMock(
+                return_value=make_upstream(170, "2026-01-16T10:00:00Z")
             )
             MockSBC.return_value = mock_sbc
             result = await analyzer2.run(incremental=False)

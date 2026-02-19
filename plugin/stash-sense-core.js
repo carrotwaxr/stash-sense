@@ -101,6 +101,12 @@
       }),
     });
 
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(`[${PLUGIN_NAME}] runPluginOperation HTTP error: ${response.status} - ${errorText}`);
+      throw new Error(`Plugin operation failed: HTTP ${response.status}`);
+    }
+
     const result = await response.json();
 
     if (result.errors) {
@@ -155,11 +161,21 @@
    * Execute a GraphQL query against Stash
    */
   async function stashQuery(query, variables = {}) {
-    const response = await fetch('/graphql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    });
+    let response;
+    try {
+      response = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables }),
+      });
+    } catch (e) {
+      console.error(`[${PLUGIN_NAME}] stashQuery fetch failed:`, e);
+      return null;
+    }
+    if (!response.ok) {
+      console.error(`[${PLUGIN_NAME}] stashQuery HTTP error: ${response.status}`);
+      return null;
+    }
     const result = await response.json();
     if (result.errors) {
       throw new Error(result.errors[0]?.message || 'GraphQL error');
@@ -429,6 +445,15 @@
     return 'low';
   }
 
+  /**
+   * Escape a string for safe insertion into HTML
+   */
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+  }
+
   // ==================== SPA Navigation ====================
 
   const navigationCallbacks = [];
@@ -496,6 +521,7 @@
     createElement,
     distanceToConfidence,
     getConfidenceClass,
+    escapeHtml,
   };
 
   console.log(`[${PLUGIN_NAME}] Core module loaded`);

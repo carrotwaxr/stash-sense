@@ -1,6 +1,5 @@
 """Tests for signal scoring functions."""
 
-import pytest
 
 from body_proportions import BodyProportions
 from tattoo_detector import TattooResult, TattooDetection

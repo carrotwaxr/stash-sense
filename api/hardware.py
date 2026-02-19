@@ -62,8 +62,8 @@ def _probe_gpu() -> tuple[bool, Optional[str], Optional[int]]:
         import onnxruntime as ort
         providers = ort.get_available_providers()
         gpu_available = "CUDAExecutionProvider" in providers
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("ONNX Runtime CUDA probe failed: %s", e)
 
     if not gpu_available:
         return False, None, None
@@ -102,8 +102,8 @@ def _probe_cpu() -> int:
                 quota = int(parts[0])
                 period = int(parts[1])
                 return max(1, quota // period)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("cgroup CPU probe failed: %s", e)
 
     return os.cpu_count() or 1
 
@@ -119,7 +119,8 @@ def _probe_memory() -> tuple[int, int]:
         mem = psutil.virtual_memory()
         total_mb = mem.total // (1024 * 1024)
         available_mb = mem.available // (1024 * 1024)
-    except Exception:
+    except Exception as e:
+        logger.debug("psutil memory probe failed: %s", e)
         total_mb = 0
         available_mb = 0
 
@@ -131,8 +132,8 @@ def _probe_memory() -> tuple[int, int]:
             if content != "max":
                 cgroup_limit_mb = int(content) // (1024 * 1024)
                 total_mb = min(total_mb, cgroup_limit_mb) if total_mb else cgroup_limit_mb
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("cgroup memory probe failed: %s", e)
 
     return total_mb, available_mb
 
@@ -142,7 +143,8 @@ def _probe_storage(data_dir: str) -> int:
     try:
         usage = shutil.disk_usage(data_dir)
         return usage.free // (1024 * 1024)
-    except Exception:
+    except Exception as e:
+        logger.debug("Storage probe failed for %s: %s", data_dir, e)
         return 0
 
 

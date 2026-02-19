@@ -117,7 +117,6 @@ class BodyProportionExtractor:
     def landmarker(self):
         """Lazy-load MediaPipe PoseLandmarker."""
         if self._landmarker is None:
-            import mediapipe as mp
             from mediapipe.tasks import python as mp_python
             from mediapipe.tasks.python import vision
 

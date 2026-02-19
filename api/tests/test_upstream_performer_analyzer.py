@@ -67,9 +67,7 @@ class TestUpstreamPerformerAnalyzer:
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([upstream_performer], 1), ([], 0)]
-            )
+            mock_sbc.get_performer = AsyncMock(return_value=upstream_performer)
             MockSBC.return_value = mock_sbc
             result = await analyzer.run()
         assert result.recommendations_created == 1
@@ -111,9 +109,7 @@ class TestUpstreamPerformerAnalyzer:
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([upstream_performer], 1), ([], 0)]
-            )
+            mock_sbc.get_performer = AsyncMock(return_value=upstream_performer)
             MockSBC.return_value = mock_sbc
             result = await analyzer.run()
         assert result.recommendations_created == 0  # updated, not created
@@ -154,9 +150,7 @@ class TestUpstreamPerformerAnalyzer:
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([upstream], 1), ([], 0)]
-            )
+            mock_sbc.get_performer = AsyncMock(return_value=upstream)
             MockSBC.return_value = mock_sbc
             result = await analyzer.run()
         assert result.recommendations_created == 0
@@ -189,9 +183,7 @@ class TestUpstreamPerformerAnalyzer:
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
         with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
-            mock_sbc.query_performers = AsyncMock(
-                side_effect=[([upstream], 1), ([], 0)]
-            )
+            mock_sbc.get_performer = AsyncMock(return_value=upstream)
             MockSBC.return_value = mock_sbc
             result = await analyzer.run()
         assert result.recommendations_created == 0

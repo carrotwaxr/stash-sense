@@ -4,13 +4,15 @@ Recommendations API Router
 Endpoints for managing recommendations, running analysis, and configuration.
 """
 
-import os
+import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 import face_config
-from recommendations_db import RecommendationsDB, Recommendation, AnalysisRun
+from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer
 
@@ -28,7 +30,7 @@ def init_recommendations(db_path: str, stash_url: str, stash_api_key: str):
     # Clean up any analysis runs left as 'running' from a previous sidecar session
     stale = rec_db.fail_stale_analysis_runs()
     if stale:
-        print(f"Marked {stale} stale analysis run(s) as failed")
+        logger.warning("Marked %d stale analysis run(s) as failed", stale)
     if stash_url:
         stash_client = StashClientUnified(stash_url, stash_api_key)
 
@@ -101,7 +103,7 @@ def save_scene_fingerprint(
         return fingerprint_id, None
     except Exception as e:
         error_msg = str(e)
-        print(f"[save_scene_fingerprint] Error: {error_msg}")
+        logger.error("save_scene_fingerprint failed: %s", error_msg, exc_info=True)
         return None, error_msg
 
 
@@ -148,7 +150,7 @@ def save_image_fingerprint(
         return fp_id, None
     except Exception as e:
         error_msg = str(e)
-        print(f"[save_image_fingerprint] Error: {error_msg}")
+        logger.error("save_image_fingerprint failed: %s", error_msg, exc_info=True)
         return None, error_msg
 
 
@@ -214,6 +216,67 @@ class StashStatusResponse(BaseModel):
     connected: bool
     url: Optional[str]
     error: Optional[str]
+
+
+class SuccessResponse(BaseModel):
+    """Generic success response."""
+    success: bool
+
+
+class MessageResponse(BaseModel):
+    """Generic message response."""
+    message: str
+
+
+class AnalysisTypeInfo(BaseModel):
+    """Info about a single analysis type."""
+    type: str
+    enabled: bool
+    description: Optional[str]
+
+
+class AnalysisTypesResponse(BaseModel):
+    """List of available analysis types."""
+    types: list[AnalysisTypeInfo]
+
+
+class FingerprintRefreshResponse(BaseModel):
+    """Response for marking fingerprints for refresh."""
+    marked_for_refresh: int
+    scene_ids: list[int]
+
+
+class FingerprintRefreshAllResponse(BaseModel):
+    """Response for marking all fingerprints for refresh."""
+    marked_for_refresh: int
+    message: str
+
+
+class FingerprintProgressResponse(BaseModel):
+    """Response for fingerprint generation progress."""
+    status: str
+    total_scenes: int = 0
+    processed_scenes: int = 0
+    successful: int = 0
+    failed: int = 0
+    skipped: int = 0
+    progress_pct: float = 0.0
+    current_scene_id: Optional[int] = None
+    current_scene_title: Optional[str] = None
+    error_message: Optional[str] = None
+    message: Optional[str] = None
+
+
+class FieldConfigEntry(BaseModel):
+    """A single field config entry."""
+    enabled: bool
+    label: str
+
+
+class FieldConfigResponse(BaseModel):
+    """Response for field monitoring config."""
+    endpoint: str
+    fields: dict[str, FieldConfigEntry]
 
 
 # ==================== Recommendation Endpoints ====================
@@ -286,7 +349,7 @@ async def get_recommendation(rec_id: int):
     )
 
 
-@router.post("/{rec_id}/resolve")
+@router.post("/{rec_id}/resolve", response_model=SuccessResponse)
 async def resolve_recommendation(rec_id: int, request: ResolveRequest):
     """Mark a recommendation as resolved."""
     db = get_rec_db()
@@ -296,7 +359,7 @@ async def resolve_recommendation(rec_id: int, request: ResolveRequest):
     return {"success": True}
 
 
-@router.post("/{rec_id}/dismiss")
+@router.post("/{rec_id}/dismiss", response_model=SuccessResponse)
 async def dismiss_recommendation(rec_id: int, request: DismissRequest = None):
     """Dismiss a recommendation (won't be re-created)."""
     db = get_rec_db()
@@ -317,7 +380,7 @@ ANALYZERS = {
 }
 
 
-@router.get("/analysis/types")
+@router.get("/analysis/types", response_model=AnalysisTypesResponse)
 async def list_analysis_types():
     """List available analysis types."""
     db = get_rec_db()
@@ -542,7 +605,7 @@ async def start_fingerprint_generation(request: FingerprintGenerateRequest):
     return {"job_id": job_id, "message": "Fingerprint generation queued"}
 
 
-@router.post("/fingerprints/stop")
+@router.post("/fingerprints/stop", response_model=MessageResponse)
 async def stop_fingerprint_generation():
     """Stop fingerprint generation via queue."""
     from queue_router import _queue_manager
@@ -556,7 +619,7 @@ async def stop_fingerprint_generation():
     return {"message": "Stop requested"}
 
 
-@router.get("/fingerprints/progress")
+@router.get("/fingerprints/progress", response_model=FingerprintProgressResponse)
 async def get_fingerprint_progress():
     """Get current fingerprint generation progress."""
     from fingerprint_generator import get_generator
@@ -571,7 +634,7 @@ async def get_fingerprint_progress():
     return generator.progress.to_dict()
 
 
-@router.post("/fingerprints/refresh")
+@router.post("/fingerprints/refresh", response_model=FingerprintRefreshResponse)
 async def mark_fingerprints_for_refresh(scene_ids: Optional[list[int]] = None):
     """
     Mark fingerprints for refresh by clearing their db_version.
@@ -594,7 +657,7 @@ async def mark_fingerprints_for_refresh(scene_ids: Optional[list[int]] = None):
     }
 
 
-@router.post("/fingerprints/refresh-all")
+@router.post("/fingerprints/refresh-all", response_model=FingerprintRefreshAllResponse)
 async def mark_all_fingerprints_for_refresh(confirm: bool = False):
     """Mark ALL fingerprints for refresh. Requires confirm=true."""
     if not confirm:
@@ -621,11 +684,14 @@ class UpdatePerformerRequest(BaseModel):
 
 
 @router.post("/actions/update-performer")
-async def update_performer_fields(request: UpdatePerformerRequest):
+async def update_performer_fields(request: UpdatePerformerRequest, entity_type: str = "performer"):
     """Apply selected upstream changes to a performer.
 
     Translates diff-engine field names (StashBox-style) to Stash PerformerUpdateInput names.
     Compound fields (measurements, career_length) are smart-merged with existing values.
+
+    Args:
+        entity_type: Entity type (default: "performer"). Reserved for future entity types.
     """
     from upstream_field_mapper import parse_measurements, parse_career_length
 
@@ -741,61 +807,50 @@ async def dismiss_upstream_recommendation(rec_id: int, request: UpstreamDismissR
     return {"success": True, "permanent": permanent}
 
 
-@router.get("/upstream/field-config/{endpoint_b64}")
-async def get_field_config(endpoint_b64: str):
-    """Get field monitoring config for an endpoint. Endpoint is base64-encoded."""
+@router.get("/upstream/field-config/{endpoint_b64}", response_model=FieldConfigResponse)
+async def get_field_config(endpoint_b64: str, entity_type: str = "performer"):
+    """Get field monitoring config for an endpoint.
+
+    Args:
+        endpoint_b64: Base64-encoded stash-box endpoint URL.
+        entity_type: Entity type to get config for (default: "performer").
+    """
     import base64
+    from upstream_field_mapper import get_field_config as get_entity_field_config
     endpoint = base64.b64decode(endpoint_b64).decode()
     db = get_rec_db()
-    fields = db.get_enabled_fields(endpoint, "performer")
-    from upstream_field_mapper import DEFAULT_PERFORMER_FIELDS, FIELD_LABELS
+
+    try:
+        field_cfg = get_entity_field_config(entity_type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unknown entity type: {entity_type}")
+
+    default_fields = field_cfg["default_fields"]
+    labels = field_cfg["labels"]
+
+    fields = db.get_enabled_fields(endpoint, entity_type)
     if fields is None:
         return {
             "endpoint": endpoint,
-            "fields": {f: {"enabled": True, "label": FIELD_LABELS.get(f, f)} for f in DEFAULT_PERFORMER_FIELDS},
+            "fields": {f: {"enabled": True, "label": labels.get(f, f)} for f in default_fields},
         }
     return {
         "endpoint": endpoint,
-        "fields": {f: {"enabled": f in fields, "label": FIELD_LABELS.get(f, f)} for f in DEFAULT_PERFORMER_FIELDS},
+        "fields": {f: {"enabled": f in fields, "label": labels.get(f, f)} for f in default_fields},
     }
 
 
-@router.post("/upstream/field-config/{endpoint_b64}")
-async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool]):
-    """Set field monitoring config for an endpoint."""
+@router.post("/upstream/field-config/{endpoint_b64}", response_model=SuccessResponse)
+async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool], entity_type: str = "performer"):
+    """Set field monitoring config for an endpoint.
+
+    Args:
+        endpoint_b64: Base64-encoded stash-box endpoint URL.
+        field_configs: Dict mapping field name to enabled bool.
+        entity_type: Entity type to set config for (default: "performer").
+    """
     import base64
     endpoint = base64.b64decode(endpoint_b64).decode()
     db = get_rec_db()
-    db.set_field_config(endpoint, "performer", field_configs)
+    db.set_field_config(endpoint, entity_type, field_configs)
     return {"success": True}
-
-
-# ==================== User Settings ====================
-
-@router.get("/settings")
-async def get_all_settings():
-    """Get all user settings."""
-    db = get_rec_db()
-    settings = db.get_all_user_settings()
-    return {"settings": settings}
-
-
-@router.get("/settings/{key}")
-async def get_setting(key: str):
-    """Get a single user setting."""
-    db = get_rec_db()
-    value = db.get_user_setting(key)
-    return {"key": key, "value": value}
-
-
-class SetSettingRequest(BaseModel):
-    """Request to set a user setting."""
-    value: object
-
-
-@router.post("/settings/{key}")
-async def set_setting(key: str, request: SetSettingRequest):
-    """Set a user setting."""
-    db = get_rec_db()
-    db.set_user_setting(key, request.value)
-    return {"success": True, "key": key}

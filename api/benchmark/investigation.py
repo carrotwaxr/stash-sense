@@ -13,10 +13,8 @@ import asyncio
 import json
 import os
 from collections import defaultdict
-from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -30,7 +28,7 @@ from multi_signal_matcher import MultiSignalMatcher
 from benchmark.scene_selector import SceneSelector
 from benchmark.test_executor import TestExecutor
 from benchmark.analyzer import Analyzer
-from benchmark.models import BenchmarkParams, TestScene, SceneResult, ExpectedPerformer
+from benchmark.models import BenchmarkParams, TestScene, SceneResult
 
 
 def flush_print(*args, **kwargs):
@@ -227,19 +225,19 @@ def analyze_failure_patterns(
         if result.faces_detected == 0:
             detection_stats["scenes_with_no_detection"] += 1
 
-    flush_print(f"Scene-level outcomes:")
+    flush_print("Scene-level outcomes:")
     flush_print(f"  Full success (all found):  {scenes_with_full_tp}/{len(results)} ({100*scenes_with_full_tp/len(results):.1f}%)")
     flush_print(f"  Partial success:           {scenes_with_partial_tp}/{len(results)} ({100*scenes_with_partial_tp/len(results):.1f}%)")
     flush_print(f"  Complete failure (0 found): {scenes_with_zero_tp}/{len(results)} ({100*scenes_with_zero_tp/len(results):.1f}%)")
     flush_print(f"  Many false positives:      {scenes_with_many_fp}/{len(results)} ({100*scenes_with_many_fp/len(results):.1f}%)")
 
-    flush_print(f"\nDetection statistics:")
+    flush_print("\nDetection statistics:")
     flush_print(f"  Avg faces detected/scene:     {detection_stats['total_faces_detected']/len(results):.1f}")
     flush_print(f"  Avg faces after filter/scene: {detection_stats['total_faces_after_filter']/len(results):.1f}")
     flush_print(f"  Avg persons clustered/scene:  {detection_stats['total_persons_clustered']/len(results):.1f}")
     flush_print(f"  Scenes with no detection:     {detection_stats['scenes_with_no_detection']}")
 
-    flush_print(f"\nPerformer DB coverage distribution:")
+    flush_print("\nPerformer DB coverage distribution:")
     for bucket in ["0-2 faces", "3-5 faces", "6-9 faces", "10+ faces"]:
         count = coverage_buckets[bucket]["total"]
         flush_print(f"  {bucket}: {count} performers")
@@ -247,7 +245,7 @@ def analyze_failure_patterns(
     # False positive analysis
     total_fp = sum(r.false_positives for r in results)
     total_tp = sum(r.true_positives for r in results)
-    flush_print(f"\nFalse positive analysis:")
+    flush_print("\nFalse positive analysis:")
     flush_print(f"  Total true positives:  {total_tp}")
     flush_print(f"  Total false positives: {total_fp}")
     flush_print(f"  FP ratio: {total_fp/(total_tp+total_fp):.1%} of all matches are wrong")
@@ -277,7 +275,7 @@ def analyze_multi_signal_data(
     body_data = db_reader.get_all_body_proportions()
     tattoo_data = db_reader.get_all_tattoo_info()
 
-    flush_print(f"\nDatabase multi-signal coverage:")
+    flush_print("\nDatabase multi-signal coverage:")
     flush_print(f"  Performers with body data:   {len(body_data)}")
     flush_print(f"  Performers with tattoo data: {len(tattoo_data)}")
 
@@ -305,7 +303,7 @@ def analyze_multi_signal_data(
             if not has_body and not has_tattoo:
                 performers_with_neither += 1
 
-    flush_print(f"\nTest scene performer coverage:")
+    flush_print("\nTest scene performer coverage:")
     flush_print(f"  Total performers in test set: {total_performers}")
     flush_print(f"  With body proportions:        {performers_with_body} ({100*performers_with_body/total_performers:.1f}%)")
     flush_print(f"  With tattoo data:             {performers_with_tattoo} ({100*performers_with_tattoo/total_performers:.1f}%)")
@@ -313,13 +311,13 @@ def analyze_multi_signal_data(
     flush_print(f"  With neither signal:          {performers_with_neither} ({100*performers_with_neither/total_performers:.1f}%)")
 
     # Sample body data quality
-    flush_print(f"\nBody data sample (first 5):")
+    flush_print("\nBody data sample (first 5):")
     for i, (uid, data) in enumerate(list(body_data.items())[:5]):
         flush_print(f"  {uid}: shoulder_hip={data.get('shoulder_hip_ratio', 'N/A'):.2f}, confidence={data.get('confidence', 'N/A'):.2f}")
 
     # Sample tattoo data
     tattoo_positive = [(uid, data) for uid, data in tattoo_data.items() if data.get("has_tattoos")]
-    flush_print(f"\nTattoo data sample (performers with tattoos):")
+    flush_print("\nTattoo data sample (performers with tattoos):")
     for uid, data in list(tattoo_positive)[:5]:
         flush_print(f"  {uid}: locations={data.get('locations', [])[:3]}")
 
@@ -394,7 +392,7 @@ def analyze_480p_issues(
     # 480p specific analysis
     data_480 = resolution_data["480p"]
     if data_480["scenes"]:
-        flush_print(f"\n480p specific issues:")
+        flush_print("\n480p specific issues:")
         flush_print(f"  Scenes: {len(data_480['scenes'])}")
         flush_print(f"  True positives: {data_480['tp']}")
         flush_print(f"  False negatives: {data_480['fn']}")
@@ -408,7 +406,7 @@ def analyze_480p_issues(
         flush_print(f"  Avg faces detected (1080p): {avg_1080_faces:.1f}")
 
         if avg_480_faces < avg_1080_faces * 0.7:
-            flush_print(f"  -> 480p detects significantly fewer faces!")
+            flush_print("  -> 480p detects significantly fewer faces!")
 
     return {
         res: {
