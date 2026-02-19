@@ -130,3 +130,109 @@ class QueueManager:
         if ctx:
             ctx.request_stop()
         self._db.set_job_status(job_id, "stopping")
+
+    # ========================================================================
+    # Dispatch loop
+    # ========================================================================
+
+    async def start(self):
+        """Start the background dispatch loop."""
+        self._loop_task = asyncio.create_task(self._dispatch_loop())
+
+    async def stop(self, timeout: float = 30.0):
+        """Stop the dispatch loop and wait for running jobs."""
+        self.request_shutdown()
+        if self._running_tasks:
+            logger.warning(f"Waiting up to {timeout}s for {len(self._running_tasks)} running job(s)...")
+            done, pending = await asyncio.wait(
+                self._running_tasks.values(), timeout=timeout
+            )
+            for task in pending:
+                task.cancel()
+            for job_id in list(self._running_tasks.keys()):
+                job = self._db.get_job(job_id)
+                if job and job["status"] == "stopping":
+                    self._db.set_job_status(job_id, "queued")
+                    logger.warning(f"Job {job_id} ({job['type']}) re-queued for resume")
+        self._running_tasks.clear()
+        self._running_contexts.clear()
+
+    async def _dispatch_loop(self):
+        """Main loop — dispatch jobs every second."""
+        while not self.is_shutting_down:
+            try:
+                await self._dispatch_once()
+                await self._check_completed()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Dispatch loop error: {e}")
+            await asyncio.sleep(1.0)
+
+    async def _dispatch_once(self):
+        """Check queue and start eligible jobs."""
+        if self.is_shutting_down:
+            return
+        running_per_resource: dict[ResourceType, int] = {r: 0 for r in ResourceType}
+        for job_id in list(self._running_tasks.keys()):
+            job = self._db.get_job(job_id)
+            if job:
+                defn = JOB_REGISTRY.get(job["type"])
+                if defn:
+                    running_per_resource[defn.resource] += 1
+
+        queued = self._db.get_queued_jobs()
+        for job_row in queued:
+            defn = JOB_REGISTRY.get(job_row["type"])
+            if not defn:
+                continue
+            resource = defn.resource
+            max_slots = self.resource_slots.get(resource, 1)
+            if running_per_resource[resource] >= max_slots:
+                continue
+            self._start_job(job_row, defn)
+            running_per_resource[resource] += 1
+
+    async def _check_completed(self):
+        """Check for completed/failed tasks and clean up."""
+        for job_id in list(self._running_tasks.keys()):
+            task = self._running_tasks[job_id]
+            if task.done():
+                self._running_tasks.pop(job_id, None)
+                self._running_contexts.pop(job_id, None)
+                try:
+                    task.result()
+                except Exception:
+                    pass  # Already handled in _run_job
+
+    def _start_job(self, job_row: dict, defn: JobDefinition):
+        """Start a job — create task and track it."""
+        from base_job import JobContext
+        job_id = job_row["id"]
+        self._db.start_job(job_id)
+        ctx = JobContext(job_id=job_id, db=self._db, queue_manager=self)
+        self._running_contexts[job_id] = ctx
+        task = asyncio.create_task(self._run_job(job_id, job_row, ctx))
+        self._running_tasks[job_id] = task
+
+    async def _run_job(self, job_id: int, job_row: dict, ctx):
+        """Execute a single job and handle completion/failure."""
+        type_id = job_row["type"]
+        try:
+            job_instance = self._create_job_instance(type_id)
+            cursor = job_row.get("cursor")
+            final_cursor = await job_instance.run(ctx, cursor=cursor)
+            job = self._db.get_job(job_id)
+            if job and job["status"] == "stopping":
+                self._db.set_job_status(job_id, "queued")
+                logger.warning(f"Job {job_id} ({type_id}) yielded, re-queued")
+            elif job and job["status"] == "running":
+                self._db.complete_job(job_id)
+                logger.warning(f"Job {job_id} ({type_id}) completed")
+        except Exception as e:
+            logger.error(f"Job {job_id} ({type_id}) failed: {e}")
+            self._db.fail_job(job_id, str(e))
+
+    def _create_job_instance(self, type_id: str):
+        """Create a job instance by type. Override in tests."""
+        raise NotImplementedError(f"No job implementation registered for {type_id}")
