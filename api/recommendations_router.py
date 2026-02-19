@@ -4,10 +4,9 @@ Recommendations API Router
 Endpoints for managing recommendations, running analysis, and configuration.
 """
 
-import asyncio
 import os
 from typing import Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 import face_config
@@ -333,44 +332,26 @@ async def list_analysis_types():
     return {"types": types}
 
 
-async def run_analysis_task(type: str, run_id: int, incremental: bool = True):
-    """Background task to run analysis."""
-    db = get_rec_db()
-    stash = get_stash_client()
-
-    analyzer_class = ANALYZERS.get(type)
-    if not analyzer_class:
-        db.fail_analysis_run(run_id, f"Unknown analysis type: {type}")
-        return
-
-    analyzer = analyzer_class(stash, db, run_id=run_id)
-
-    try:
-        result = await analyzer.run(incremental=incremental)
-        db.complete_analysis_run(run_id, result.recommendations_created)
-    except Exception as e:
-        db.fail_analysis_run(run_id, str(e))
-
-
 @router.post("/analysis/{type}/run", response_model=RunAnalysisResponse)
-async def run_analysis(type: str, background_tasks: BackgroundTasks, full: bool = False):
-    """Start an analysis run (async). Pass ?full=true to skip watermark and reprocess all."""
+async def run_analysis(type: str, full: bool = False):
+    """Start an analysis. Now delegates to the job queue."""
     if type not in ANALYZERS:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {type}")
 
-    # Check Stash connection
-    get_stash_client()
+    from queue_router import _queue_manager
+    if _queue_manager is None:
+        raise HTTPException(status_code=503, detail="Queue manager not initialized")
 
-    db = get_rec_db()
-    run_id = db.start_analysis_run(type)
-
-    # Run in background
-    background_tasks.add_task(run_analysis_task, type, run_id, incremental=not full)
-
-    return RunAnalysisResponse(
-        run_id=run_id,
-        message=f"Analysis '{type}' started. Check /recommendations/analysis/runs/{run_id} for status.",
+    from job_models import JobPriority
+    job_id = _queue_manager.submit(
+        type_id=type,
+        triggered_by="user",
+        priority=JobPriority.HIGH,
     )
+    if job_id is None:
+        raise HTTPException(status_code=409, detail=f"Analysis '{type}' is already running or queued")
+
+    return RunAnalysisResponse(run_id=job_id, message=f"Analysis '{type}' queued (job #{job_id})")
 
 
 @router.get("/analysis/runs", response_model=list[AnalysisRunResponse])
@@ -486,8 +467,6 @@ async def delete_scene_files(request: DeleteSceneFilesRequest):
 
 # ==================== Fingerprints ====================
 
-# Background task for fingerprint generation
-_fingerprint_task: Optional[asyncio.Task] = None
 _current_db_version: Optional[str] = None
 
 
@@ -545,85 +524,36 @@ async def get_fingerprint_status():
 
 
 @router.post("/fingerprints/generate")
-async def start_fingerprint_generation(
-    request: FingerprintGenerateRequest,
-    background_tasks: BackgroundTasks,
-):
-    """Start background fingerprint generation for all scenes."""
-    global _fingerprint_task
+async def start_fingerprint_generation(request: FingerprintGenerateRequest):
+    """Start fingerprint generation. Now delegates to the job queue."""
+    from queue_router import _queue_manager
+    from job_models import JobPriority
+    if _queue_manager is None:
+        raise HTTPException(status_code=503, detail="Queue manager not initialized")
 
-    from fingerprint_generator import SceneFingerprintGenerator, set_generator, get_generator
-
-    # Check if already running
-    existing = get_generator()
-    if existing and existing.status.value == "running":
-        raise HTTPException(
-            status_code=409,
-            detail="Fingerprint generation already running. Stop it first or wait for completion.",
-        )
-
-    db = get_rec_db()
-    stash = get_stash_client()
-
-    if not _current_db_version:
-        raise HTTPException(
-            status_code=503,
-            detail="Face recognition database not loaded. DB version unknown.",
-        )
-
-    # Create generator
-    generator = SceneFingerprintGenerator(
-        stash_client=stash,
-        rec_db=db,
-        db_version=_current_db_version,
-        num_frames=request.num_frames,
-        min_face_size=request.min_face_size,
-        max_distance=request.max_distance,
+    job_id = _queue_manager.submit(
+        type_id="fingerprint_generation",
+        triggered_by="user",
+        priority=JobPriority.HIGH,
     )
-    set_generator(generator)
+    if job_id is None:
+        raise HTTPException(status_code=409, detail="Fingerprint generation already running or queued")
 
-    # Run in background
-    async def run_generation():
-        async for progress in generator.generate_all(refresh_outdated=request.refresh_outdated):
-            pass  # Progress is tracked in generator.progress
-
-    _fingerprint_task = asyncio.create_task(run_generation())
-
-    return {
-        "status": "started",
-        "message": "Fingerprint generation started in background",
-        "config": {
-            "refresh_outdated": request.refresh_outdated,
-            "num_frames": request.num_frames,
-            "min_face_size": request.min_face_size,
-            "max_distance": request.max_distance,
-            "db_version": _current_db_version,
-        },
-    }
+    return {"job_id": job_id, "message": "Fingerprint generation queued"}
 
 
 @router.post("/fingerprints/stop")
 async def stop_fingerprint_generation():
-    """Stop the running fingerprint generation gracefully."""
-    from fingerprint_generator import get_generator
+    """Stop fingerprint generation via queue."""
+    from queue_router import _queue_manager
+    if _queue_manager is None:
+        raise HTTPException(status_code=503, detail="Queue manager not initialized")
 
-    generator = get_generator()
-    if not generator:
-        raise HTTPException(status_code=404, detail="No fingerprint generation running")
-
-    if generator.status.value not in ("running", "stopping"):
-        return {
-            "status": generator.status.value,
-            "message": "Generation is not running",
-        }
-
-    generator.request_stop()
-
-    return {
-        "status": "stopping",
-        "message": "Stop requested. Will finish current scene then stop.",
-        "progress": generator.progress.to_dict(),
-    }
+    running = _queue_manager.get_jobs(status="running", type="fingerprint_generation")
+    if not running:
+        return {"message": "No fingerprint generation running"}
+    _queue_manager.cancel(running[0]["id"])
+    return {"message": "Stop requested"}
 
 
 @router.get("/fingerprints/progress")
