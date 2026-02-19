@@ -63,6 +63,10 @@ def main():
             "stash_ids": args.get("stash_ids", []),
             "update_metadata": args.get("update_metadata", False),
         })
+    elif mode.startswith("settings_") or mode == "system_info":
+        result = handle_settings(mode, args, sidecar_url)
+        if result is None:
+            result = {"error": f"Unknown settings mode: {mode}"}
     elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
@@ -252,6 +256,48 @@ def sidecar_post(sidecar_url, endpoint, data=None, timeout=60):
             json=data,
             timeout=timeout,
         )
+        if response.ok:
+            return response.json()
+        try:
+            error_detail = response.json().get("detail", response.text)
+        except Exception:
+            error_detail = response.text or f"HTTP {response.status_code}"
+        return {"error": error_detail}
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Request timed out"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+
+
+def sidecar_put(sidecar_url, endpoint, data=None, timeout=30):
+    """PUT request to sidecar."""
+    try:
+        response = requests.put(
+            f"{sidecar_url}{endpoint}",
+            json=data,
+            timeout=timeout,
+        )
+        if response.ok:
+            return response.json()
+        try:
+            error_detail = response.json().get("detail", response.text)
+        except Exception:
+            error_detail = response.text or f"HTTP {response.status_code}"
+        return {"error": error_detail}
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Request timed out"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+
+
+def sidecar_delete(sidecar_url, endpoint, timeout=30):
+    """DELETE request to sidecar."""
+    try:
+        response = requests.delete(f"{sidecar_url}{endpoint}", timeout=timeout)
         if response.ok:
             return response.json()
         try:
@@ -517,6 +563,36 @@ def handle_recommendations(mode, args, sidecar_url):
 
     elif mode == "fp_stop":
         return fp_stop(sidecar_url)
+
+    return None
+
+
+# ==================== Settings API Proxy ====================
+
+def handle_settings(mode, args, sidecar_url):
+    """Handle settings-related operations."""
+    if mode == "settings_get_all":
+        return sidecar_get(sidecar_url, "/settings")
+
+    elif mode == "settings_get":
+        key = args.get("key", "")
+        return sidecar_get(sidecar_url, f"/settings/{key}")
+
+    elif mode == "settings_update":
+        key = args.get("key", "")
+        value = args.get("value")
+        return sidecar_put(sidecar_url, f"/settings/{key}", {"value": value})
+
+    elif mode == "settings_update_bulk":
+        settings = args.get("settings", {})
+        return sidecar_put(sidecar_url, "/settings", {"settings": settings})
+
+    elif mode == "settings_reset":
+        key = args.get("key", "")
+        return sidecar_delete(sidecar_url, f"/settings/{key}")
+
+    elif mode == "system_info":
+        return sidecar_get(sidecar_url, "/system/info")
 
     return None
 

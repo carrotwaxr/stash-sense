@@ -90,9 +90,15 @@ class FaceEmbeddingGenerator:
                 name="buffalo_sc",
                 providers=self._ort_providers(),
             )
+            # Get detection size from settings, fall back to 640
+            try:
+                from settings import get_setting
+                det_size = int(get_setting("detection_size"))
+            except (RuntimeError, KeyError):
+                det_size = 640
             self._face_analyzer.prepare(
                 ctx_id=0 if self.device == "cuda" else -1,
-                det_size=(640, 640),
+                det_size=(det_size, det_size),
             )
         return self._face_analyzer
 
@@ -237,7 +243,7 @@ class FaceEmbeddingGenerator:
     def get_embeddings_batch(
         self,
         faces: list[np.ndarray],
-        max_batch_size: int = 16,
+        max_batch_size: Optional[int] = None,
     ) -> list[FaceEmbedding]:
         """
         Generate embeddings for a batch of faces using ONNX Runtime.
@@ -247,13 +253,21 @@ class FaceEmbeddingGenerator:
 
         Args:
             faces: List of RGB face images as numpy arrays
-            max_batch_size: Max faces per GPU inference call (limits VRAM usage)
+            max_batch_size: Max faces per GPU inference call (limits VRAM usage).
+                           If None, reads from settings (embedding_batch_size).
 
         Returns:
             List of FaceEmbedding objects, one per input face
         """
         if not faces:
             return []
+
+        if max_batch_size is None:
+            try:
+                from settings import get_setting
+                max_batch_size = int(get_setting("embedding_batch_size"))
+            except (RuntimeError, KeyError):
+                max_batch_size = 16
 
         # Ensure models are loaded (triggers lazy init + prints)
         _ = self.facenet_session

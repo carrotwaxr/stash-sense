@@ -84,7 +84,12 @@ class RateLimiter:
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:
-                    rate = float(os.environ.get("STASH_RATE_LIMIT", "5.0"))
+                    # Try settings system first, fall back to env var
+                    try:
+                        from settings import get_setting
+                        rate = float(get_setting("stash_api_rate"))
+                    except (RuntimeError, KeyError):
+                        rate = float(os.environ.get("STASH_RATE_LIMIT", "5.0"))
                     cls._instance = cls(requests_per_second=rate)
         return cls._instance
 

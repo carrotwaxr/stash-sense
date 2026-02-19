@@ -1024,7 +1024,12 @@ class RecommendationsDB:
                 "SELECT value FROM user_settings WHERE key = ?", (key,)
             ).fetchone()
             if row:
-                return json.loads(row["value"])
+                val = row["value"]
+                # SQLite NUMERIC affinity may auto-convert JSON numbers from
+                # str to int/float. Return those directly; parse strings as JSON.
+                if not isinstance(val, str):
+                    return val
+                return json.loads(val)
         return None
 
     def set_user_setting(self, key: str, value: Any):
@@ -1045,7 +1050,16 @@ class RecommendationsDB:
         """Get all user settings as a dict."""
         with self._connection() as conn:
             rows = conn.execute("SELECT key, value FROM user_settings").fetchall()
-            return {row["key"]: json.loads(row["value"]) for row in rows}
+            result = {}
+            for row in rows:
+                val = row["value"]
+                result[row["key"]] = val if not isinstance(val, str) else json.loads(val)
+            return result
+
+    def delete_user_setting(self, key: str):
+        """Delete a user setting by key."""
+        with self._connection() as conn:
+            conn.execute("DELETE FROM user_settings WHERE key = ?", (key,))
 
     # ==================== Scene Fingerprints ====================
 

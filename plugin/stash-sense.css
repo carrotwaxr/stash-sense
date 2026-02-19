@@ -2143,3 +2143,346 @@
   font-size: 11px;
   font-weight: 500;
 }
+
+/* ==================== Page-Level Tabs ==================== */
+
+.ss-page-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--bs-border-color, #333);
+  margin-bottom: 24px;
+}
+
+.ss-page-tab {
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--bs-secondary-color, #888);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.ss-page-tab:hover {
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-page-tab.active {
+  color: var(--bs-body-color, #fff);
+  border-bottom-color: var(--bs-primary, #0d6efd);
+}
+
+/* ==================== Settings Page ==================== */
+
+.ss-settings-page {
+  padding: 0 24px 24px;
+}
+
+.ss-settings-header h1 {
+  margin: 0 0 4px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-settings-subtitle {
+  color: var(--bs-secondary-color, #888);
+  font-size: 14px;
+  margin: 0 0 24px 0;
+}
+
+.ss-settings-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--bs-secondary-color, #888);
+}
+
+.ss-settings-error {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.ss-settings-error h3 {
+  color: #dc3545;
+  margin-bottom: 8px;
+}
+
+.ss-settings-error p {
+  color: var(--bs-secondary-color, #888);
+  margin-bottom: 16px;
+}
+
+/* Hardware Banner */
+.ss-hw-banner {
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border: 1px solid var(--bs-border-color, #333);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 28px;
+}
+
+.ss-hw-banner-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ss-hw-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ss-hw-tier {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ss-tier-high {
+  background: rgba(25, 135, 84, 0.2);
+  color: #198754;
+  border: 1px solid rgba(25, 135, 84, 0.3);
+}
+
+.ss-tier-low {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.ss-tier-cpu {
+  background: rgba(108, 117, 125, 0.2);
+  color: #adb5bd;
+  border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+.ss-hw-gpu {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-hw-details {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--bs-secondary-color, #888);
+}
+
+/* Settings Categories */
+.ss-settings-category {
+  margin-bottom: 28px;
+}
+
+.ss-settings-cat-header h2 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-settings-cat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Individual Setting Row */
+.ss-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border-radius: 8px;
+  position: relative;
+}
+
+.ss-setting-row:first-child {
+  border-radius: 8px 8px 2px 2px;
+}
+
+.ss-setting-row:last-child {
+  border-radius: 2px 2px 8px 8px;
+}
+
+.ss-setting-row:only-child {
+  border-radius: 8px;
+}
+
+.ss-setting-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ss-setting-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--bs-body-color, #fff);
+  margin-bottom: 2px;
+}
+
+.ss-setting-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--bs-secondary-color, #888);
+}
+
+.ss-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Number Input */
+.ss-number-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ss-number-input input {
+  width: 80px;
+  padding: 6px 8px;
+  background: var(--bs-body-bg, #1a1a1a);
+  border: 1px solid var(--bs-border-color, #444);
+  border-radius: 6px;
+  color: var(--bs-body-color, #fff);
+  font-size: 14px;
+  text-align: right;
+}
+
+.ss-number-input input:focus {
+  outline: none;
+  border-color: var(--bs-primary, #0d6efd);
+}
+
+.ss-setting-range {
+  font-size: 11px;
+  color: var(--bs-secondary-color, #666);
+}
+
+/* Toggle Switch */
+.ss-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.ss-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ss-toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bs-secondary-bg, #444);
+  border-radius: 24px;
+  transition: background-color 0.2s;
+}
+
+.ss-toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.ss-toggle input:checked + .ss-toggle-slider {
+  background-color: var(--bs-primary, #0d6efd);
+}
+
+.ss-toggle input:checked + .ss-toggle-slider::before {
+  transform: translateX(20px);
+}
+
+/* Reset Button */
+.ss-setting-reset {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--bs-border-color, #444);
+  color: var(--bs-secondary-color, #888);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ss-setting-reset:hover {
+  color: var(--bs-body-color, #fff);
+  border-color: var(--bs-body-color, #fff);
+}
+
+/* Save Indicator */
+.ss-save-indicator {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  animation: ss-fade-in 0.2s ease;
+}
+
+.ss-save-ok {
+  color: #198754;
+  background: rgba(25, 135, 84, 0.15);
+}
+
+.ss-save-error {
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.15);
+}
+
+@keyframes ss-fade-in {
+  from { opacity: 0; transform: translateY(-50%) translateX(10px); }
+  to { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+/* Responsive Settings */
+@media (max-width: 768px) {
+  .ss-settings-page {
+    padding: 0 12px 16px;
+  }
+
+  .ss-hw-banner-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ss-setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .ss-setting-control {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

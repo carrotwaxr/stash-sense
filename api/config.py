@@ -106,6 +106,19 @@ class MultiSignalConfig:
             face_candidates=int(os.environ.get("FACE_CANDIDATES", "20")),
         )
 
+    @classmethod
+    def from_settings(cls) -> "MultiSignalConfig":
+        """Create config from the settings system. Falls back to from_env() if settings not ready."""
+        try:
+            from settings import get_setting
+            return cls(
+                enable_body=get_setting("body_signal_enabled"),
+                enable_tattoo="true" if get_setting("tattoo_signal_enabled") else "false",
+                face_candidates=get_setting("face_candidates"),
+            )
+        except RuntimeError:
+            return cls.from_env()
+
 
 # Embedding dimensions
 FACENET_DIM = 512

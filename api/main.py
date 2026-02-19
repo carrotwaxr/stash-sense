@@ -48,6 +48,9 @@ from matching import MatchingConfig
 from recommendations_router import router as recommendations_router, init_recommendations, save_scene_fingerprint, save_image_fingerprint, set_db_version
 from stashbox_client import StashBoxClient
 from database_updater import DatabaseUpdater, UpdateStatus
+from hardware import init_hardware
+from settings import init_settings, get_setting, migrate_env_vars
+from settings_router import router as settings_router, init_settings_router
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +341,7 @@ def reload_database(data_dir: Path) -> bool:
     print("Face database loaded successfully!")
 
     # Initialize multi-signal components
-    multi_signal_config = MultiSignalConfig.from_env()
+    multi_signal_config = MultiSignalConfig.from_settings()
 
     if multi_signal_config.enable_body:
         print("Initializing body proportion extractor...")
@@ -396,6 +399,9 @@ async def lifespan(app: FastAPI):
 
     global db_updater
 
+    # Detect hardware and classify tier
+    hw_profile = init_hardware(str(data_dir))
+
     # Load face recognition database
     try:
         reload_database(data_dir)
@@ -420,6 +426,22 @@ async def lifespan(app: FastAPI):
     )
     print("Recommendations database initialized!")
 
+    # Initialize settings system (needs rec_db for persistence)
+    from recommendations_router import get_rec_db
+    settings_mgr = init_settings(get_rec_db(), hw_profile.tier)
+    init_settings_router()
+
+    # Migrate deprecated env vars to settings on first run
+    migrated = migrate_env_vars(settings_mgr)
+    if migrated:
+        logger.warning(f"Migrated {migrated} env var(s) to settings system")
+
+    override_count = sum(
+        1 for v in settings_mgr.get_all_with_metadata()['categories'].values()
+        for s in v['settings'].values() if s['is_override']
+    )
+    logger.warning(f"Settings initialized: tier={hw_profile.tier}, overrides={override_count}")
+
     if STASH_URL:
         print(f"Stash connection configured: {STASH_URL}")
     else:
@@ -434,7 +456,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stash Sense API",
     description="Face recognition and recommendations engine for Stash",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -447,8 +469,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include recommendations router
+# Include routers
 app.include_router(recommendations_router)
+app.include_router(settings_router)
 
 
 def _match_to_response(m, **overrides) -> "PerformerMatchResponse":
@@ -1801,13 +1824,33 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
     except httpx.HTTPError as e:
         raise HTTPException(status_code=400, detail=f"Failed to query scene: {e}")
 
+    # Resolve num_frames: use settings value when caller didn't override
+    num_frames = request.num_frames
+    try:
+        from settings import get_setting
+        settings_num_frames = int(get_setting("num_frames"))
+        # If request used the Pydantic default, prefer settings value
+        if num_frames == face_config.NUM_FRAMES:
+            num_frames = settings_num_frames
+    except (RuntimeError, KeyError):
+        pass
+
+    # Resolve frame extraction concurrency from settings
+    max_concurrent = 8
+    try:
+        from settings import get_setting
+        max_concurrent = int(get_setting("frame_extraction_concurrency"))
+    except (RuntimeError, KeyError):
+        pass
+
     # Configure frame extraction
     config = FrameExtractionConfig(
-        num_frames=request.num_frames,
+        num_frames=num_frames,
         start_offset_pct=request.start_offset_pct,
         end_offset_pct=request.end_offset_pct,
         min_face_size=request.min_face_size,
         min_face_confidence=request.min_face_confidence,
+        max_concurrent_extractions=max_concurrent,
     )
 
     # Extract frames using ffmpeg
