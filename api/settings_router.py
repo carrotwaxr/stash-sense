@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from hardware import get_hardware_profile
 from settings import get_settings_manager, SETTING_DEFS
+from stashbox_connection_manager import get_connection_manager
 
 router = APIRouter(tags=["settings"])
 
@@ -147,3 +148,20 @@ async def get_system_info():
             "summary": profile.summary(),
         },
     }
+
+
+# ==================== StashBox connections ====================
+
+@router.get("/system/stashbox-connections")
+async def get_stashbox_connections():
+    """List all stash-box endpoints discovered from Stash's configuration."""
+    mgr = get_connection_manager()
+    return {"connections": mgr.get_connections()}
+
+
+@router.post("/system/refresh-stashbox-config")
+async def refresh_stashbox_config():
+    """Re-read stash-box endpoint config from Stash without restarting."""
+    mgr = get_connection_manager()
+    count = await mgr.refresh()
+    return {"endpoints_loaded": count, "connections": mgr.get_connections()}
