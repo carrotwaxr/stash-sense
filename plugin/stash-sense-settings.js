@@ -104,6 +104,12 @@
         container.appendChild(renderCategory(catKey, cat));
       }
     }
+
+    // Display settings (from plugin-local user settings)
+    container.appendChild(await renderDisplayCategory());
+
+    // Upstream sync field monitoring
+    container.appendChild(await renderUpstreamSyncCategory());
   }
 
   function renderHardwareBanner(info) {
@@ -263,6 +269,220 @@
       debouncedSave(key, input.value, input.closest('.ss-setting-row'));
     });
     return input;
+  }
+
+  // ==================== Display Settings ====================
+
+  async function renderDisplayCategory() {
+    const section = SS.createElement('div', { className: 'ss-settings-category' });
+
+    const header = SS.createElement('div', {
+      className: 'ss-settings-cat-header',
+      innerHTML: '<h2>Display</h2>',
+    });
+    section.appendChild(header);
+
+    const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
+
+    // Normalize Enum Display
+    const row = SS.createElement('div', { className: 'ss-setting-row' });
+    const info = SS.createElement('div', { className: 'ss-setting-info' });
+    info.innerHTML = `
+      <label class="ss-setting-label">Normalize Enum Display</label>
+      <span class="ss-setting-desc">Show ALL_CAPS values as Title Case (e.g. BROWN → Brown)</span>
+    `;
+
+    const control = SS.createElement('div', { className: 'ss-setting-control' });
+    const toggle = SS.createElement('label', { className: 'ss-toggle' });
+    const input = SS.createElement('input', { attrs: { type: 'checkbox' } });
+
+    try {
+      const val = await apiCall('user_get_setting', { key: 'normalize_enum_display' });
+      input.checked = val.value !== false;
+    } catch (_) {
+      input.checked = true;
+    }
+
+    input.addEventListener('change', async () => {
+      try {
+        await apiCall('user_set_setting', { key: 'normalize_enum_display', value: input.checked });
+        showSaveIndicator(row, 'Saved');
+      } catch (e) {
+        showSaveIndicator(row, 'Error', true);
+        console.error('[Stash Sense] Failed to save display setting:', e);
+      }
+    });
+
+    const slider = SS.createElement('span', { className: 'ss-toggle-slider' });
+    toggle.appendChild(input);
+    toggle.appendChild(slider);
+    control.appendChild(toggle);
+    row.appendChild(info);
+    row.appendChild(control);
+    body.appendChild(row);
+
+    section.appendChild(body);
+    return section;
+  }
+
+  // ==================== Upstream Sync Settings ====================
+
+  async function renderUpstreamSyncCategory() {
+    const section = SS.createElement('div', { className: 'ss-settings-category' });
+
+    const header = SS.createElement('div', {
+      className: 'ss-settings-cat-header',
+      innerHTML: '<h2>Upstream Sync</h2>',
+    });
+    section.appendChild(header);
+
+    const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
+
+    const loadingRow = SS.createElement('div', {
+      className: 'ss-setting-row',
+      textContent: 'Loading stash-box endpoints...',
+      style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+    });
+    body.appendChild(loadingRow);
+    section.appendChild(body);
+
+    // Load endpoints asynchronously
+    try {
+      const configResult = await SS.stashQuery(`
+        query { configuration { general { stashBoxes { endpoint name } } } }
+      `);
+      const endpoints = configResult?.configuration?.general?.stashBoxes || [];
+
+      body.removeChild(loadingRow);
+
+      if (endpoints.length === 0) {
+        const emptyRow = SS.createElement('div', {
+          className: 'ss-setting-row',
+          style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+        });
+        emptyRow.textContent = 'No stash-box endpoints configured. Configure them in Stash Settings → Metadata Providers.';
+        body.appendChild(emptyRow);
+      } else {
+        const helpRow = SS.createElement('div', {
+          className: 'ss-setting-row',
+          style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+        });
+        helpRow.textContent = 'Configure which fields are monitored for upstream changes per endpoint.';
+        body.appendChild(helpRow);
+
+        for (const ep of endpoints) {
+          body.appendChild(renderEndpointFieldConfig(ep));
+        }
+      }
+    } catch (e) {
+      loadingRow.textContent = `Could not load stash-box endpoints: ${e.message}`;
+    }
+
+    return section;
+  }
+
+  function renderEndpointFieldConfig(ep) {
+    const displayName = ep.name || (() => { try { return new URL(ep.endpoint).hostname; } catch (_) { return ep.endpoint; } })();
+    const row = SS.createElement('div', { className: 'ss-setting-row', style: 'flex-direction: column; align-items: stretch;' });
+
+    // Header row with name and toggle
+    const headerRow = SS.createElement('div', { style: 'display:flex;align-items:center;justify-content:space-between;width:100%;' });
+
+    const info = SS.createElement('div', { className: 'ss-setting-info' });
+    info.innerHTML = `
+      <label class="ss-setting-label">${displayName}</label>
+      <span class="ss-setting-desc">${ep.endpoint}</span>
+    `;
+    headerRow.appendChild(info);
+
+    const toggleBtn = SS.createElement('button', {
+      className: 'ss-setting-reset',
+      textContent: 'Show Fields',
+      style: 'padding: 4px 12px;',
+    });
+    headerRow.appendChild(toggleBtn);
+    row.appendChild(headerRow);
+
+    // Fields wrapper (hidden initially)
+    const fieldsWrapper = SS.createElement('div', { style: 'display:none;width:100%;margin-top:12px;' });
+    row.appendChild(fieldsWrapper);
+
+    let fieldsLoaded = false;
+
+    toggleBtn.addEventListener('click', async () => {
+      const isHidden = fieldsWrapper.style.display === 'none';
+      fieldsWrapper.style.display = isHidden ? 'block' : 'none';
+      toggleBtn.textContent = isHidden ? 'Hide Fields' : 'Show Fields';
+
+      if (isHidden && !fieldsLoaded) {
+        fieldsLoaded = true;
+        const loading = SS.createElement('div', {
+          style: 'color: var(--bs-secondary-color, #888); font-size: 13px; padding: 4px 0;',
+          textContent: 'Loading field config...',
+        });
+        fieldsWrapper.appendChild(loading);
+
+        try {
+          const fieldConfig = await apiCall('rec_get_field_config', { endpoint: ep.endpoint });
+          loading.remove();
+
+          const fieldsGrid = SS.createElement('div', {
+            className: 'ss-upstream-fields-grid',
+          });
+
+          const sortedFields = Object.entries(fieldConfig.fields).sort(([, a], [, b]) => a.label.localeCompare(b.label));
+
+          for (const [fieldName, config] of sortedFields) {
+            const label = SS.createElement('label', { className: 'ss-upstream-field-label' });
+            const cb = SS.createElement('input', { attrs: { type: 'checkbox' } });
+            cb.dataset.field = fieldName;
+            cb.checked = config.enabled;
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + config.label));
+            fieldsGrid.appendChild(label);
+          }
+          fieldsWrapper.appendChild(fieldsGrid);
+
+          // Save button
+          const actionsDiv = SS.createElement('div', { style: 'display:flex;align-items:center;margin-top:10px;gap:8px;' });
+          const saveBtn = SS.createElement('button', {
+            className: 'ss-btn ss-btn-primary',
+            textContent: 'Save Field Config',
+            style: 'padding: 6px 14px; font-size: 13px;',
+          });
+          const saveStatus = SS.createElement('span', { style: 'font-size: 13px;' });
+
+          saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            saveStatus.textContent = 'Saving...';
+            saveStatus.style.color = 'var(--bs-secondary-color, #888)';
+            const configs = {};
+            fieldsGrid.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+              configs[cb.dataset.field] = cb.checked;
+            });
+            try {
+              await apiCall('rec_set_field_config', { endpoint: ep.endpoint, field_configs: configs });
+              saveStatus.textContent = 'Saved!';
+              saveStatus.style.color = '#22c55e';
+              setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+            } catch (e) {
+              saveStatus.textContent = `Error: ${e.message}`;
+              saveStatus.style.color = '#ef4444';
+            }
+            saveBtn.disabled = false;
+          });
+
+          actionsDiv.appendChild(saveBtn);
+          actionsDiv.appendChild(saveStatus);
+          fieldsWrapper.appendChild(actionsDiv);
+
+        } catch (e) {
+          loading.textContent = `Error loading field config: ${e.message}`;
+        }
+      }
+    });
+
+    return row;
   }
 
   // ==================== Save Logic ====================

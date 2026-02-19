@@ -281,12 +281,9 @@
       const fpNeedsRefresh = fpStatus.needs_refresh_count || 0;
 
       container.innerHTML = `
-        <div class="ss-dashboard-header" style="display:flex;align-items:center;justify-content:space-between;">
-          <div>
-            <h1>Stash Sense Recommendations</h1>
-            <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
-          </div>
-          <div id="ss-dashboard-gear"></div>
+        <div class="ss-dashboard-header">
+          <h1>Stash Sense Recommendations</h1>
+          <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
         </div>
 
         <div class="ss-stash-status ${sidecarStatus.connected ? 'connected' : 'disconnected'}">
@@ -371,12 +368,6 @@
           <div class="ss-analysis-buttons"></div>
         </div>
       `
-
-      // Add gear icon to dashboard header
-      const gearSlot = container.querySelector('#ss-dashboard-gear');
-      if (gearSlot) {
-        gearSlot.appendChild(createSettingsGearButton(() => showSettingsModal()));
-      }
 
       // Add info icons to section headers
       const fpInfoSlot = container.querySelector('#ss-info-fp');
@@ -1459,14 +1450,6 @@
     </div>
   `;
 
-  const HELP_UPSTREAM_SETTINGS = `
-    <div class="ss-help-section">
-      <h4>Field Monitoring</h4>
-      <p>Controls which performer fields are checked during upstream analysis. Unchecked fields are completely ignored &mdash; no recommendations will be created for changes to those fields.</p>
-    </div>
-    <div class="ss-help-tip">Changes take effect on the next analysis run. Existing recommendations are not affected.</div>
-  `;
-
   function createInfoIcon(onClick) {
     const btn = document.createElement('button');
     btn.className = 'ss-info-btn';
@@ -1520,288 +1503,6 @@
     document.addEventListener('keydown', escHandler);
   }
 
-  // ==================== Settings Modal ====================
-
-  function createGearIcon() {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('width', '20');
-    svg.setAttribute('height', '20');
-    svg.setAttribute('fill', 'currentColor');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z');
-    svg.appendChild(path);
-    return svg;
-  }
-
-  function createSettingsGearButton(onClick) {
-    const btn = document.createElement('button');
-    btn.style.cssText = 'background:none;border:none;color:var(--bs-secondary-color,#888);cursor:pointer;padding:4px;display:flex;align-items:center;transition:color 0.15s;';
-    btn.title = 'Settings';
-    btn.appendChild(createGearIcon());
-    btn.addEventListener('mouseenter', () => { btn.style.color = 'var(--bs-body-color, #fff)'; });
-    btn.addEventListener('mouseleave', () => { btn.style.color = 'var(--bs-secondary-color, #888)'; });
-    btn.addEventListener('click', onClick);
-    return btn;
-  }
-
-  async function showSettingsModal() {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000;';
-
-    const modal = document.createElement('div');
-    modal.style.cssText = 'background:#2a2a2a;border:1px solid #444;border-radius:10px;max-width:600px;width:90%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);';
-
-    // Header
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #444;';
-    const title = document.createElement('h3');
-    title.style.cssText = 'margin:0;font-size:1.1rem;font-weight:600;color:#fff;';
-    title.textContent = 'Settings';
-    const closeBtn = document.createElement('button');
-    closeBtn.style.cssText = 'background:none;border:none;font-size:1.5rem;color:#888;cursor:pointer;padding:0;line-height:1;';
-    closeBtn.textContent = '\u00d7';
-    closeBtn.addEventListener('click', () => overlay.remove());
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-
-    // Tabs
-    const tabBar = document.createElement('div');
-    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid #444;padding:0 1.25rem;';
-
-    const tabs = ['General', 'Upstream Sync'];
-    const tabBtns = [];
-    const tabPanels = [];
-
-    tabs.forEach((tabName, i) => {
-      const btn = document.createElement('button');
-      btn.style.cssText = 'padding:0.6rem 1rem;background:none;border:none;border-bottom:2px solid transparent;color:#888;cursor:pointer;font-size:0.9rem;transition:color 0.15s,border-color 0.15s;';
-      btn.textContent = tabName;
-      if (i === 0) {
-        btn.style.color = '#fff';
-        btn.style.borderBottomColor = '#0d6efd';
-      }
-      btn.addEventListener('click', () => {
-        tabBtns.forEach((b, j) => {
-          b.style.color = j === i ? '#fff' : '#888';
-          b.style.borderBottomColor = j === i ? '#0d6efd' : 'transparent';
-        });
-        tabPanels.forEach((p, j) => {
-          p.style.display = j === i ? 'block' : 'none';
-        });
-      });
-      tabBar.appendChild(btn);
-      tabBtns.push(btn);
-    });
-
-    // Body (scrollable)
-    const body = document.createElement('div');
-    body.style.cssText = 'padding:1.25rem;overflow-y:auto;flex:1;';
-
-    // === General Tab ===
-    const generalPanel = document.createElement('div');
-    generalPanel.style.cssText = 'display:block;';
-
-    const enumToggleContainer = document.createElement('div');
-    enumToggleContainer.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:0.75rem;background:#333;border-radius:6px;';
-
-    const enumLabel = document.createElement('div');
-    enumLabel.style.cssText = 'flex:1;';
-    const enumTitle = document.createElement('div');
-    enumTitle.style.cssText = 'font-size:0.9rem;font-weight:600;color:#fff;margin-bottom:2px;';
-    enumTitle.textContent = 'Normalize Enum Display';
-    const enumDesc = document.createElement('div');
-    enumDesc.style.cssText = 'font-size:0.8rem;color:#888;';
-    enumDesc.textContent = 'Show ALL_CAPS values as Title Case (e.g. BROWN \u2192 Brown)';
-    enumLabel.appendChild(enumTitle);
-    enumLabel.appendChild(enumDesc);
-
-    const enumCheckbox = document.createElement('input');
-    enumCheckbox.type = 'checkbox';
-    enumCheckbox.style.cssText = 'width:18px;height:18px;accent-color:#0d6efd;cursor:pointer;';
-
-    enumToggleContainer.appendChild(enumLabel);
-    enumToggleContainer.appendChild(enumCheckbox);
-    generalPanel.appendChild(enumToggleContainer);
-
-    // Load current setting
-    try {
-      const val = await RecommendationsAPI.getUserSetting('normalize_enum_display');
-      enumCheckbox.checked = val !== false; // default to true
-    } catch (_) {
-      enumCheckbox.checked = true;
-    }
-
-    // Save on toggle
-    enumCheckbox.addEventListener('change', async () => {
-      try {
-        await RecommendationsAPI.setUserSetting('normalize_enum_display', enumCheckbox.checked);
-      } catch (e) {
-        console.error('[Stash Sense] Failed to save setting:', e);
-      }
-    });
-
-    tabPanels.push(generalPanel);
-
-    // === Upstream Sync Tab ===
-    const upstreamPanel = document.createElement('div');
-    upstreamPanel.style.cssText = 'display:none;';
-    tabPanels.push(upstreamPanel);
-
-    // Render upstream sync settings into the panel
-    renderUpstreamSyncSettingsTab(upstreamPanel);
-
-    body.appendChild(generalPanel);
-    body.appendChild(upstreamPanel);
-
-    modal.appendChild(header);
-    modal.appendChild(tabBar);
-    modal.appendChild(body);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    // Close on backdrop click
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
-    });
-  }
-
-  async function renderUpstreamSyncSettingsTab(container) {
-    const loadingDiv = document.createElement('div');
-    loadingDiv.style.cssText = 'padding:1rem;color:#888;font-size:0.9rem;';
-    loadingDiv.textContent = 'Loading stash-box endpoints...';
-    container.appendChild(loadingDiv);
-
-    try {
-      const configResult = await SS.stashQuery(`
-        query { configuration { general { stashBoxes { endpoint name } } } }
-      `);
-      const endpoints = configResult?.configuration?.general?.stashBoxes || [];
-
-      if (endpoints.length === 0) {
-        loadingDiv.textContent = 'No stash-box endpoints configured in Stash. Configure them in Stash Settings > Metadata Providers.';
-        return;
-      }
-
-      loadingDiv.remove();
-
-      // Help info for upstream sync settings
-      const helpRow = document.createElement('div');
-      helpRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:1rem;color:#888;font-size:0.85rem;';
-      helpRow.appendChild(document.createTextNode('Configure which fields are monitored for upstream changes.'));
-      helpRow.appendChild(createInfoIcon(() => showHelpModal('Upstream Field Monitoring', HELP_UPSTREAM_SETTINGS)));
-      container.appendChild(helpRow);
-
-      for (const ep of endpoints) {
-        const epDiv = document.createElement('div');
-        epDiv.style.cssText = 'background:#333;border:1px solid #444;border-radius:8px;padding:1rem;margin-bottom:0.75rem;';
-        const displayName = ep.name || new URL(ep.endpoint).hostname;
-
-        // Header
-        const epHeader = document.createElement('div');
-        const epTitle = document.createElement('h4');
-        epTitle.style.cssText = 'margin:0 0 4px 0;font-size:0.95rem;color:#fff;';
-        epTitle.textContent = displayName;
-        const epUrl = document.createElement('div');
-        epUrl.style.cssText = 'font-size:0.8rem;color:#888;margin-bottom:0.5rem;';
-        epUrl.textContent = ep.endpoint;
-        epHeader.appendChild(epTitle);
-        epHeader.appendChild(epUrl);
-        epDiv.appendChild(epHeader);
-
-        // Fields container (hidden initially)
-        const fieldsWrapper = document.createElement('div');
-        fieldsWrapper.style.cssText = 'display:none;';
-        epDiv.appendChild(fieldsWrapper);
-
-        // Toggle button
-        const toggleBtn = document.createElement('button');
-        toggleBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#fff;font-size:0.8rem;cursor:pointer;';
-        toggleBtn.textContent = 'Show Monitored Fields';
-        let fieldsLoaded = false;
-
-        toggleBtn.addEventListener('click', async () => {
-          const isHidden = fieldsWrapper.style.display === 'none';
-          fieldsWrapper.style.display = isHidden ? 'block' : 'none';
-          toggleBtn.textContent = isHidden ? 'Hide Monitored Fields' : 'Show Monitored Fields';
-
-          if (isHidden && !fieldsLoaded) {
-            fieldsLoaded = true;
-            const fieldsLoading = document.createElement('div');
-            fieldsLoading.style.cssText = 'padding:0.5rem;color:#888;font-size:0.85rem;';
-            fieldsLoading.textContent = 'Loading field config...';
-            fieldsWrapper.appendChild(fieldsLoading);
-
-            try {
-              const fieldConfig = await RecommendationsAPI.getFieldConfig(ep.endpoint);
-              fieldsLoading.remove();
-
-              const fieldsGrid = document.createElement('div');
-              fieldsGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;';
-
-              const sortedFields = Object.entries(fieldConfig.fields).sort(([, a], [, b]) => a.label.localeCompare(b.label));
-
-              for (const [fieldName, config] of sortedFields) {
-                const label = document.createElement('label');
-                label.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#fff;';
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.dataset.field = fieldName;
-                cb.checked = config.enabled;
-                label.appendChild(cb);
-                label.appendChild(document.createTextNode(config.label));
-                label.addEventListener('mouseenter', () => { label.style.background = 'rgba(255,255,255,0.05)'; });
-                label.addEventListener('mouseleave', () => { label.style.background = 'none'; });
-                fieldsGrid.appendChild(label);
-              }
-              fieldsWrapper.appendChild(fieldsGrid);
-
-              // Save button
-              const actionsDiv = document.createElement('div');
-              actionsDiv.style.cssText = 'display:flex;align-items:center;margin-top:0.75rem;';
-              const saveBtn = document.createElement('button');
-              saveBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:none;background:#0d6efd;color:white;font-size:0.85rem;cursor:pointer;';
-              saveBtn.textContent = 'Save Field Config';
-              const saveStatus = document.createElement('span');
-              saveStatus.style.cssText = 'margin-left:8px;font-size:0.85rem;';
-
-              saveBtn.addEventListener('click', async () => {
-                saveBtn.disabled = true;
-                saveStatus.textContent = 'Saving...';
-                saveStatus.style.color = '#888';
-                const configs = {};
-                fieldsGrid.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                  configs[cb.dataset.field] = cb.checked;
-                });
-                try {
-                  await RecommendationsAPI.setFieldConfig(ep.endpoint, configs);
-                  saveStatus.textContent = 'Saved!';
-                  saveStatus.style.color = '#22c55e';
-                  setTimeout(() => { saveStatus.textContent = ''; }, 2000);
-                } catch (e) {
-                  saveStatus.textContent = `Error: ${e.message}`;
-                  saveStatus.style.color = '#ef4444';
-                }
-                saveBtn.disabled = false;
-              });
-
-              actionsDiv.appendChild(saveBtn);
-              actionsDiv.appendChild(saveStatus);
-              fieldsWrapper.appendChild(actionsDiv);
-
-            } catch (e) {
-              fieldsLoading.textContent = `Error loading field config: ${e.message}`;
-            }
-          }
-        });
-
-        epDiv.appendChild(toggleBtn);
-        container.appendChild(epDiv);
-      }
-    } catch (e) {
-      loadingDiv.textContent = `Could not load stash-box endpoints: ${e.message}`;
-    }
-  }
 
   // ==================== Upstream Performer Validation ====================
 
@@ -1913,7 +1614,6 @@
       </div>
     `;
     headerDiv.appendChild(createInfoIcon(() => showHelpModal('Upstream Performer Changes', HELP_UPSTREAM_DETAIL)));
-    headerDiv.appendChild(createSettingsGearButton(() => showSettingsModal()));
     wrapper.appendChild(headerDiv);
 
     // Quick select buttons
