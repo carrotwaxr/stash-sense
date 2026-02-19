@@ -323,9 +323,9 @@ def aggregate_matches(
     """
     # Lazy import to avoid circular dependency
     if _match_to_response is None:
-        from main import _match_to_response
+        from identification_router import _match_to_response
     if _distance_to_confidence is None:
-        from main import distance_to_confidence as _distance_to_confidence
+        from identification_router import distance_to_confidence as _distance_to_confidence
 
     # Collect all matches across frames
     match_scores: dict[str, list[float]] = defaultdict(list)
@@ -395,10 +395,10 @@ def frequency_based_matching(
     """
     # Lazy import to avoid circular dependency
     if _match_to_response is None:
-        from main import _match_to_response
+        from identification_router import _match_to_response
     if _distance_to_confidence is None:
-        from main import distance_to_confidence as _distance_to_confidence
-    from main import PersonResult
+        from identification_router import distance_to_confidence as _distance_to_confidence
+    from identification_router import PersonResult
 
     # Collect all matches across all faces
     performer_matches: dict[str, list[tuple[float, PerformerMatch, int]]] = defaultdict(list)
@@ -496,10 +496,10 @@ def clustered_frequency_matching(
     """
     # Lazy import to avoid circular dependency
     if _match_to_response is None:
-        from main import _match_to_response
+        from identification_router import _match_to_response
     if _distance_to_confidence is None:
-        from main import distance_to_confidence as _distance_to_confidence
-    from main import PersonResult
+        from identification_router import distance_to_confidence as _distance_to_confidence
+    from identification_router import PersonResult
 
     if not all_results:
         return []
@@ -671,10 +671,10 @@ def hybrid_matching(
     """
     # Lazy import to avoid circular dependency
     if _match_to_response is None:
-        from main import _match_to_response
+        from identification_router import _match_to_response
     if _distance_to_confidence is None:
-        from main import distance_to_confidence as _distance_to_confidence
-    from main import PersonResult
+        from identification_router import distance_to_confidence as _distance_to_confidence
+    from identification_router import PersonResult
 
     # Get frequency results (as a dict for lookup)
     freq_persons = frequency_based_matching(
