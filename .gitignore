@@ -49,6 +49,9 @@ api/test_*.py
 .insightface/
 api/.deepface/
 
+# MkDocs build output
+site/
+
 # IDE
 .idea/
 .vscode/
