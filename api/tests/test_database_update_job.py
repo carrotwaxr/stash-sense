@@ -19,10 +19,10 @@ class TestDatabaseUpdateJob:
     async def test_runs_update_check(self, ctx):
         from jobs.database_update_job import DatabaseUpdateJob
         mock_updater = MagicMock()
-        mock_updater.check_for_update = AsyncMock(return_value={
+        mock_updater.check_update = AsyncMock(return_value={
             "update_available": False,
         })
         with patch('jobs.database_update_job.get_db_updater', return_value=mock_updater):
             job = DatabaseUpdateJob()
             result = await job.run(ctx)
-        mock_updater.check_for_update.assert_called_once()
+        mock_updater.check_update.assert_called_once()

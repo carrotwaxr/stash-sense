@@ -23,7 +23,7 @@ class DatabaseUpdateJob(BaseJob):
         if not updater:
             raise RuntimeError("Database updater not initialized")
 
-        result = await updater.check_for_update()
+        result = await updater.check_update()
         if not result.get("update_available"):
             return None
 
