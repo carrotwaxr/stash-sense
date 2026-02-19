@@ -252,6 +252,21 @@ class FingerprintRefreshAllResponse(BaseModel):
     message: str
 
 
+class FingerprintProgressResponse(BaseModel):
+    """Response for fingerprint generation progress."""
+    status: str
+    total_scenes: int = 0
+    processed_scenes: int = 0
+    successful: int = 0
+    failed: int = 0
+    skipped: int = 0
+    progress_pct: float = 0.0
+    current_scene_id: Optional[int] = None
+    current_scene_title: Optional[str] = None
+    error_message: Optional[str] = None
+    message: Optional[str] = None
+
+
 class FieldConfigEntry(BaseModel):
     """A single field config entry."""
     enabled: bool
@@ -604,7 +619,7 @@ async def stop_fingerprint_generation():
     return {"message": "Stop requested"}
 
 
-@router.get("/fingerprints/progress")
+@router.get("/fingerprints/progress", response_model=FingerprintProgressResponse)
 async def get_fingerprint_progress():
     """Get current fingerprint generation progress."""
     from fingerprint_generator import get_generator

@@ -57,11 +57,18 @@ class QueueManager:
         )
 
     def get_job(self, job_id: int) -> Optional[dict]:
-        """Get a single job."""
+        """Get a single job as a raw dict.
+
+        Returns a plain dict rather than JobRecord because:
+        - JobRecord.id is typed as str but the DB stores int
+        - JobRecord.items_total is non-optional but the DB allows NULL
+        - All consumers (queue_router, dispatch loop) use dict-style access
+        - Tests validate dict-style access patterns
+        """
         return self._db.get_job(job_id)
 
     def get_jobs(self, **kwargs) -> list[dict]:
-        """Get jobs with filters."""
+        """Get jobs with filters. Returns raw dicts (see get_job docstring)."""
         return self._db.get_jobs(**kwargs)
 
     def cancel(self, job_id: int):
