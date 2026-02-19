@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 @dataclass
@@ -281,6 +281,34 @@ class RecommendationsDB:
             );
             CREATE INDEX idx_dup_candidates_run ON duplicate_candidates(run_id);
             CREATE INDEX idx_dup_candidates_run_id ON duplicate_candidates(run_id, id);
+
+            -- Job queue
+            CREATE TABLE IF NOT EXISTS job_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued',
+                priority INTEGER NOT NULL,
+                cursor TEXT,
+                items_total INTEGER,
+                items_processed INTEGER DEFAULT 0,
+                error_message TEXT,
+                triggered_by TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                started_at TEXT,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_job_queue_status ON job_queue(status);
+            CREATE INDEX IF NOT EXISTS idx_job_queue_type_status ON job_queue(type, status);
+
+            -- Job schedules
+            CREATE TABLE IF NOT EXISTS job_schedules (
+                type TEXT PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                interval_hours REAL NOT NULL,
+                priority INTEGER NOT NULL,
+                last_run_at TEXT,
+                next_run_at TEXT
+            );
         """)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
@@ -415,6 +443,37 @@ class RecommendationsDB:
                 CREATE INDEX IF NOT EXISTS idx_dup_candidates_run_id ON duplicate_candidates(run_id, id);
 
                 UPDATE schema_version SET version = 7;
+            """)
+
+        if from_version < 8:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS job_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    priority INTEGER NOT NULL,
+                    cursor TEXT,
+                    items_total INTEGER,
+                    items_processed INTEGER DEFAULT 0,
+                    error_message TEXT,
+                    triggered_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    started_at TEXT,
+                    completed_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_job_queue_status ON job_queue(status);
+                CREATE INDEX IF NOT EXISTS idx_job_queue_type_status ON job_queue(type, status);
+
+                CREATE TABLE IF NOT EXISTS job_schedules (
+                    type TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    interval_hours REAL NOT NULL,
+                    priority INTEGER NOT NULL,
+                    last_run_at TEXT,
+                    next_run_at TEXT
+                );
+
+                UPDATE schema_version SET version = 8;
             """)
 
     @contextmanager
@@ -1546,6 +1605,177 @@ class RecommendationsDB:
                 """
             ).fetchall()
             return [(row[0], row[1]) for row in rows]
+
+    # ========================================================================
+    # Job Queue CRUD
+    # ========================================================================
+
+    def submit_job(
+        self, type: str, priority: int, triggered_by: str,
+        cursor: Optional[str] = None, items_total: Optional[int] = None,
+    ) -> Optional[int]:
+        """Submit a job to the queue. Returns job ID, or None if duplicate queued."""
+        with self._connection() as conn:
+            existing = conn.execute(
+                "SELECT id FROM job_queue WHERE type = ? AND status IN ('queued', 'running', 'stopping')",
+                (type,)
+            ).fetchone()
+            if existing:
+                return None
+            cursor_obj = conn.execute(
+                """
+                INSERT INTO job_queue (type, status, priority, cursor, items_total, triggered_by)
+                VALUES (?, 'queued', ?, ?, ?, ?)
+                """,
+                (type, priority, cursor, items_total, triggered_by)
+            )
+            return cursor_obj.lastrowid
+
+    def get_job(self, job_id: int) -> Optional[dict]:
+        """Get a single job by ID."""
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM job_queue WHERE id = ?", (job_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_jobs(self, status: Optional[str] = None, type: Optional[str] = None, limit: int = 50) -> list[dict]:
+        """Get jobs with optional filters."""
+        query = "SELECT * FROM job_queue WHERE 1=1"
+        params = []
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if type:
+            query += " AND type = ?"
+            params.append(type)
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        params.append(limit)
+        with self._connection() as conn:
+            return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+    def get_queued_jobs(self) -> list[dict]:
+        """Get all queued jobs ordered by priority (lowest number = highest priority)."""
+        with self._connection() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM job_queue WHERE status = 'queued' ORDER BY priority ASC, created_at ASC"
+            ).fetchall()]
+
+    def start_job(self, job_id: int):
+        """Mark a job as running."""
+        with self._connection() as conn:
+            conn.execute(
+                "UPDATE job_queue SET status = 'running', started_at = datetime('now') WHERE id = ?",
+                (job_id,)
+            )
+
+    def complete_job(self, job_id: int):
+        """Mark a job as completed."""
+        with self._connection() as conn:
+            conn.execute(
+                "UPDATE job_queue SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
+                (job_id,)
+            )
+
+    def fail_job(self, job_id: int, error_message: str):
+        """Mark a job as failed."""
+        with self._connection() as conn:
+            conn.execute(
+                "UPDATE job_queue SET status = 'failed', completed_at = datetime('now'), error_message = ? WHERE id = ?",
+                (error_message, job_id)
+            )
+
+    def cancel_job(self, job_id: int):
+        """Cancel a queued job."""
+        with self._connection() as conn:
+            conn.execute(
+                "UPDATE job_queue SET status = 'cancelled', completed_at = datetime('now') WHERE id = ?",
+                (job_id,)
+            )
+
+    def set_job_status(self, job_id: int, status: str):
+        """Set job status directly."""
+        with self._connection() as conn:
+            conn.execute("UPDATE job_queue SET status = ? WHERE id = ?", (status, job_id))
+
+    def update_job_progress(self, job_id: int, items_processed: Optional[int] = None,
+                            items_total: Optional[int] = None, cursor: Optional[str] = None):
+        """Update job progress fields. Only updates non-None fields."""
+        updates = []
+        params = []
+        if items_processed is not None:
+            updates.append("items_processed = ?")
+            params.append(items_processed)
+        if items_total is not None:
+            updates.append("items_total = ?")
+            params.append(items_total)
+        if cursor is not None:
+            updates.append("cursor = ?")
+            params.append(cursor)
+        if not updates:
+            return
+        params.append(job_id)
+        with self._connection() as conn:
+            conn.execute(f"UPDATE job_queue SET {', '.join(updates)} WHERE id = ?", params)
+
+    def requeue_interrupted_jobs(self) -> int:
+        """Re-queue jobs left as running/stopping after a crash. Returns count."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "UPDATE job_queue SET status = 'queued', started_at = NULL WHERE status IN ('running', 'stopping')"
+            )
+            return cursor.rowcount
+
+    # ========================================================================
+    # Job Schedules CRUD
+    # ========================================================================
+
+    def upsert_job_schedule(self, type: str, enabled: bool, interval_hours: float, priority: int):
+        """Insert or update a job schedule."""
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO job_schedules (type, enabled, interval_hours, priority)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(type) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    interval_hours = excluded.interval_hours,
+                    priority = excluded.priority
+                """,
+                (type, int(enabled), interval_hours, priority)
+            )
+
+    def get_job_schedule(self, type: str) -> Optional[dict]:
+        """Get schedule for a job type."""
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM job_schedules WHERE type = ?", (type,)).fetchone()
+            return dict(row) if row else None
+
+    def get_all_job_schedules(self) -> list[dict]:
+        """Get all job schedules."""
+        with self._connection() as conn:
+            return [dict(r) for r in conn.execute("SELECT * FROM job_schedules ORDER BY type").fetchall()]
+
+    def update_schedule_last_run(self, type: str):
+        """Update last_run_at to now and calculate next_run_at from interval."""
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE job_schedules
+                SET last_run_at = datetime('now'),
+                    next_run_at = datetime('now', '+' || CAST(interval_hours * 3600 AS INTEGER) || ' seconds')
+                WHERE type = ?
+                """,
+                (type,)
+            )
+
+    def get_due_schedules(self) -> list[dict]:
+        """Get enabled schedules that are past their next_run_at."""
+        with self._connection() as conn:
+            return [dict(r) for r in conn.execute(
+                """
+                SELECT * FROM job_schedules
+                WHERE enabled = 1 AND (next_run_at IS NULL OR next_run_at <= datetime('now'))
+                """
+            ).fetchall()]
 
 
 # Convenience function

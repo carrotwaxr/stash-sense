@@ -2522,3 +2522,256 @@
     justify-content: flex-end;
   }
 }
+
+/* ==================== Operations Page ==================== */
+
+.ss-operations-page {
+  padding: 0 24px 24px;
+}
+
+.ss-operations-header h1 {
+  margin: 0 0 4px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-operations-subtitle {
+  color: var(--bs-secondary-color, #888);
+  font-size: 14px;
+  margin: 0 0 24px 0;
+}
+
+.ss-operations-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--bs-secondary-color, #888);
+}
+
+.ss-operations-error {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.ss-operations-error h3 {
+  color: #dc3545;
+  margin-bottom: 8px;
+}
+
+.ss-operations-error p {
+  color: var(--bs-secondary-color, #888);
+  margin-bottom: 16px;
+}
+
+.ss-operations-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--bs-secondary-color, #888);
+  font-size: 14px;
+}
+
+.ss-operations-section {
+  margin-bottom: 28px;
+}
+
+.ss-operations-section h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--bs-body-color, #fff);
+}
+
+/* Quick Actions Grid */
+.ss-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ss-quick-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+/* Resource Badges */
+.ss-resource-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.ss-resource-gpu {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+
+.ss-resource-cpu {
+  background: rgba(13, 110, 253, 0.15);
+  color: #0d6efd;
+}
+
+.ss-resource-network {
+  background: rgba(13, 202, 240, 0.15);
+  color: #0dcaf0;
+}
+
+.ss-resource-light {
+  background: rgba(25, 135, 84, 0.15);
+  color: #198754;
+}
+
+/* Status Badges */
+.ss-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ss-status-running {
+  background: rgba(13, 110, 253, 0.15);
+  color: #0d6efd;
+}
+
+.ss-status-stopping {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+
+.ss-status-queued {
+  background: rgba(108, 117, 125, 0.15);
+  color: #adb5bd;
+}
+
+.ss-status-completed {
+  background: rgba(25, 135, 84, 0.15);
+  color: #198754;
+}
+
+.ss-status-failed {
+  background: rgba(220, 53, 69, 0.15);
+  color: #dc3545;
+}
+
+.ss-status-cancelled {
+  background: rgba(108, 117, 125, 0.15);
+  color: #6c757d;
+}
+
+/* Job Cards */
+.ss-job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ss-job-card {
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border: 1px solid var(--bs-border-color, #333);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.ss-job-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.ss-job-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-job-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--bs-secondary-color, #888);
+  margin-top: 4px;
+}
+
+.ss-job-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(220, 53, 69, 0.1);
+  border-radius: 4px;
+  color: #dc3545;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.ss-job-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+/* Operations Progress Bar */
+.ss-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.ss-ops-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bs-border-color, #333);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  position: static;
+}
+
+.ss-progress-fill {
+  height: 100%;
+  background: var(--bs-primary, #0d6efd);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.ss-ops-progress-text {
+  font-size: 12px;
+  color: var(--bs-secondary-color, #888);
+  white-space: nowrap;
+}
+
+/* Collapsible Header */
+.ss-collapsible-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ss-collapsible-header::before {
+  content: '\25BC ';
+  font-size: 12px;
+}
+
+.ss-collapsible-header.ss-collapsed::before {
+  content: '\25B6 ';
+}
+
+/* Responsive Operations */
+@media (max-width: 768px) {
+  .ss-operations-page {
+    padding: 0 12px 16px;
+  }
+
+  .ss-quick-actions {
+    grid-template-columns: 1fr;
+  }
+}

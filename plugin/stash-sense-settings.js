@@ -110,6 +110,9 @@
 
     // Upstream sync field monitoring
     container.appendChild(await renderUpstreamSyncCategory());
+
+    // Job Schedules section
+    await renderSchedulesCategory(container);
   }
 
   function renderHardwareBanner(info) {
@@ -483,6 +486,163 @@
     });
 
     return row;
+  }
+
+  // ==================== Job Schedules ====================
+
+  async function renderSchedulesCategory(container) {
+    const section = SS.createElement('div', { className: 'ss-settings-category' });
+
+    const header = SS.createElement('div', {
+      className: 'ss-settings-cat-header',
+      innerHTML: '<h2>Job Schedules</h2>',
+    });
+    section.appendChild(header);
+
+    const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
+
+    const desc = SS.createElement('div', {
+      className: 'ss-setting-row',
+      style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+      textContent: 'Configure automatic job schedules. Jobs will run at the specified intervals.',
+    });
+    body.appendChild(desc);
+
+    try {
+      const [schedulesResult, typesResult] = await Promise.all([
+        apiCall('queue_schedules'),
+        apiCall('queue_types'),
+      ]);
+
+      const schedules = schedulesResult.schedules || [];
+      const types = typesResult.types || [];
+
+      if (schedules.length === 0) {
+        const emptyRow = SS.createElement('div', {
+          className: 'ss-setting-row',
+          style: 'color: var(--bs-secondary-color, #888); font-size: 13px;',
+          textContent: 'No schedules configured. They will be created automatically on next sidecar restart.',
+        });
+        body.appendChild(emptyRow);
+        section.appendChild(body);
+        container.appendChild(section);
+        return;
+      }
+
+      for (const schedule of schedules) {
+        const typeInfo = types.find(t => t.type_id === schedule.type);
+        const displayName = typeInfo ? typeInfo.display_name : schedule.type;
+
+        const row = SS.createElement('div', { className: 'ss-setting-row' });
+
+        const info = SS.createElement('div', { className: 'ss-setting-info' });
+        info.innerHTML = `
+          <label class="ss-setting-label">${displayName}</label>
+          <span class="ss-setting-desc">Runs every ${schedule.interval_hours || 24} hours</span>
+        `;
+        row.appendChild(info);
+
+        const control = SS.createElement('div', { className: 'ss-setting-control' });
+        const controlGroup = SS.createElement('div', {
+          styles: { display: 'flex', alignItems: 'center', gap: '12px' },
+        });
+
+        // Enable toggle
+        const toggle = SS.createElement('label', { className: 'ss-toggle' });
+        const checkbox = SS.createElement('input', {
+          attrs: { type: 'checkbox' },
+        });
+        checkbox.checked = !!schedule.enabled;
+        const slider = SS.createElement('span', { className: 'ss-toggle-slider' });
+        toggle.appendChild(checkbox);
+        toggle.appendChild(slider);
+        controlGroup.appendChild(toggle);
+
+        // Interval input
+        const intervalLabel = SS.createElement('span', {
+          styles: { fontSize: '13px', color: 'var(--bs-secondary-color, #888)', marginLeft: '4px' },
+          textContent: 'every',
+        });
+        controlGroup.appendChild(intervalLabel);
+
+        const intervalInput = SS.createElement('input', {
+          attrs: {
+            type: 'number',
+            value: String(schedule.interval_hours || 24),
+            min: '0.5',
+            step: '0.5',
+          },
+          styles: {
+            width: '80px',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            border: '1px solid var(--bs-border-color, #444)',
+            background: 'var(--bs-body-bg, #1a1a2e)',
+            color: 'var(--bs-body-color, #eee)',
+            fontSize: '13px',
+          },
+        });
+        controlGroup.appendChild(intervalInput);
+
+        const hoursLabel = SS.createElement('span', {
+          styles: { fontSize: '13px', color: 'var(--bs-secondary-color, #888)' },
+          textContent: 'hours',
+        });
+        controlGroup.appendChild(hoursLabel);
+
+        // Save button
+        const saveBtn = SS.createElement('button', {
+          className: 'ss-btn ss-btn-primary',
+          textContent: 'Save',
+          styles: { padding: '4px 12px', fontSize: '13px' },
+        });
+
+        const saveStatus = SS.createElement('span', { styles: { fontSize: '13px' } });
+
+        saveBtn.addEventListener('click', async () => {
+          saveBtn.disabled = true;
+          saveStatus.textContent = 'Saving...';
+          saveStatus.style.color = 'var(--bs-secondary-color, #888)';
+          try {
+            await apiCall('queue_update_schedule', {
+              type: schedule.type,
+              enabled: checkbox.checked,
+              interval_hours: parseFloat(intervalInput.value),
+            });
+            saveStatus.textContent = 'Saved!';
+            saveStatus.style.color = '#22c55e';
+            // Update the description text
+            const descSpan = info.querySelector('.ss-setting-desc');
+            if (descSpan) {
+              descSpan.textContent = `Runs every ${intervalInput.value} hours`;
+            }
+            setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+          } catch (e) {
+            saveStatus.textContent = 'Error';
+            saveStatus.style.color = '#ef4444';
+            setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+          }
+          saveBtn.disabled = false;
+        });
+
+        controlGroup.appendChild(saveBtn);
+        controlGroup.appendChild(saveStatus);
+
+        control.appendChild(controlGroup);
+        row.appendChild(control);
+        body.appendChild(row);
+      }
+    } catch (e) {
+      const errorRow = SS.createElement('div', {
+        className: 'ss-setting-row',
+        style: 'color: #ef4444; font-size: 13px;',
+        textContent: `Failed to load schedules: ${e.message}`,
+      });
+      body.appendChild(errorRow);
+    }
+
+    section.appendChild(body);
+    container.appendChild(section);
   }
 
   // ==================== Save Logic ====================
