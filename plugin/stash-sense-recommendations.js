@@ -235,6 +235,33 @@
     counts: null,
   };
 
+  // Track active intervals/timeouts for cleanup on navigation
+  let _activeAnalysisPollers = {};
+  let _activeFpPollTimeout = null;
+  let _activeFpCountdownInterval = null;
+
+  /**
+   * Clear all active polling intervals and timeouts.
+   * Called when navigating away from the plugin page.
+   */
+  function cleanupAllPollers() {
+    // Clear analysis pollers
+    for (const key of Object.keys(_activeAnalysisPollers)) {
+      clearInterval(_activeAnalysisPollers[key]);
+    }
+    _activeAnalysisPollers = {};
+
+    // Clear fingerprint polling
+    if (_activeFpPollTimeout) {
+      clearTimeout(_activeFpPollTimeout);
+      _activeFpPollTimeout = null;
+    }
+    if (_activeFpCountdownInterval) {
+      clearInterval(_activeFpCountdownInterval);
+      _activeFpCountdownInterval = null;
+    }
+  }
+
   // ==================== Dashboard Container ====================
 
   function createDashboardContainer() {
@@ -403,9 +430,15 @@
 
               // Poll for progress
               const pollInterval = setInterval(async () => {
-                const status = await RecommendationsAPI.getUpdateStatus();
                 const textEl = document.getElementById('ss-update-progress-text');
                 if (!textEl) { clearInterval(pollInterval); return; }
+                let status;
+                try {
+                  status = await RecommendationsAPI.getUpdateStatus();
+                } catch (pollErr) {
+                  console.error('[Stash Sense] Error polling update status:', pollErr);
+                  return;
+                }
 
                 const labels = {
                   downloading: 'Downloading... ' + (status.progress_pct || 0) + '%',
@@ -499,8 +532,8 @@
         return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
       });
 
-      // Track polling intervals for analysis progress
-      const analysisPollers = {};
+      // Track polling intervals for analysis progress (synced to module-level for cleanup)
+      const analysisPollers = _activeAnalysisPollers;
 
       function renderAnalysisProgress(cardEl, run) {
         const processed = run.items_processed || 0;
@@ -523,6 +556,12 @@
       function startAnalysisPolling(type, runId, cardEl) {
         if (analysisPollers[type]) clearInterval(analysisPollers[type]);
         analysisPollers[type] = setInterval(async () => {
+          // Bail out if card has been removed from DOM (navigation away)
+          if (!document.contains(cardEl)) {
+            clearInterval(analysisPollers[type]);
+            delete analysisPollers[type];
+            return;
+          }
           try {
             const runs = await RecommendationsAPI.getAnalysisRuns(type, 1);
             if (!runs || !runs.length) return;
@@ -617,8 +656,9 @@
       const fpActionBtn = container.querySelector('#ss-fp-action-btn');
       const fpProgressEl = container.querySelector('#ss-fp-progress');
       const POLL_INTERVAL = 30; // seconds
-      let fpPollTimeout = null;
-      let fpCountdownInterval = null;
+      // Use module-level references for cleanup on navigation
+      let fpPollTimeout = _activeFpPollTimeout;
+      let fpCountdownInterval = _activeFpCountdownInterval;
       let fpCountdownValue = POLL_INTERVAL;
 
       function startCountdown() {
@@ -635,6 +675,7 @@
             clearInterval(fpCountdownInterval);
           }
         }, 1000);
+        _activeFpCountdownInterval = fpCountdownInterval;
       }
 
       function stopPolling() {
@@ -642,15 +683,22 @@
           clearTimeout(fpPollTimeout);
           fpPollTimeout = null;
         }
+        _activeFpPollTimeout = null;
         if (fpCountdownInterval) {
           clearInterval(fpCountdownInterval);
           fpCountdownInterval = null;
         }
-        const refreshEl = fpProgressEl.querySelector('#ss-fp-refresh');
+        _activeFpCountdownInterval = null;
+        const refreshEl = fpProgressEl?.querySelector('#ss-fp-refresh');
         if (refreshEl) refreshEl.style.display = 'none';
       }
 
       async function updateFingerprintProgress() {
+        // Bail out if our container has been removed from the DOM (navigation away)
+        if (!document.contains(fpProgressEl)) {
+          stopPolling();
+          return;
+        }
         try {
           const progress = await RecommendationsAPI.getFingerprintProgress();
           const pct = Math.round(progress.progress_pct || 0);
@@ -679,6 +727,7 @@
               // Schedule next poll with countdown
               startCountdown();
               fpPollTimeout = setTimeout(updateFingerprintProgress, POLL_INTERVAL * 1000);
+              _activeFpPollTimeout = fpPollTimeout;
             }
           } else {
             // Generation finished
@@ -701,6 +750,7 @@
           // Retry after interval even on error
           startCountdown();
           fpPollTimeout = setTimeout(updateFingerprintProgress, POLL_INTERVAL * 1000);
+          _activeFpPollTimeout = fpPollTimeout;
         }
       }
 
@@ -2249,6 +2299,9 @@
     SS.onNavigate((route) => {
       if (route.type === 'plugin') {
         setTimeout(injectPluginPage, 300);
+      } else {
+        // Clean up all polling when navigating away from plugin page
+        cleanupAllPollers();
       }
     });
 
