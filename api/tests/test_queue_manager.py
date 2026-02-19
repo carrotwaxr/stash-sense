@@ -160,6 +160,15 @@ class TestScheduleSeeding:
         schedulable_types = [t for t, d in JOB_REGISTRY.items() if d.schedulable]
         assert len(schedules) == len(schedulable_types)
 
+    def test_seeds_all_disabled_by_default(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        db = RecommendationsDB(str(tmp_path / "test.db"))
+        mgr = QueueManager(db)
+        mgr.seed_default_schedules()
+        schedules = db.get_all_job_schedules()
+        for schedule in schedules:
+            assert schedule["enabled"] == 0, f"{schedule['type']} should be disabled by default"
+
     def test_seed_preserves_user_overrides(self, tmp_path):
         from recommendations_db import RecommendationsDB
         db = RecommendationsDB(str(tmp_path / "test.db"))

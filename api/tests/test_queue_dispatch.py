@@ -109,3 +109,33 @@ class TestQueueDispatch:
         job = db.get_job(job_id)
         assert job["status"] == "failed"
         assert "boom" in job["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_completed_job_not_requeued_when_stopping(self, mgr, db):
+        """A job that finishes all work (returns None) should complete even if status is 'stopping'."""
+        fake = FakeJob()
+        with patch.object(mgr, '_create_job_instance', return_value=fake):
+            job_id = mgr.submit("duplicate_performer", triggered_by="user")
+            await mgr._dispatch_once()
+            # Simulate stop request arriving while job runs
+            db.set_job_status(job_id, "stopping")
+            await asyncio.sleep(0.05)
+            await mgr._check_completed()
+        job = db.get_job(job_id)
+        assert job["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_yielded_job_requeued_with_cursor(self, mgr, db):
+        """A job that returns a cursor should be re-queued with that cursor."""
+        class YieldingJob(BaseJob):
+            async def run(self, context, cursor=None):
+                return "scene:50"
+
+        with patch.object(mgr, '_create_job_instance', return_value=YieldingJob()):
+            job_id = mgr.submit("duplicate_performer", triggered_by="user")
+            await mgr._dispatch_once()
+            await asyncio.sleep(0.05)
+            await mgr._check_completed()
+        job = db.get_job(job_id)
+        assert job["status"] == "queued"
+        assert job["cursor"] == "scene:50"

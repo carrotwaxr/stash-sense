@@ -1716,10 +1716,16 @@ class RecommendationsDB:
             conn.execute(f"UPDATE job_queue SET {', '.join(updates)} WHERE id = ?", params)
 
     def requeue_interrupted_jobs(self) -> int:
-        """Re-queue jobs left as running/stopping after a crash. Returns count."""
+        """Re-queue jobs left as running/stopping after a crash. Returns count.
+
+        Clears stale progress fields so re-queued jobs don't appear already-finished.
+        """
         with self._connection() as conn:
             cursor = conn.execute(
-                "UPDATE job_queue SET status = 'queued', started_at = NULL WHERE status IN ('running', 'stopping')"
+                """UPDATE job_queue
+                SET status = 'queued', started_at = NULL, completed_at = NULL,
+                    items_processed = 0, items_total = NULL
+                WHERE status IN ('running', 'stopping')"""
             )
             return cursor.rowcount
 
@@ -1736,19 +1742,42 @@ class RecommendationsDB:
     # ========================================================================
 
     def upsert_job_schedule(self, type: str, enabled: bool, interval_hours: float, priority: int):
-        """Insert or update a job schedule."""
+        """Insert or update a job schedule.
+
+        When enabling, sets next_run_at = now + interval to prevent immediate fire.
+        When disabling, clears next_run_at.
+        """
         with self._connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO job_schedules (type, enabled, interval_hours, priority)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(type) DO UPDATE SET
-                    enabled = excluded.enabled,
-                    interval_hours = excluded.interval_hours,
-                    priority = excluded.priority
-                """,
-                (type, int(enabled), interval_hours, priority)
-            )
+            if enabled:
+                next_run_expr = "datetime('now', '+' || CAST(? * 3600 AS INTEGER) || ' seconds')"
+                conn.execute(
+                    f"""
+                    INSERT INTO job_schedules (type, enabled, interval_hours, priority, next_run_at)
+                    VALUES (?, 1, ?, ?, {next_run_expr})
+                    ON CONFLICT(type) DO UPDATE SET
+                        enabled = 1,
+                        interval_hours = excluded.interval_hours,
+                        priority = excluded.priority,
+                        next_run_at = CASE
+                            WHEN job_schedules.enabled = 1 THEN job_schedules.next_run_at
+                            ELSE {next_run_expr}
+                        END
+                    """,
+                    (type, interval_hours, priority, interval_hours, interval_hours)
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO job_schedules (type, enabled, interval_hours, priority, next_run_at)
+                    VALUES (?, 0, ?, ?, NULL)
+                    ON CONFLICT(type) DO UPDATE SET
+                        enabled = 0,
+                        interval_hours = excluded.interval_hours,
+                        priority = excluded.priority,
+                        next_run_at = NULL
+                    """,
+                    (type, interval_hours, priority)
+                )
 
     def get_job_schedule(self, type: str) -> Optional[dict]:
         """Get schedule for a job type."""
