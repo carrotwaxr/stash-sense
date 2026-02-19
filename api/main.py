@@ -36,6 +36,7 @@ from database_updater import DatabaseUpdater
 from hardware import init_hardware
 from settings import init_settings, migrate_env_vars
 from settings_router import router as settings_router, init_settings_router
+from stashbox_connection_manager import init_connection_manager
 from queue_router import router as queue_router
 
 logger = logging.getLogger(__name__)
@@ -222,6 +223,18 @@ async def lifespan(app: FastAPI):
     from recommendations_router import get_rec_db
     settings_mgr = init_settings(get_rec_db(), hw_profile.tier)
     init_settings_router()
+
+    # Load stash-box endpoint config from Stash
+    if STASH_URL:
+        try:
+            conn_mgr = await init_connection_manager(STASH_URL, STASH_API_KEY)
+            logger.warning(
+                f"StashBox connections loaded: "
+                f"{len(conn_mgr.get_connections())} endpoint(s)"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load stash-box config from Stash: {e}")
+            logger.warning("StashBox features will not work until config is available")
 
     # Migrate deprecated env vars to settings on first run
     migrated = migrate_env_vars(settings_mgr)

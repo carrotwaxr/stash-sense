@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from stashbox_utils import _get_stashbox_client, ENDPOINT_URLS
+from stashbox_utils import _get_stashbox_client, _get_endpoint_url
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,9 @@ async def get_stashbox_performer(endpoint: str, stashdb_id: str):
     if not performer:
         raise HTTPException(status_code=404, detail="Performer not found on StashBox")
 
-    endpoint_url = ENDPOINT_URLS[endpoint]
+    endpoint_url = _get_endpoint_url(endpoint)
+    if not endpoint_url:
+        raise HTTPException(status_code=400, detail=f"Unknown endpoint: {endpoint}")
     return _map_stashbox_to_stash(performer, endpoint_url, stashdb_id)
 
 
@@ -225,7 +227,9 @@ async def create_performer_from_stashbox(request: CreatePerformerRequest):
     if not performer:
         raise HTTPException(status_code=404, detail="Performer not found on StashBox")
 
-    endpoint_url = ENDPOINT_URLS[request.endpoint]
+    endpoint_url = _get_endpoint_url(request.endpoint)
+    if not endpoint_url:
+        raise HTTPException(status_code=400, detail=f"Unknown endpoint: {request.endpoint}")
     mapped = _map_stashbox_to_stash(performer, endpoint_url, request.stashdb_id)
 
     # 2. Create performer in Stash
