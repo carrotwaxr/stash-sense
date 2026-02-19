@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
+from rate_limiter import RateLimiter
 from stashbox_connection_manager import (
     StashBoxConnection,
     StashBoxConnectionManager,
@@ -36,9 +37,21 @@ class TestStashBoxConnection:
             "endpoint": "https://fansdb.cc/graphql",
             "name": "FansDB",
             "domain": "fansdb.cc",
+            "max_requests_per_minute": 0,
         }
         # api_key should NOT be in the dict (security)
         assert "api_key" not in d
+
+    def test_to_dict_with_rate_limit(self):
+        conn = StashBoxConnection(
+            "https://stashdb.org/graphql", "key", "StashDB", max_requests_per_minute=120
+        )
+        d = conn.to_dict()
+        assert d["max_requests_per_minute"] == 120
+
+    def test_default_max_requests_per_minute_is_zero(self):
+        conn = StashBoxConnection("https://stashdb.org/graphql", "key", "StashDB")
+        assert conn.max_requests_per_minute == 0
 
 
 # ==================== StashBoxConnectionManager ====================
@@ -56,8 +69,8 @@ class TestStashBoxConnectionManager:
 
         mock_stash = AsyncMock()
         mock_stash.get_stashbox_connections.return_value = [
-            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB"},
-            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key2", "name": "FansDB"},
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 120},
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key2", "name": "FansDB", "max_requests_per_minute": 0},
         ]
 
         with patch("stash_client_unified.StashClientUnified", return_value=mock_stash):
@@ -68,7 +81,9 @@ class TestStashBoxConnectionManager:
         connections = mgr.get_connections()
         assert len(connections) == 2
         assert connections[0]["domain"] == "stashdb.org"
+        assert connections[0]["max_requests_per_minute"] == 120
         assert connections[1]["domain"] == "fansdb.cc"
+        assert connections[1]["max_requests_per_minute"] == 0
 
     @pytest.mark.asyncio
     async def test_load_skips_empty_endpoints(self):
@@ -218,6 +233,110 @@ class TestStashBoxConnectionManager:
         connections = mgr.get_connections()
         for conn in connections:
             assert "api_key" not in conn
+
+
+# ==================== Per-endpoint rate limiting ====================
+
+
+class TestPerEndpointRateLimiting:
+    """Tests for per-endpoint rate limiter creation."""
+
+    def _make_manager(self):
+        return StashBoxConnectionManager("http://stash:9999", "test-key")
+
+    async def _load_with_connections(self, mgr, connections):
+        mock_stash = AsyncMock()
+        mock_stash.get_stashbox_connections.return_value = connections
+        with patch("stash_client_unified.StashClientUnified", return_value=mock_stash):
+            await mgr.load()
+
+    @pytest.mark.asyncio
+    async def test_client_gets_per_endpoint_rate_limiter(self):
+        mgr = self._make_manager()
+        await self._load_with_connections(mgr, [
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 120},
+        ])
+
+        client = mgr.get_client("stashdb.org")
+        assert client is not None
+        assert client._rate_limiter is not None
+        # 120/min = 2 req/s
+        assert client._rate_limiter.requests_per_second == pytest.approx(2.0)
+
+    @pytest.mark.asyncio
+    async def test_zero_rpm_uses_default(self):
+        mgr = self._make_manager()
+        await self._load_with_connections(mgr, [
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 0},
+        ])
+
+        client = mgr.get_client("stashdb.org")
+        assert client is not None
+        # 0 = use default (240/min = 4 req/s)
+        expected_rps = StashBoxConnectionManager.DEFAULT_REQUESTS_PER_MINUTE / 60.0
+        assert client._rate_limiter.requests_per_second == pytest.approx(expected_rps)
+
+    @pytest.mark.asyncio
+    async def test_missing_rpm_field_uses_default(self):
+        mgr = self._make_manager()
+        await self._load_with_connections(mgr, [
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB"},
+        ])
+
+        client = mgr.get_client("stashdb.org")
+        assert client is not None
+        expected_rps = StashBoxConnectionManager.DEFAULT_REQUESTS_PER_MINUTE / 60.0
+        assert client._rate_limiter.requests_per_second == pytest.approx(expected_rps)
+
+    @pytest.mark.asyncio
+    async def test_different_endpoints_get_separate_limiters(self):
+        mgr = self._make_manager()
+        await self._load_with_connections(mgr, [
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 120},
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key2", "name": "FansDB", "max_requests_per_minute": 60},
+        ])
+
+        client1 = mgr.get_client("stashdb.org")
+        client2 = mgr.get_client("fansdb.cc")
+
+        assert client1._rate_limiter is not client2._rate_limiter
+        assert client1._rate_limiter.requests_per_second == pytest.approx(2.0)  # 120/60
+        assert client2._rate_limiter.requests_per_second == pytest.approx(1.0)  # 60/60
+
+    @pytest.mark.asyncio
+    async def test_same_endpoint_reuses_limiter(self):
+        mgr = self._make_manager()
+        await self._load_with_connections(mgr, [
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 120},
+        ])
+
+        client1 = mgr.get_client("stashdb.org")
+        client2 = mgr.get_client("stashdb.org")
+        assert client1._rate_limiter is client2._rate_limiter
+
+    @pytest.mark.asyncio
+    async def test_refresh_creates_fresh_limiters(self):
+        mgr = self._make_manager()
+
+        mock_stash = AsyncMock()
+        mock_stash.get_stashbox_connections.return_value = [
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 120},
+        ]
+
+        with patch("stash_client_unified.StashClientUnified", return_value=mock_stash):
+            await mgr.load()
+            limiter_before = mgr.get_client("stashdb.org")._rate_limiter
+
+            # Refresh with different rate limit
+            mock_stash.get_stashbox_connections.return_value = [
+                {"endpoint": "https://stashdb.org/graphql", "api_key": "key1", "name": "StashDB", "max_requests_per_minute": 60},
+            ]
+            await mgr.refresh()
+            limiter_after = mgr.get_client("stashdb.org")._rate_limiter
+
+        assert limiter_before is not limiter_after
+        assert limiter_before.requests_per_second == pytest.approx(2.0)  # 120/60
+        assert limiter_after.requests_per_second == pytest.approx(1.0)   # 60/60
 
 
 # ==================== Module singleton ====================

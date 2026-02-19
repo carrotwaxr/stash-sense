@@ -4,8 +4,9 @@ Stash-Box GraphQL Client
 Client for querying stash-box endpoints (StashDB, FansDB, etc.).
 This is separate from StashClientUnified which only talks to local Stash.
 
-All requests go through the RateLimiter with Priority.LOW to avoid
-overwhelming external stash-box servers during bulk operations.
+Each client accepts a per-endpoint RateLimiter (created by the
+StashBoxConnectionManager from Stash's max_requests_per_minute config).
+Falls back to the global shared RateLimiter singleton if none is provided.
 """
 
 import httpx
@@ -56,15 +57,23 @@ class StashBoxClient:
     Supports StashDB, FansDB, and other stash-box compatible servers.
     """
 
-    def __init__(self, endpoint: str, api_key: str = ""):
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: str = "",
+        rate_limiter: Optional[RateLimiter] = None,
+    ):
         """
         Initialize the stash-box client.
 
         Args:
             endpoint: The GraphQL URL (e.g. "https://stashdb.org/graphql")
             api_key: API key for authentication (optional)
+            rate_limiter: Per-endpoint rate limiter. If None, falls back to
+                the global shared singleton.
         """
         self.endpoint = endpoint
+        self._rate_limiter = rate_limiter
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -97,7 +106,7 @@ class StashBoxClient:
         if variables:
             payload["variables"] = variables
 
-        limiter = await RateLimiter.get_instance()
+        limiter = self._rate_limiter or await RateLimiter.get_instance()
         async with limiter.acquire(priority):
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(

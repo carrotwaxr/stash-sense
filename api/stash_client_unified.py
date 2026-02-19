@@ -537,6 +537,7 @@ class StashClientUnified:
                 endpoint
                 api_key
                 name
+                max_requests_per_minute
               }
             }
           }
