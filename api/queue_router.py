@@ -146,6 +146,11 @@ async def get_job(job_id: int):
         raise HTTPException(status_code=404, detail="Job not found")
     return job
 
+@router.delete("/history", response_model=MessageResponse)
+async def clear_history():
+    count = _mgr().clear_history()
+    return {"message": f"Cleared {count} job(s) from history"}
+
 @router.delete("/{job_id}", response_model=MessageResponse)
 async def cancel_job(job_id: int):
     _mgr().cancel(job_id)

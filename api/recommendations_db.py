@@ -1723,6 +1723,14 @@ class RecommendationsDB:
             )
             return cursor.rowcount
 
+    def delete_terminal_jobs(self) -> int:
+        """Delete all completed/failed/cancelled jobs. Returns count deleted."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM job_queue WHERE status IN ('completed', 'failed', 'cancelled')"
+            )
+            return cursor.rowcount
+
     # ========================================================================
     # Job Schedules CRUD
     # ========================================================================

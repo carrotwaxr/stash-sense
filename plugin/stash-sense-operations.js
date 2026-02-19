@@ -33,6 +33,7 @@
     async cancel(jobId) { return apiCall('queue_cancel', { job_id: jobId }); },
     async stop(jobId) { return apiCall('queue_stop', { job_id: jobId }); },
     async retry(jobId) { return apiCall('queue_retry', { job_id: jobId }); },
+    async clearHistory() { return apiCall('queue_clear_history'); },
   };
 
   // ==================== State ====================
@@ -255,6 +256,12 @@
         textContent: 'Stop',
         events: { click: () => QueueAPI.stop(job.id) },
       }));
+    } else if (job.status === 'stopping') {
+      actions.appendChild(SS.createElement('button', {
+        className: 'ss-btn ss-btn-danger ss-btn-sm',
+        textContent: 'Force Cancel',
+        events: { click: () => QueueAPI.cancel(job.id) },
+      }));
     } else if (job.status === 'queued') {
       actions.appendChild(SS.createElement('button', {
         className: 'ss-btn ss-btn-secondary ss-btn-sm',
@@ -278,6 +285,8 @@
   function renderHistory(container, jobs) {
     const section = SS.createElement('div', { className: 'ss-operations-section' });
 
+    const headerRow = SS.createElement('div', { className: 'ss-setting-row-header' });
+
     const toggle = SS.createElement('h2', {
       className: 'ss-collapsible-header',
       events: {
@@ -289,12 +298,35 @@
     });
     toggle.textContent = `History (${jobs.length})`;
     toggle.classList.add('ss-collapsed');
-    section.appendChild(toggle);
+    headerRow.appendChild(toggle);
+
+    const clearBtn = SS.createElement('button', {
+      className: 'ss-btn ss-btn-secondary ss-btn-sm',
+      textContent: 'Clear History',
+      events: {
+        click: async (e) => {
+          e.stopPropagation();
+          const button = e.currentTarget;
+          button.disabled = true;
+          button.textContent = 'Clearing...';
+          try {
+            await QueueAPI.clearHistory();
+            await refreshContent(container);
+          } catch (err) {
+            button.textContent = 'Error';
+            setTimeout(() => { button.textContent = 'Clear History'; button.disabled = false; }, 2000);
+          }
+        },
+      },
+    });
+    headerRow.appendChild(clearBtn);
+
+    section.appendChild(headerRow);
 
     const list = SS.createElement('div', {
       className: 'ss-job-list',
-      styles: { display: 'none' },
     });
+    list.style.display = 'none';
     for (const job of jobs.slice(0, 20)) {
       list.appendChild(renderJobCard(job, false));
     }

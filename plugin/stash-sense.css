@@ -2366,12 +2366,14 @@
 
 .ss-number-input input::-webkit-inner-spin-button,
 .ss-number-input input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
+  -webkit-appearance: none !important;
+  appearance: none !important;
   margin: 0;
 }
 
 .ss-number-input input[type="number"] {
-  -moz-appearance: textbox;
+  -moz-appearance: textbox !important;
+  appearance: textbox !important;
 }
 
 .ss-number-input input:focus {

@@ -72,7 +72,7 @@ class QueueManager:
         return self._db.get_jobs(**kwargs)
 
     def cancel(self, job_id: int):
-        """Cancel a queued job. Stop a running job."""
+        """Cancel a queued job. Stop a running job. Force-cancel a stopping job."""
         job = self._db.get_job(job_id)
         if not job:
             return
@@ -80,6 +80,17 @@ class QueueManager:
             self._db.cancel_job(job_id)
         elif job["status"] == "running":
             self._request_job_stop(job_id)
+        elif job["status"] == "stopping":
+            # Force-cancel: kill the task and mark as cancelled
+            task = self._running_tasks.pop(job_id, None)
+            self._running_contexts.pop(job_id, None)
+            if task and not task.done():
+                task.cancel()
+            self._db.cancel_job(job_id)
+
+    def clear_history(self) -> int:
+        """Delete all terminal jobs (completed/failed/cancelled). Returns count deleted."""
+        return self._db.delete_terminal_jobs()
 
     def get_status(self) -> dict:
         """Get queue summary counts."""

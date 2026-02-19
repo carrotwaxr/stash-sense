@@ -87,6 +87,29 @@ class TestQueueManager:
         job = db.get_job(job_id)
         assert job["status"] == "queued"
 
+    def test_cancel_stopping_job(self, mgr, db):
+        """Stopping jobs should be force-cancelled."""
+        job_id = mgr.submit("duplicate_performer", triggered_by="user")
+        db.start_job(job_id)
+        db.set_job_status(job_id, "stopping")
+        mgr.cancel(job_id)
+        job = mgr.get_job(job_id)
+        assert job["status"] == "cancelled"
+
+    def test_clear_history(self, mgr, db):
+        job_id = mgr.submit("duplicate_performer", triggered_by="user")
+        db.start_job(job_id)
+        db.complete_job(job_id)
+        count = mgr.clear_history()
+        assert count == 1
+        assert len(mgr.get_jobs()) == 0
+
+    def test_clear_history_preserves_active(self, mgr, db):
+        mgr.submit("duplicate_performer", triggered_by="user")
+        count = mgr.clear_history()
+        assert count == 0
+        assert len(mgr.get_jobs()) == 1
+
     def test_request_shutdown(self, mgr):
         mgr.request_shutdown()
         assert mgr.is_shutting_down is True
