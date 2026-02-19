@@ -21,7 +21,6 @@ Usage:
         print(f"Progress: {progress.processed}/{progress.total}")
 """
 
-import asyncio
 import httpx
 import logging
 from dataclasses import dataclass
@@ -29,7 +28,6 @@ from typing import TYPE_CHECKING, Optional, AsyncIterator
 from enum import Enum
 
 import face_config
-from rate_limiter import RateLimiter, Priority
 
 if TYPE_CHECKING:
     from stash_client_unified import StashClientUnified
@@ -240,7 +238,7 @@ class SceneFingerprintGenerator:
             self._status = GeneratorStatus.ERROR
             self._progress.status = GeneratorStatus.ERROR
             self._progress.error_message = str(e)
-            logger.error(f"Generation error: {e}")
+            logger.error("Generation error: %s", e, exc_info=True)
             raise
 
         finally:
@@ -319,7 +317,7 @@ class SceneFingerprintGenerator:
             return FingerprintResult(scene_id=scene_id, success=False, error=error)
 
         except Exception as e:
-            logger.error(f"Error identifying scene {scene_id}: {e}")
+            logger.error("Error identifying scene %s: %s", scene_id, e, exc_info=True)
             return FingerprintResult(scene_id=scene_id, success=False, error=str(e))
 
 

@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from job_models import (
-    JOB_REGISTRY, JobDefinition, JobPriority, JobStatus, ResourceType,
+    JOB_REGISTRY, JobDefinition, JobPriority, ResourceType,
 )
 
 if TYPE_CHECKING:
@@ -186,7 +186,7 @@ class QueueManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Dispatch loop error: {e}")
+                logger.error("Dispatch loop error: %s", e, exc_info=True)
             await asyncio.sleep(1.0)
 
     async def _dispatch_once(self):
@@ -223,7 +223,7 @@ class QueueManager:
                 try:
                     task.result()
                 except Exception:
-                    pass  # Already handled in _run_job
+                    logger.debug("Task %s completed with error (already handled in _run_job)", job_id)
 
     def _start_job(self, job_row: dict, defn: JobDefinition):
         """Start a job — create task and track it."""
@@ -250,7 +250,7 @@ class QueueManager:
                 self._db.complete_job(job_id)
                 logger.warning(f"Job {job_id} ({type_id}) completed")
         except Exception as e:
-            logger.error(f"Job {job_id} ({type_id}) failed: {e}")
+            logger.error("Job %s (%s) failed: %s", job_id, type_id, e, exc_info=True)
             self._db.fail_job(job_id, str(e))
 
     def _create_job_instance(self, type_id: str):

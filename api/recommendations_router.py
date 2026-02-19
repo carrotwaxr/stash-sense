@@ -4,13 +4,15 @@ Recommendations API Router
 Endpoints for managing recommendations, running analysis, and configuration.
 """
 
-import os
+import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 import face_config
-from recommendations_db import RecommendationsDB, Recommendation, AnalysisRun
+from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer
 
@@ -28,7 +30,7 @@ def init_recommendations(db_path: str, stash_url: str, stash_api_key: str):
     # Clean up any analysis runs left as 'running' from a previous sidecar session
     stale = rec_db.fail_stale_analysis_runs()
     if stale:
-        print(f"Marked {stale} stale analysis run(s) as failed")
+        logger.warning("Marked %d stale analysis run(s) as failed", stale)
     if stash_url:
         stash_client = StashClientUnified(stash_url, stash_api_key)
 
@@ -101,7 +103,7 @@ def save_scene_fingerprint(
         return fingerprint_id, None
     except Exception as e:
         error_msg = str(e)
-        print(f"[save_scene_fingerprint] Error: {error_msg}")
+        logger.error("save_scene_fingerprint failed: %s", error_msg, exc_info=True)
         return None, error_msg
 
 
@@ -148,7 +150,7 @@ def save_image_fingerprint(
         return fp_id, None
     except Exception as e:
         error_msg = str(e)
-        print(f"[save_image_fingerprint] Error: {error_msg}")
+        logger.error("save_image_fingerprint failed: %s", error_msg, exc_info=True)
         return None, error_msg
 
 

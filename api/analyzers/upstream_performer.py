@@ -93,7 +93,7 @@ class UpstreamPerformerAnalyzer(BaseAnalyzer):
                 total_processed += processed
             except Exception as e:
                 error_msg = f"Error processing {endpoint}: {e}"
-                logger.error(error_msg)
+                logger.error(error_msg, exc_info=True)
                 errors.append(error_msg)
 
         return AnalysisResult(

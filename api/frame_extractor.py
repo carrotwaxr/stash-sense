@@ -4,14 +4,15 @@ Extracts high-resolution frames from Stash video streams via HTTP,
 without downloading the entire video file.
 """
 import asyncio
+import logging
 import subprocess
-import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 import numpy as np
 from PIL import Image
 import io
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -76,7 +77,8 @@ def check_gpu_decode_available(ffmpeg_path: str = "ffmpeg") -> bool:
             capture_output=True, timeout=5, text=True,
         )
         _gpu_decode_available = "cuda" in result.stdout
-    except Exception:
+    except Exception as e:
+        logger.debug("GPU decode probe failed: %s", e)
         _gpu_decode_available = False
     return _gpu_decode_available
 
@@ -411,8 +413,10 @@ def extract_frame_sync(
         return np.array(image)
 
     except subprocess.TimeoutExpired:
+        logger.debug("Frame extraction timed out at %.1fs", timestamp_sec)
         return None
-    except Exception:
+    except Exception as e:
+        logger.debug("Frame extraction failed at %.1fs: %s", timestamp_sec, e)
         return None
 
 
@@ -557,7 +561,8 @@ def check_ffmpeg_available(ffmpeg_path: str = "ffmpeg") -> bool:
             timeout=5,
         )
         return result.returncode == 0
-    except Exception:
+    except Exception as e:
+        logger.debug("ffmpeg availability check failed: %s", e)
         return False
 
 
@@ -609,7 +614,7 @@ if __name__ == "__main__":
             print(f"  Frame {frame.frame_index}: {frame.timestamp_sec:.1f}s, {frame.width}x{frame.height}")
 
         if result.errors:
-            print(f"\nErrors:")
+            print("\nErrors:")
             for err in result.errors:
                 print(f"  {err}")
 
@@ -618,6 +623,6 @@ if __name__ == "__main__":
             from PIL import Image
             img = Image.fromarray(result.frames[0].image)
             img.save("/tmp/test_frame.jpg")
-            print(f"\nFirst frame saved to /tmp/test_frame.jpg")
+            print("\nFirst frame saved to /tmp/test_frame.jpg")
 
     asyncio.run(test_extraction())

@@ -87,7 +87,7 @@ class StashClientUnified:
                 try:
                     body = response.json()
                 except Exception:
-                    body = response.text
+                    body = response.text  # Response not JSON, use raw text
                 raise RuntimeError(
                     f"Stash API error (HTTP {response.status_code}): {body}"
                 )
