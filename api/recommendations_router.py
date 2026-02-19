@@ -218,6 +218,52 @@ class StashStatusResponse(BaseModel):
     error: Optional[str]
 
 
+class SuccessResponse(BaseModel):
+    """Generic success response."""
+    success: bool
+
+
+class MessageResponse(BaseModel):
+    """Generic message response."""
+    message: str
+
+
+class AnalysisTypeInfo(BaseModel):
+    """Info about a single analysis type."""
+    type: str
+    enabled: bool
+    description: Optional[str]
+
+
+class AnalysisTypesResponse(BaseModel):
+    """List of available analysis types."""
+    types: list[AnalysisTypeInfo]
+
+
+class FingerprintRefreshResponse(BaseModel):
+    """Response for marking fingerprints for refresh."""
+    marked_for_refresh: int
+    scene_ids: list[int]
+
+
+class FingerprintRefreshAllResponse(BaseModel):
+    """Response for marking all fingerprints for refresh."""
+    marked_for_refresh: int
+    message: str
+
+
+class FieldConfigEntry(BaseModel):
+    """A single field config entry."""
+    enabled: bool
+    label: str
+
+
+class FieldConfigResponse(BaseModel):
+    """Response for field monitoring config."""
+    endpoint: str
+    fields: dict[str, FieldConfigEntry]
+
+
 # ==================== Recommendation Endpoints ====================
 
 @router.get("", response_model=RecommendationListResponse)
@@ -288,7 +334,7 @@ async def get_recommendation(rec_id: int):
     )
 
 
-@router.post("/{rec_id}/resolve")
+@router.post("/{rec_id}/resolve", response_model=SuccessResponse)
 async def resolve_recommendation(rec_id: int, request: ResolveRequest):
     """Mark a recommendation as resolved."""
     db = get_rec_db()
@@ -298,7 +344,7 @@ async def resolve_recommendation(rec_id: int, request: ResolveRequest):
     return {"success": True}
 
 
-@router.post("/{rec_id}/dismiss")
+@router.post("/{rec_id}/dismiss", response_model=SuccessResponse)
 async def dismiss_recommendation(rec_id: int, request: DismissRequest = None):
     """Dismiss a recommendation (won't be re-created)."""
     db = get_rec_db()
@@ -319,7 +365,7 @@ ANALYZERS = {
 }
 
 
-@router.get("/analysis/types")
+@router.get("/analysis/types", response_model=AnalysisTypesResponse)
 async def list_analysis_types():
     """List available analysis types."""
     db = get_rec_db()
@@ -544,7 +590,7 @@ async def start_fingerprint_generation(request: FingerprintGenerateRequest):
     return {"job_id": job_id, "message": "Fingerprint generation queued"}
 
 
-@router.post("/fingerprints/stop")
+@router.post("/fingerprints/stop", response_model=MessageResponse)
 async def stop_fingerprint_generation():
     """Stop fingerprint generation via queue."""
     from queue_router import _queue_manager
@@ -573,7 +619,7 @@ async def get_fingerprint_progress():
     return generator.progress.to_dict()
 
 
-@router.post("/fingerprints/refresh")
+@router.post("/fingerprints/refresh", response_model=FingerprintRefreshResponse)
 async def mark_fingerprints_for_refresh(scene_ids: Optional[list[int]] = None):
     """
     Mark fingerprints for refresh by clearing their db_version.
@@ -596,7 +642,7 @@ async def mark_fingerprints_for_refresh(scene_ids: Optional[list[int]] = None):
     }
 
 
-@router.post("/fingerprints/refresh-all")
+@router.post("/fingerprints/refresh-all", response_model=FingerprintRefreshAllResponse)
 async def mark_all_fingerprints_for_refresh(confirm: bool = False):
     """Mark ALL fingerprints for refresh. Requires confirm=true."""
     if not confirm:
@@ -743,7 +789,7 @@ async def dismiss_upstream_recommendation(rec_id: int, request: UpstreamDismissR
     return {"success": True, "permanent": permanent}
 
 
-@router.get("/upstream/field-config/{endpoint_b64}")
+@router.get("/upstream/field-config/{endpoint_b64}", response_model=FieldConfigResponse)
 async def get_field_config(endpoint_b64: str):
     """Get field monitoring config for an endpoint. Endpoint is base64-encoded."""
     import base64
@@ -762,7 +808,7 @@ async def get_field_config(endpoint_b64: str):
     }
 
 
-@router.post("/upstream/field-config/{endpoint_b64}")
+@router.post("/upstream/field-config/{endpoint_b64}", response_model=SuccessResponse)
 async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool]):
     """Set field monitoring config for an endpoint."""
     import base64
