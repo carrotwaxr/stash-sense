@@ -770,34 +770,3 @@ async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool]):
     db = get_rec_db()
     db.set_field_config(endpoint, "performer", field_configs)
     return {"success": True}
-
-
-# ==================== User Settings ====================
-
-@router.get("/settings")
-async def get_all_settings():
-    """Get all user settings."""
-    db = get_rec_db()
-    settings = db.get_all_user_settings()
-    return {"settings": settings}
-
-
-@router.get("/settings/{key}")
-async def get_setting(key: str):
-    """Get a single user setting."""
-    db = get_rec_db()
-    value = db.get_user_setting(key)
-    return {"key": key, "value": value}
-
-
-class SetSettingRequest(BaseModel):
-    """Request to set a user setting."""
-    value: object
-
-
-@router.post("/settings/{key}")
-async def set_setting(key: str, request: SetSettingRequest):
-    """Set a user setting."""
-    db = get_rec_db()
-    db.set_user_setting(key, request.value)
-    return {"success": True, "key": key}
