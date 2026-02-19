@@ -8,7 +8,6 @@ data against local Stash data using 3-way diffing with stored snapshots.
 import logging
 from typing import Optional
 
-from .base import AnalysisResult
 from .base_upstream import BaseUpstreamAnalyzer
 from stashbox_client import StashBoxClient
 from upstream_field_mapper import (

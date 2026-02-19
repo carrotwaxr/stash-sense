@@ -684,11 +684,14 @@ class UpdatePerformerRequest(BaseModel):
 
 
 @router.post("/actions/update-performer")
-async def update_performer_fields(request: UpdatePerformerRequest):
+async def update_performer_fields(request: UpdatePerformerRequest, entity_type: str = "performer"):
     """Apply selected upstream changes to a performer.
 
     Translates diff-engine field names (StashBox-style) to Stash PerformerUpdateInput names.
     Compound fields (measurements, career_length) are smart-merged with existing values.
+
+    Args:
+        entity_type: Entity type (default: "performer"). Reserved for future entity types.
     """
     from upstream_field_mapper import parse_measurements, parse_career_length
 
@@ -805,29 +808,49 @@ async def dismiss_upstream_recommendation(rec_id: int, request: UpstreamDismissR
 
 
 @router.get("/upstream/field-config/{endpoint_b64}", response_model=FieldConfigResponse)
-async def get_field_config(endpoint_b64: str):
-    """Get field monitoring config for an endpoint. Endpoint is base64-encoded."""
+async def get_field_config(endpoint_b64: str, entity_type: str = "performer"):
+    """Get field monitoring config for an endpoint.
+
+    Args:
+        endpoint_b64: Base64-encoded stash-box endpoint URL.
+        entity_type: Entity type to get config for (default: "performer").
+    """
     import base64
+    from upstream_field_mapper import get_field_config as get_entity_field_config
     endpoint = base64.b64decode(endpoint_b64).decode()
     db = get_rec_db()
-    fields = db.get_enabled_fields(endpoint, "performer")
-    from upstream_field_mapper import DEFAULT_PERFORMER_FIELDS, FIELD_LABELS
+
+    try:
+        field_cfg = get_entity_field_config(entity_type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unknown entity type: {entity_type}")
+
+    default_fields = field_cfg["default_fields"]
+    labels = field_cfg["labels"]
+
+    fields = db.get_enabled_fields(endpoint, entity_type)
     if fields is None:
         return {
             "endpoint": endpoint,
-            "fields": {f: {"enabled": True, "label": FIELD_LABELS.get(f, f)} for f in DEFAULT_PERFORMER_FIELDS},
+            "fields": {f: {"enabled": True, "label": labels.get(f, f)} for f in default_fields},
         }
     return {
         "endpoint": endpoint,
-        "fields": {f: {"enabled": f in fields, "label": FIELD_LABELS.get(f, f)} for f in DEFAULT_PERFORMER_FIELDS},
+        "fields": {f: {"enabled": f in fields, "label": labels.get(f, f)} for f in default_fields},
     }
 
 
 @router.post("/upstream/field-config/{endpoint_b64}", response_model=SuccessResponse)
-async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool]):
-    """Set field monitoring config for an endpoint."""
+async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool], entity_type: str = "performer"):
+    """Set field monitoring config for an endpoint.
+
+    Args:
+        endpoint_b64: Base64-encoded stash-box endpoint URL.
+        field_configs: Dict mapping field name to enabled bool.
+        entity_type: Entity type to set config for (default: "performer").
+    """
     import base64
     endpoint = base64.b64decode(endpoint_b64).decode()
     db = get_rec_db()
-    db.set_field_config(endpoint, "performer", field_configs)
+    db.set_field_config(endpoint, entity_type, field_configs)
     return {"success": True}
