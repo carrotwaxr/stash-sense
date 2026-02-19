@@ -1,9 +1,7 @@
 """Tests for QueueManager."""
-import asyncio
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 from queue_manager import QueueManager
-from job_models import ResourceType, JobPriority, JobStatus
+from job_models import ResourceType, JobPriority
 
 
 class TestQueueManager:

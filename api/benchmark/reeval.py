@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-import numpy as np
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -36,12 +35,11 @@ from stash_client import StashClient
 from database_reader import PerformerDatabaseReader
 from recognizer import FaceRecognizer
 from multi_signal_matcher import MultiSignalMatcher
-from matching import MatchingConfig
 
 from benchmark.scene_selector import SceneSelector, STASHDB_ENDPOINT
 from benchmark.test_executor import TestExecutor
 from benchmark.analyzer import Analyzer
-from benchmark.models import BenchmarkParams, TestScene, SceneResult, AggregateMetrics
+from benchmark.models import BenchmarkParams, TestScene, SceneResult
 
 
 # ============================================================================
@@ -409,7 +407,7 @@ async def phase3_best_combination(
         num_frames=best_num_frames,
     )
 
-    print(f"  Combined best params:")
+    print("  Combined best params:")
     print(f"    max_distance     = {best_max_distance}")
     print(f"    min_face_size    = {best_min_face_size}")
     print(f"    fusion_weights   = fn={fn_w}/af={af_w}")
@@ -663,7 +661,7 @@ async def phase5_gallery_benchmark(
                                         "name": best.name,
                                         "distance": best.combined_score,
                                     }
-                    except Exception as e:
+                    except Exception:
                         pass  # Skip failed images
 
             # Apply gallery aggregation filter: 2+ appearances OR single < 0.4
@@ -920,8 +918,8 @@ def generate_report(
         "",
         "## Phase 1: Baseline",
         "",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| Accuracy | {baseline_metrics['accuracy']:.1%} |",
         f"| Precision | {baseline_metrics['precision']:.1%} |",
         f"| TP / Expected | {baseline_metrics['true_positives']} / {baseline_metrics['total_expected']} |",
@@ -958,8 +956,8 @@ def generate_report(
     # Phase 3: Best combination
     lines.append("## Phase 3: Best-of Combination")
     lines.append("")
-    lines.append(f"| Metric | Baseline | Best Combo | Delta |")
-    lines.append(f"|--------|----------|------------|-------|")
+    lines.append("| Metric | Baseline | Best Combo | Delta |")
+    lines.append("|--------|----------|------------|-------|")
     for metric in ["accuracy", "precision"]:
         b = baseline_metrics[metric]
         c = best_combination_metrics[metric]
@@ -978,8 +976,8 @@ def generate_report(
         dm = phase4_results.get("default_metrics", {})
         bm = phase4_results.get("best_metrics", {})
         if dm and bm:
-            lines.append(f"| Config | Accuracy | Precision | TP | FP | FN |")
-            lines.append(f"|--------|----------|-----------|----|----|-----|")
+            lines.append("| Config | Accuracy | Precision | TP | FP | FN |")
+            lines.append("|--------|----------|-----------|----|----|-----|")
             lines.append(f"| Default params | {dm.get('accuracy',0):.1%} | {dm.get('precision',0):.1%} | "
                         f"{dm.get('true_positives',0)} | {dm.get('false_positives',0)} | {dm.get('false_negatives',0)} |")
             lines.append(f"| Best params | {bm.get('accuracy',0):.1%} | {bm.get('precision',0):.1%} | "

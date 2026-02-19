@@ -12,11 +12,8 @@ import pytest
 
 from database_updater import (
     CACHE_TTL_SECONDS,
-    GITHUB_API_URL,
-    RELEASE_FILES,
     REQUIRED_FILES,
     DatabaseUpdater,
-    UpdateStatus,
 )
 
 

@@ -13,7 +13,6 @@ Only user overrides are stored in the DB. Absence of a key means "use tier
 default." This keeps the table sparse and resets easy (delete the row).
 """
 
-import json
 import logging
 from dataclasses import dataclass
 from enum import Enum

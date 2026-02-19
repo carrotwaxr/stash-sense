@@ -13,7 +13,6 @@ Output:
     models/arcface.onnx
 """
 import os
-import sys
 import numpy as np
 from pathlib import Path
 
@@ -45,7 +44,7 @@ def convert_facenet512():
     print(f"  Keras model output: {keras_model.output_shape}")
 
     output_path = str(MODELS_DIR / "facenet512.onnx")
-    print(f"  Converting to ONNX...")
+    print("  Converting to ONNX...")
 
     # Create input spec with dynamic batch dimension
     input_spec = (tf.TensorSpec((None, input_shape[0], input_shape[1], 3), tf.float32, name="input"),)
@@ -76,7 +75,7 @@ def convert_arcface():
     print(f"  Keras model output: {keras_model.output_shape}")
 
     output_path = str(MODELS_DIR / "arcface.onnx")
-    print(f"  Converting to ONNX...")
+    print("  Converting to ONNX...")
 
     # Create input spec with dynamic batch dimension
     input_spec = (tf.TensorSpec((None, input_shape[0], input_shape[1], 3), tf.float32, name="input"),)
@@ -165,7 +164,7 @@ if __name__ == "__main__":
     # Print file sizes
     fn_size = os.path.getsize(facenet_path) / (1024 * 1024)
     af_size = os.path.getsize(arcface_path) / (1024 * 1024)
-    print(f"\nModel sizes:")
+    print("\nModel sizes:")
     print(f"  FaceNet512: {fn_size:.1f} MB")
     print(f"  ArcFace:    {af_size:.1f} MB")
     print("\nDone! Models saved to api/models/")

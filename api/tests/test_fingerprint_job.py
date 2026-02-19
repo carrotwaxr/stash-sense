@@ -1,6 +1,6 @@
 """Tests for fingerprint generation job wrapper."""
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from base_job import JobContext
 
 

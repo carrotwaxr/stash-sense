@@ -1,10 +1,9 @@
 """Tests for QueueManager dispatch loop."""
 import asyncio
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import patch
 from queue_manager import QueueManager
-from base_job import BaseJob, JobContext
-from job_models import ResourceType, JOB_REGISTRY, JobDefinition, JobPriority
+from base_job import BaseJob
 
 
 class FakeJob(BaseJob):

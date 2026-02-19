@@ -1,7 +1,7 @@
 """Tests for job_queue and job_schedules database tables and CRUD methods."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 from recommendations_db import RecommendationsDB
 
 

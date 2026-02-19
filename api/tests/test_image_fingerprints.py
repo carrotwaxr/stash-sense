@@ -1,7 +1,6 @@
 """Tests for image fingerprint storage in recommendations DB."""
 
 import sqlite3
-import pytest
 from pathlib import Path
 
 

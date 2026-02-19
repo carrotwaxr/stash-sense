@@ -210,7 +210,7 @@ def analyze_index_gaps(conn: sqlite3.Connection):
             LIMIT 5
         """)
 
-        print(f"\n  Largest gaps:")
+        print("\n  Largest gaps:")
         for after_idx, before_idx, gap_size in cursor:
             print(f"    Gap of {gap_size} indices between {before_idx} and {after_idx}")
 

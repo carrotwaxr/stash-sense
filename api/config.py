@@ -1,6 +1,6 @@
 """Configuration for the face recognition database builder."""
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
 

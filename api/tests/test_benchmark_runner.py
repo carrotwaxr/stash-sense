@@ -1,10 +1,8 @@
 """Tests for benchmark runner."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 import os
-import tempfile
-import json
 
 from benchmark.models import (
     ExpectedPerformer,

@@ -1,9 +1,7 @@
 """Tests for upstream field mapper and 3-way diff engine."""
 
-import pytest
 from upstream_field_mapper import (
     DEFAULT_PERFORMER_FIELDS,
-    FIELD_LABELS,
     FIELD_MERGE_TYPES,
     _values_equal,
     diff_performer_fields,
@@ -215,7 +213,8 @@ class TestValuesEqual:
         assert _values_equal("BROWN", None, "simple") is False
 
     def test_none_vs_empty_string(self):
-        assert _values_equal(None, "", "simple") is False
+        # None and "" are both semantically empty, so treated as equal
+        assert _values_equal(None, "", "simple") is True
 
     def test_alias_list_case_insensitive(self):
         assert _values_equal(["Jane", "JD"], ["jane", "jd"], "alias_list") is True

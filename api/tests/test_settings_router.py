@@ -1,12 +1,11 @@
 """Tests for the settings API router."""
 
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from recommendations_db import RecommendationsDB
-from hardware import HardwareProfile, _hardware_profile
-from settings import SettingsManager, init_settings, SETTING_DEFS
+from hardware import HardwareProfile
+from settings import init_settings, SETTING_DEFS
 from settings_router import router, init_settings_router
 
 

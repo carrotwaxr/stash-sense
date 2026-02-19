@@ -1,8 +1,7 @@
 """Tests for benchmark scene selector."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import random
+from unittest.mock import MagicMock
 
 from benchmark.scene_selector import SceneSelector, STASHDB_ENDPOINT
 from benchmark.models import ExpectedPerformer, TestScene

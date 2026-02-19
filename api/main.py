@@ -20,7 +20,6 @@ STASH_API_KEY = os.environ.get("STASH_API_KEY", "")
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
 
 from contextlib import asynccontextmanager
-from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
@@ -28,7 +27,6 @@ import httpx
 import numpy as np
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
 from pydantic import BaseModel, Field
 
 import face_config
@@ -36,9 +34,8 @@ from config import DatabaseConfig, MultiSignalConfig
 from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
 from body_proportions import BodyProportionExtractor
 from tattoo_detector import TattooDetector
-from multi_signal_matcher import MultiSignalMatcher, MultiSignalMatch
+from multi_signal_matcher import MultiSignalMatcher
 from embeddings import load_image
-from sprite_parser import parse_vtt_file, extract_frames_from_sprite
 from frame_extractor import (
     FrameExtractionConfig,
     extract_frames_from_stash_scene,
@@ -49,7 +46,7 @@ from recommendations_router import router as recommendations_router, init_recomm
 from stashbox_client import StashBoxClient
 from database_updater import DatabaseUpdater, UpdateStatus
 from hardware import init_hardware
-from settings import init_settings, get_setting, migrate_env_vars
+from settings import init_settings, migrate_env_vars
 from settings_router import router as settings_router, init_settings_router
 from queue_router import router as queue_router
 
@@ -1074,7 +1071,6 @@ def _extract_scene_signals(
     Returns:
         (body_ratios, tattoo_result, tattoo_scores, signals_used, tattoos_detected)
     """
-    from body_proportions import BodyProportions
     from tattoo_detector import TattooResult
 
     body_ratios = None
@@ -2492,7 +2488,6 @@ async def link_performer_to_scene(request: LinkPerformerRequest):
                 merged.append(new_sid)
 
         if len(merged) > len(current_stash_ids):
-            from rate_limiter import Priority
             await stash_client.update_performer(request.performer_id, stash_ids=merged)
 
     return LinkPerformerResponse(success=True)

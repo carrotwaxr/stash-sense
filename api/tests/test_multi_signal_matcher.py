@@ -1,10 +1,7 @@
 """Tests for MultiSignalMatcher module."""
 
-import pytest
 import sys
-from unittest.mock import Mock, MagicMock, patch
-from dataclasses import dataclass
-from typing import Optional
+from unittest.mock import Mock
 
 import numpy as np
 

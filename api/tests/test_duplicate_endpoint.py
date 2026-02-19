@@ -1,7 +1,6 @@
 """Tests for duplicate detection API endpoints."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestDuplicateScanEndpoint:

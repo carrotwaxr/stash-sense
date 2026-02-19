@@ -1,7 +1,5 @@
 """Tests for scene fingerprint storage in recommendations DB."""
 
-import pytest
-from pathlib import Path
 
 
 class TestSceneFingerprintSchema:

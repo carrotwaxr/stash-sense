@@ -20,10 +20,9 @@ Usage:
 import argparse
 import asyncio
 import json
-import math
 import os
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -345,7 +344,6 @@ async def select_diverse_scenes(
         List of TestScene objects
     """
     from benchmark.scene_selector import SceneSelector
-    from benchmark.models import TestScene
 
     selector = SceneSelector(stash_client, database_reader)
 
@@ -815,7 +813,7 @@ async def main():
         print(f"  {s.name}: extract={s.extract_frames}, recognize={s.recognize_frames}, dist={s.distribution}")
 
     # Select scenes
-    print(f"\nSelecting scenes...")
+    print("\nSelecting scenes...")
     if args.scenes:
         scene_ids = [s.strip() for s in args.scenes.split(",")]
         scenes = await fetch_scene_data(scene_ids, stash_client, database_reader)
