@@ -67,6 +67,8 @@ def main():
         result = handle_settings(mode, args, sidecar_url)
         if result is None:
             result = {"error": f"Unknown settings mode: {mode}"}
+    elif mode.startswith("queue_"):
+        result = handle_queue(mode, args, sidecar_url)
     elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
@@ -311,6 +313,40 @@ def sidecar_delete(sidecar_url, endpoint, timeout=30):
         return {"error": "Request timed out"}
     except requests.RequestException as e:
         return {"error": f"Request failed: {e}"}
+
+
+# ==================== Queue API Proxy ====================
+
+def handle_queue(mode, args, sidecar_url):
+    """Handle queue-related proxy operations."""
+    if mode == "queue_list":
+        qs = ""
+        if args.get("status"):
+            qs += f"?status={args['status']}"
+        return sidecar_get(sidecar_url, f"/queue{qs}")
+    elif mode == "queue_status":
+        return sidecar_get(sidecar_url, "/queue/status")
+    elif mode == "queue_types":
+        return sidecar_get(sidecar_url, "/queue/types")
+    elif mode == "queue_submit":
+        return sidecar_post(sidecar_url, "/queue", {
+            "type": args["type"],
+            "triggered_by": args.get("triggered_by", "user"),
+        })
+    elif mode == "queue_cancel":
+        return sidecar_delete(sidecar_url, f"/queue/{args['job_id']}")
+    elif mode == "queue_stop":
+        return sidecar_post(sidecar_url, f"/queue/{args['job_id']}/stop")
+    elif mode == "queue_retry":
+        return sidecar_post(sidecar_url, f"/queue/{args['job_id']}/retry")
+    elif mode == "queue_schedules":
+        return sidecar_get(sidecar_url, "/queue/schedules")
+    elif mode == "queue_update_schedule":
+        return sidecar_put(sidecar_url, f"/queue/schedules/{args['type']}", {
+            "enabled": args["enabled"],
+            "interval_hours": args["interval_hours"],
+        })
+    return {"error": f"Unknown queue mode: {mode}"}
 
 
 def rec_counts(sidecar_url):
