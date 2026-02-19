@@ -24,6 +24,7 @@ Usage:
 import logging
 from typing import Optional
 
+from rate_limiter import RateLimiter
 from stashbox_client import StashBoxClient
 
 logger = logging.getLogger(__name__)
@@ -32,12 +33,13 @@ logger = logging.getLogger(__name__)
 class StashBoxConnection:
     """A single stash-box endpoint connection with its config."""
 
-    __slots__ = ("endpoint", "api_key", "name")
+    __slots__ = ("endpoint", "api_key", "name", "max_requests_per_minute")
 
-    def __init__(self, endpoint: str, api_key: str, name: str):
+    def __init__(self, endpoint: str, api_key: str, name: str, max_requests_per_minute: int = 0):
         self.endpoint = endpoint
         self.api_key = api_key
         self.name = name
+        self.max_requests_per_minute = max_requests_per_minute
 
     @property
     def domain(self) -> str:
@@ -49,6 +51,7 @@ class StashBoxConnection:
             "endpoint": self.endpoint,
             "name": self.name,
             "domain": self.domain,
+            "max_requests_per_minute": self.max_requests_per_minute,
         }
 
 
@@ -58,11 +61,16 @@ class StashBoxConnectionManager:
     Provides client creation, lookup by domain or URL, and config refresh.
     """
 
+    # Default rate limit when Stash reports 0 (unlimited).
+    # 240/min = 4 req/s — matches Stash's suggested default for stash-box servers.
+    DEFAULT_REQUESTS_PER_MINUTE = 240
+
     def __init__(self, stash_url: str, stash_api_key: str):
         self._stash_url = stash_url
         self._stash_api_key = stash_api_key
         self._connections: list[StashBoxConnection] = []
         self._clients: dict[str, StashBoxClient] = {}
+        self._rate_limiters: dict[str, RateLimiter] = {}
         self._loaded = False
 
     @property
@@ -81,20 +89,29 @@ class StashBoxConnectionManager:
 
         self._connections = []
         self._clients = {}
+        self._rate_limiters = {}
 
         for conn in raw_connections:
             endpoint = conn.get("endpoint", "")
             api_key = conn.get("api_key", "")
             name = conn.get("name", "")
+            max_rpm = conn.get("max_requests_per_minute", 0)
             if not endpoint:
                 continue
-            self._connections.append(StashBoxConnection(endpoint, api_key, name))
+            self._connections.append(
+                StashBoxConnection(endpoint, api_key, name, max_rpm)
+            )
 
         self._loaded = True
 
+        endpoints_info = []
+        for c in self._connections:
+            rpm = c.max_requests_per_minute
+            rate_str = f"{rpm}/min" if rpm > 0 else "unlimited"
+            endpoints_info.append(f"{c.domain} ({rate_str})")
         logger.warning(
             f"Loaded {len(self._connections)} stash-box endpoint(s) from Stash: "
-            f"{', '.join(c.domain for c in self._connections)}"
+            f"{', '.join(endpoints_info)}"
         )
         return len(self._connections)
 
@@ -118,6 +135,19 @@ class StashBoxConnectionManager:
                 return conn
         return None
 
+    def _get_rate_limiter(self, conn: StashBoxConnection) -> RateLimiter:
+        """Get or create a per-endpoint rate limiter for a stash-box connection."""
+        if conn.endpoint not in self._rate_limiters:
+            rpm = conn.max_requests_per_minute
+            if rpm <= 0:
+                rpm = self.DEFAULT_REQUESTS_PER_MINUTE
+            rps = rpm / 60.0
+            self._rate_limiters[conn.endpoint] = RateLimiter(requests_per_second=rps)
+            logger.warning(
+                f"Rate limiter for {conn.domain}: {rpm}/min ({rps:.2f} req/s)"
+            )
+        return self._rate_limiters[conn.endpoint]
+
     def get_client(self, endpoint_key: str) -> Optional[StashBoxClient]:
         """Get or create a StashBoxClient for the given endpoint.
 
@@ -134,7 +164,10 @@ class StashBoxConnectionManager:
             return None
 
         if conn.endpoint not in self._clients:
-            self._clients[conn.endpoint] = StashBoxClient(conn.endpoint, conn.api_key)
+            limiter = self._get_rate_limiter(conn)
+            self._clients[conn.endpoint] = StashBoxClient(
+                conn.endpoint, conn.api_key, rate_limiter=limiter
+            )
 
         return self._clients[conn.endpoint]
 

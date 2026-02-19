@@ -3,6 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from rate_limiter import RateLimiter
+
 
 class TestStashBoxClientInit:
     """Tests for StashBoxClient initialization."""
@@ -35,9 +37,31 @@ class TestStashBoxClientInit:
         client = StashBoxClient(endpoint="https://stashdb.org/graphql", api_key="")
         assert "ApiKey" not in client.headers
 
+    def test_init_stores_rate_limiter(self):
+        from stashbox_client import StashBoxClient
+
+        limiter = RateLimiter(requests_per_second=2.0)
+        client = StashBoxClient(
+            endpoint="https://stashdb.org/graphql", api_key="key",
+            rate_limiter=limiter,
+        )
+        assert client._rate_limiter is limiter
+
+    def test_init_without_rate_limiter_defaults_to_none(self):
+        from stashbox_client import StashBoxClient
+
+        client = StashBoxClient(endpoint="https://stashdb.org/graphql", api_key="key")
+        assert client._rate_limiter is None
+
 
 class TestStashBoxClientExecute:
     """Tests for StashBoxClient._execute method."""
+
+    @pytest.fixture(autouse=True)
+    def reset_singleton(self):
+        RateLimiter.reset_instance()
+        yield
+        RateLimiter.reset_instance()
 
     def _make_mock_limiter(self):
         """Create a mock RateLimiter that works with async context manager."""
@@ -104,6 +128,52 @@ class TestStashBoxClientExecute:
             with patch("stashbox_client.RateLimiter.get_instance", return_value=mock_limiter):
                 with pytest.raises(RuntimeError, match="GraphQL error"):
                     await client._execute("query { bad }")
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_injected_rate_limiter(self):
+        """When a rate_limiter is injected, it should be used instead of the singleton."""
+        from stashbox_client import StashBoxClient
+
+        injected_limiter = self._make_mock_limiter()
+        client = StashBoxClient(
+            endpoint="https://stashdb.org/graphql", api_key="test-key",
+            rate_limiter=injected_limiter,
+        )
+
+        mock_response = self._make_mock_response({"data": {"test": "value"}})
+
+        with patch("stashbox_client.httpx.AsyncClient") as mock_client_cls:
+            mock_async_client = self._make_mock_http_client(mock_response)
+            mock_client_cls.return_value = mock_async_client
+
+            # Should NOT call RateLimiter.get_instance since we have an injected limiter
+            with patch("stashbox_client.RateLimiter.get_instance") as mock_get_instance:
+                await client._execute("query { test }")
+                mock_get_instance.assert_not_called()
+
+            # The injected limiter should have been used
+            injected_limiter.acquire.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_falls_back_to_global_limiter(self):
+        """When no rate_limiter is injected, it should fall back to the global singleton."""
+        from stashbox_client import StashBoxClient
+
+        client = StashBoxClient(
+            endpoint="https://stashdb.org/graphql", api_key="test-key",
+        )
+
+        mock_response = self._make_mock_response({"data": {"test": "value"}})
+        global_limiter = self._make_mock_limiter()
+
+        with patch("stashbox_client.httpx.AsyncClient") as mock_client_cls:
+            mock_async_client = self._make_mock_http_client(mock_response)
+            mock_client_cls.return_value = mock_async_client
+
+            with patch("stashbox_client.RateLimiter.get_instance", return_value=global_limiter):
+                await client._execute("query { test }")
+
+            global_limiter.acquire.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_sends_variables(self):

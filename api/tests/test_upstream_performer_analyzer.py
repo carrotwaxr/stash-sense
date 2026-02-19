@@ -31,7 +31,7 @@ class TestUpstreamPerformerAnalyzer:
         from analyzers.upstream_performer import UpstreamPerformerAnalyzer
         mock_stash.get_performers_for_endpoint = AsyncMock(return_value=[])
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.query_performers = AsyncMock(return_value=([], 0))
             MockSBC.return_value = mock_sbc
@@ -65,7 +65,7 @@ class TestUpstreamPerformerAnalyzer:
             "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
         }
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(return_value=upstream_performer)
             MockSBC.return_value = mock_sbc
@@ -107,7 +107,7 @@ class TestUpstreamPerformerAnalyzer:
             "created": "2024-01-01T00:00:00Z", "updated": "2026-01-16T10:00:00Z",
         }
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(return_value=upstream_performer)
             MockSBC.return_value = mock_sbc
@@ -148,7 +148,7 @@ class TestUpstreamPerformerAnalyzer:
             "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
         }
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(return_value=upstream)
             MockSBC.return_value = mock_sbc
@@ -181,7 +181,7 @@ class TestUpstreamPerformerAnalyzer:
             "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
         }
         analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
-        with patch("analyzers.upstream_performer.StashBoxClient") as MockSBC:
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
             mock_sbc = MagicMock()
             mock_sbc.get_performer = AsyncMock(return_value=upstream)
             MockSBC.return_value = mock_sbc

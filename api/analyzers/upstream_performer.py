@@ -68,13 +68,6 @@ class UpstreamPerformerAnalyzer(BaseUpstreamAnalyzer):
     def entity_type(self) -> str:
         return "performer"
 
-    def _create_stashbox_client(self, endpoint: str, api_key: str):
-        """Create a StashBoxClient using the module-level import.
-
-        This allows tests to patch analyzers.upstream_performer.StashBoxClient.
-        """
-        return StashBoxClient(endpoint, api_key)
-
     async def _get_local_entities(self, endpoint: str) -> list[dict]:
         return await self.stash.get_performers_for_endpoint(endpoint)
 
