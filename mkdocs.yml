@@ -16,13 +16,19 @@ theme:
 
 nav:
   - Home: index.md
-  - Installation: installation.md
+  - Getting Started:
+    - Installation: installation.md
+    - Configuration: configuration.md
+  - User Guide:
+    - Plugin: plugin.md
+    - Settings: settings-system.md
+    - StashBox Endpoints: stash-box-endpoints.md
   - Unraid:
     - Setup: unraid/setup.md
     - GPU Passthrough: unraid/gpu-passthrough.md
-  - Configuration: configuration.md
-  - Plugin: plugin.md
-  - Troubleshooting: troubleshooting.md
+  - Reference:
+    - Architecture: architecture.md
+    - Troubleshooting: troubleshooting.md
 
 markdown_extensions:
   - admonition
@@ -32,6 +38,10 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - tables
+
+not_in_nav: |
+  /plans/**
+  /research/**
 
 extra:
   social:

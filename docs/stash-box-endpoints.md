@@ -137,7 +137,7 @@ The ultimate solution is a public cloud service (similar to stash-box) where use
 - Scale with the community (more users = better models)
 - Preserve privacy (only embeddings, never raw images)
 
-See [project-status-and-vision.md](2026-01-26-project-status-and-vision.md#crowd-sourced-face-database-cloud-service) for full details on the cloud service vision.
+<!-- Future: link to cloud service vision doc when published -->
 
 ---
 
