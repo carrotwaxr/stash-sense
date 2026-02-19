@@ -2349,18 +2349,24 @@
 .ss-number-input {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 .ss-number-input input {
-  width: 80px;
-  padding: 6px 8px;
+  width: 90px;
+  padding: 6px 2px 6px 10px;
   background: var(--bs-body-bg, #1a1a1a);
   border: 1px solid var(--bs-border-color, #444);
   border-radius: 6px;
   color: var(--bs-body-color, #fff);
   font-size: 14px;
-  text-align: right;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-number-input input::-webkit-inner-spin-button,
+.ss-number-input input::-webkit-outer-spin-button {
+  opacity: 1;
 }
 
 .ss-number-input input:focus {
@@ -2371,6 +2377,7 @@
 .ss-setting-range {
   font-size: 11px;
   color: var(--bs-secondary-color, #666);
+  white-space: nowrap;
 }
 
 /* Toggle Switch */
@@ -2429,11 +2436,40 @@
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
+  align-self: center;
+  line-height: 1;
 }
 
 .ss-setting-reset:hover {
   color: var(--bs-body-color, #fff);
   border-color: var(--bs-body-color, #fff);
+}
+
+/* Upstream Field Monitoring Grid */
+.ss-upstream-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+
+.ss-upstream-field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--bs-body-color, #fff);
+  transition: background 0.1s;
+}
+
+.ss-upstream-field-label:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ss-upstream-field-label input[type="checkbox"] {
+  accent-color: var(--bs-primary, #0d6efd);
 }
 
 /* Save Indicator */
