@@ -99,6 +99,22 @@ class QueueManager:
         if count:
             logger.warning(f"Re-queued {count} interrupted job(s) for resume")
 
+    def seed_default_schedules(self):
+        """Ensure all schedulable job types have a schedule entry. Don't overwrite existing."""
+        for type_id, defn in JOB_REGISTRY.items():
+            if not defn.schedulable:
+                continue
+            existing = self._db.get_job_schedule(type_id)
+            if existing:
+                continue
+            interval = defn.default_interval_hours or 0
+            self._db.upsert_job_schedule(
+                type=type_id,
+                enabled=interval > 0,
+                interval_hours=float(interval) if interval else 168.0,
+                priority=int(defn.default_priority),
+            )
+
     # ========================================================================
     # Yield protocol
     # ========================================================================

@@ -448,6 +448,7 @@ async def lifespan(app: FastAPI):
     from queue_router import init_queue_router
     queue_mgr = QueueManager(get_rec_db())
     queue_mgr.recover_on_startup()
+    queue_mgr.seed_default_schedules()
     init_queue_router(queue_mgr)
     await queue_mgr.start()
     logger.warning("Queue manager started")
