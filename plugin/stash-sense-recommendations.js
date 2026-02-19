@@ -159,6 +159,12 @@
       return apiCall('rec_set_field_config', { endpoint, field_configs: fieldConfigs });
     },
 
+    // Database info
+    async getDatabaseInfo() {
+      const settings = await SS.getSettings();
+      return SS.runPluginOperation('database_info', { sidecar_url: settings.sidecarUrl });
+    },
+
     // Database update operations
     async checkUpdate() {
       const settings = await SS.getSettings();
@@ -239,32 +245,7 @@
     counts: null,
   };
 
-  // Track active intervals/timeouts for cleanup on navigation
-  let _activeAnalysisPollers = {};
-  let _activeFpPollTimeout = null;
-  let _activeFpCountdownInterval = null;
-
-  /**
-   * Clear all active polling intervals and timeouts.
-   * Called when navigating away from the plugin page.
-   */
-  function cleanupAllPollers() {
-    // Clear analysis pollers
-    for (const key of Object.keys(_activeAnalysisPollers)) {
-      clearInterval(_activeAnalysisPollers[key]);
-    }
-    _activeAnalysisPollers = {};
-
-    // Clear fingerprint polling
-    if (_activeFpPollTimeout) {
-      clearTimeout(_activeFpPollTimeout);
-      _activeFpPollTimeout = null;
-    }
-    if (_activeFpCountdownInterval) {
-      clearInterval(_activeFpCountdownInterval);
-      _activeFpCountdownInterval = null;
-    }
-  }
+  // (Polling for analysis/fingerprint progress now handled by Operations tab)
 
   // ==================== Dashboard Container ====================
 
@@ -277,17 +258,32 @@
       className: 'ss-recommendations',
     });
 
+    // Persistent app header (stays above tabs)
+    const appHeader = SS.createElement('div', {
+      className: 'ss-app-header',
+    });
+    appHeader.innerHTML = `
+      <div class="ss-app-header-left">
+        <h1>Stash Sense</h1>
+        <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
+      </div>
+      <div class="ss-app-header-right" id="ss-status-area"></div>
+    `;
+    container.appendChild(appHeader);
+
+    // Content wrapper (views render inside this)
+    const content = SS.createElement('div', {
+      className: 'ss-dashboard-content',
+    });
+    container.appendChild(content);
+
     return container;
   }
 
   // ==================== Dashboard View ====================
 
-  async function renderDashboard(container) {
-    container.innerHTML = `
-      <div class="ss-dashboard-header">
-        <h1>Stash Sense Recommendations</h1>
-        <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
-      </div>
+  async function renderDashboard(mainContainer, content) {
+    content.innerHTML = `
       <div class="ss-dashboard-loading">
         <div class="ss-spinner"></div>
         <p>Loading recommendations...</p>
@@ -295,211 +291,131 @@
     `;
 
     try {
-      const [counts, sidecarStatus, analysisTypes, fpStatus, updateInfo] = await Promise.all([
+      const [counts, sidecarStatus, fpStatus, dbInfo, updateInfo] = await Promise.all([
         RecommendationsAPI.getCounts(),
         RecommendationsAPI.getSidecarStatus(),
-        RecommendationsAPI.getAnalysisTypes(),
         RecommendationsAPI.getFingerprintStatus(),
+        RecommendationsAPI.getDatabaseInfo().catch(() => null),
         RecommendationsAPI.checkUpdate().catch(() => null),
       ]);
 
       currentState.counts = counts;
 
-      // Build fingerprint status display
-      const fpRunning = fpStatus.generation_running;
-      const fpProgress = fpStatus.generation_progress || {};
-      const fpCoverage = fpStatus.complete_fingerprints || 0;
-      const fpNeedsRefresh = fpStatus.needs_refresh_count || 0;
-
-      container.innerHTML = `
-        <div class="ss-dashboard-header">
-          <h1>Stash Sense Recommendations</h1>
-          <p class="ss-dashboard-subtitle">Library analysis and curation tools</p>
-        </div>
-
-        <div class="ss-stash-status ${sidecarStatus.connected ? 'connected' : 'disconnected'}">
+      // Update the persistent status area in the app header
+      const statusArea = document.getElementById('ss-status-area');
+      if (statusArea) {
+        statusArea.className = `ss-app-header-right ${sidecarStatus.connected ? 'connected' : 'disconnected'}`;
+        statusArea.innerHTML = `
           <span class="ss-status-dot"></span>
-          <span>Stash Sense: ${sidecarStatus.connected ? 'Connected' : 'Disconnected'}</span>
-          ${sidecarStatus.url ? `<span class="ss-status-url">(${sidecarStatus.url})</span>` : ''}
+          <span class="ss-status-label">${sidecarStatus.connected ? 'Connected' : 'Disconnected'}</span>
+          ${sidecarStatus.url ? `<span class="ss-status-url">${sidecarStatus.url}</span>` : ''}
           ${sidecarStatus.error ? `<span class="ss-status-error">${sidecarStatus.error}</span>` : ''}
-        </div>
-
-        <div class="ss-dashboard-summary">
-          <div class="ss-summary-card ss-summary-total">
-            <div class="ss-summary-number">${counts.total_pending}</div>
-            <div class="ss-summary-label">Pending Recommendations</div>
-          </div>
-        </div>
-
-        <div class="ss-fingerprint-section">
-          <h2>Scene Fingerprints <span id="ss-info-fp"></span></h2>
-          <p class="ss-fingerprint-desc">Fingerprints enable face-based duplicate detection. Generate them for your library to improve accuracy.</p>
-
-          <div class="ss-fingerprint-stats">
-            <div class="ss-fp-stat">
-              <span class="ss-fp-stat-value">${fpCoverage}</span>
-              <span class="ss-fp-stat-label">Fingerprints</span>
-            </div>
-            <div class="ss-fp-stat">
-              <span class="ss-fp-stat-value">${fpStatus.current_db_version || 'N/A'}</span>
-              <span class="ss-fp-stat-label">DB Version</span>
-              ${updateInfo && updateInfo.update_available ? `
-                <div class="ss-update-badge" id="ss-update-badge">
-                  <span class="ss-update-badge-text">v${updateInfo.latest_version} available</span>
-                  <button class="ss-update-btn" id="ss-update-btn">Update DB</button>
-                </div>
-              ` : ''}
-            </div>
-            ${fpNeedsRefresh > 0 ? `
-            <div class="ss-fp-stat ss-fp-stat-warning">
-              <span class="ss-fp-stat-value">${fpNeedsRefresh}</span>
-              <span class="ss-fp-stat-label">Need Refresh</span>
-            </div>
-            ` : ''}
-          </div>
-
-          <div class="ss-fingerprint-progress" id="ss-fp-progress" style="display: ${fpRunning ? 'block' : 'none'}">
-            <div class="ss-progress-info">
-              <span class="ss-progress-text">
-                ${fpProgress.current_scene_title || 'Processing...'}
-              </span>
-              <span class="ss-progress-numbers">
-                ${fpProgress.processed_scenes || 0} / ${fpProgress.total_scenes || 0}
-              </span>
-            </div>
-            <div class="ss-progress-bar-container">
-              <div class="ss-progress-bar" style="width: ${fpProgress.progress_pct || 0}%">
-                <span class="ss-progress-pct">${Math.round(fpProgress.progress_pct || 0)}%</span>
-              </div>
-            </div>
-            <div class="ss-progress-stats">
-              <span class="ss-progress-stat ss-stat-success">${fpProgress.successful || 0} done</span>
-              <span class="ss-progress-stat ss-stat-skip">${fpProgress.skipped || 0} skipped</span>
-              <span class="ss-progress-stat ss-stat-fail">${fpProgress.failed || 0} failed</span>
-            </div>
-            <div class="ss-progress-refresh" id="ss-fp-refresh">
-              <span class="ss-refresh-text">Refreshing in <span class="ss-refresh-countdown">30</span>s</span>
-            </div>
-          </div>
-
-          <div class="ss-fingerprint-actions">
-            <button class="ss-btn ${fpRunning ? 'ss-btn-danger' : 'ss-btn-primary'}" id="ss-fp-action-btn">
-              ${fpRunning ? 'Stop Generation' : 'Generate Fingerprints'}
-            </button>
-          </div>
-        </div>
-
-        <div class="ss-dashboard-types">
-          <h2>Recommendation Types <span id="ss-info-types"></span></h2>
-          <div class="ss-type-cards"></div>
-        </div>
-
-        <div class="ss-dashboard-actions">
-          <h2>Action Runner <span id="ss-info-actions"></span></h2>
-          <div class="ss-analysis-buttons"></div>
-        </div>
-      `
-
-      // Add info icons to section headers
-      const fpInfoSlot = container.querySelector('#ss-info-fp');
-      if (fpInfoSlot) fpInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Scene Fingerprints', HELP_FINGERPRINTS)));
-      const typesInfoSlot = container.querySelector('#ss-info-types');
-      if (typesInfoSlot) typesInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Recommendation Types', HELP_REC_TYPES)));
-      const actionsInfoSlot = container.querySelector('#ss-info-actions');
-      if (actionsInfoSlot) actionsInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Action Runner', HELP_ACTION_RUNNER)));
-
-      // Database update button handler
-      const updateBtn = document.getElementById('ss-update-btn');
-      if (updateBtn) {
-        updateBtn.addEventListener('click', () => {
-          showConfirmModal(
-            `Download ~${updateInfo.download_size_mb || '???'} MB and update to v${updateInfo.latest_version}? Face recognition will be briefly unavailable during the swap.`,
-            async () => {
-              updateBtn.disabled = true;
-              updateBtn.textContent = 'Starting...';
-
-              const startResult = await RecommendationsAPI.startUpdate();
-              if (startResult.error) {
-                showConfirmModal('Update failed to start: ' + startResult.error, () => {});
-                updateBtn.disabled = false;
-                updateBtn.textContent = 'Update DB';
-                return;
-              }
-
-              // Replace badge with progress display
-              const badge = document.getElementById('ss-update-badge');
-              if (badge) {
-                badge.innerHTML = '<div class="ss-update-progress"><div class="ss-spinner ss-spinner-small"></div><span id="ss-update-progress-text">Starting download...</span></div>';
-              }
-
-              // Poll for progress
-              const pollInterval = setInterval(async () => {
-                const textEl = document.getElementById('ss-update-progress-text');
-                if (!textEl) { clearInterval(pollInterval); return; }
-                let status;
-                try {
-                  status = await RecommendationsAPI.getUpdateStatus();
-                } catch (pollErr) {
-                  console.error('[Stash Sense] Error polling update status:', pollErr);
-                  return;
-                }
-
-                const labels = {
-                  downloading: 'Downloading... ' + (status.progress_pct || 0) + '%',
-                  extracting: 'Extracting...',
-                  verifying: 'Verifying checksums...',
-                  swapping: 'Swapping database...',
-                  reloading: 'Reloading...',
-                  complete: 'Updated to v' + (status.target_version || '') + '!',
-                  failed: 'Failed: ' + (status.error || 'Unknown error'),
-                };
-                textEl.textContent = labels[status.status] || status.status;
-
-                if (status.status === 'complete' || status.status === 'failed') {
-                  clearInterval(pollInterval);
-                  if (status.status === 'complete') {
-                    badge.innerHTML = '<span class="ss-update-complete">Updated to v' + status.target_version + '</span>';
-                    setTimeout(() => renderDashboard(container), 2000);
-                  }
-                }
-              }, 2000);
-            }
-          );
-        });
+        `;
       }
 
-      // Render type cards
-      const typeCards = container.querySelector('.ss-type-cards');
+      // Build identification database stats
+      const fpCoverage = fpStatus.complete_fingerprints || 0;
+      const fpNeedsRefresh = fpStatus.needs_refresh_count || 0;
+      const dbVersion = fpStatus.current_db_version || dbInfo?.version || 'N/A';
+      const performerCount = dbInfo?.performer_count || 0;
+      const faceCount = dbInfo?.face_count || 0;
+      const tattooCount = dbInfo?.tattoo_embedding_count || 0;
+
+      // Build type cards HTML
       const typeConfigs = {
         duplicate_performer: {
           title: 'Duplicate Performers',
-          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>`,
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>`,
           description: 'Performers sharing the same StashDB ID',
         },
         duplicate_scenes: {
           title: 'Duplicate Scenes',
-          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zm-6-1l4-4-1.4-1.4-1.6 1.6V6h-2v6.2l-1.6-1.6L10 12l4 4z"/></svg>`,
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zm-6-1l4-4-1.4-1.4-1.6 1.6V6h-2v6.2l-1.6-1.6L10 12l4 4z"/></svg>`,
           description: 'Scenes that may be duplicates based on stash-box ID, faces, or metadata',
         },
         duplicate_scene_files: {
           title: 'Duplicate Scene Files',
-          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z"/></svg>`,
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z"/></svg>`,
           description: 'Scenes with multiple files attached',
         },
         upstream_performer_changes: {
           title: 'Upstream Performer Changes',
-          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 6V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>`,
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 6V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>`,
           description: 'Performer fields updated on StashDB since last sync',
         },
         upstream_tag_changes: {
           title: 'Upstream Tag Changes',
-          icon: `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`,
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`,
           description: 'Tag fields updated on StashDB since last sync',
         },
       };
 
-      for (const [type, typeCounts] of Object.entries(counts.counts)) {
-        const config = typeConfigs[type] || { title: type, icon: '', description: '' };
+      content.innerHTML = `
+        <div class="ss-id-database-section">
+          <h2>Identification Database <span id="ss-info-fp"></span></h2>
+          <p class="ss-id-database-desc">Face recognition database used for performer identification and duplicate detection.</p>
+
+          <div class="ss-id-database-stats">
+            <div class="ss-db-stat">
+              <span class="ss-db-stat-value">${dbVersion}</span>
+              <span class="ss-db-stat-label">Version</span>
+              ${updateInfo && updateInfo.update_available ? `
+                <div class="ss-update-badge" id="ss-update-badge">
+                  <span class="ss-update-badge-text">v${updateInfo.latest_version} available</span>
+                </div>
+              ` : ''}
+            </div>
+            <div class="ss-db-stat">
+              <span class="ss-db-stat-value">${performerCount.toLocaleString()}</span>
+              <span class="ss-db-stat-label">Performers</span>
+            </div>
+            <div class="ss-db-stat">
+              <span class="ss-db-stat-value">${faceCount.toLocaleString()}</span>
+              <span class="ss-db-stat-label">Faces</span>
+            </div>
+            ${tattooCount > 0 ? `
+            <div class="ss-db-stat">
+              <span class="ss-db-stat-value">${tattooCount.toLocaleString()}</span>
+              <span class="ss-db-stat-label">Tattoos</span>
+            </div>
+            ` : ''}
+            <div class="ss-db-stat">
+              <span class="ss-db-stat-value">${fpCoverage.toLocaleString()}</span>
+              <span class="ss-db-stat-label">Fingerprints</span>
+            </div>
+            ${fpNeedsRefresh > 0 ? `
+            <div class="ss-db-stat ss-db-stat-warning">
+              <span class="ss-db-stat-value">${fpNeedsRefresh.toLocaleString()}</span>
+              <span class="ss-db-stat-label">Need Refresh</span>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <div class="ss-dashboard-types">
+          <div class="ss-section-header">
+            <h2>Recommendations</h2>
+            <span class="ss-count-badge">${counts.total_pending}</span>
+            <span id="ss-info-types"></span>
+          </div>
+          <div class="ss-type-cards"></div>
+        </div>
+      `;
+
+      // Add info icons
+      const fpInfoSlot = content.querySelector('#ss-info-fp');
+      if (fpInfoSlot) fpInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Identification Database', HELP_FINGERPRINTS)));
+      const typesInfoSlot = content.querySelector('#ss-info-types');
+      if (typesInfoSlot) typesInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Recommendations', HELP_REC_TYPES)));
+
+      // Render type cards
+      const typeCards = content.querySelector('.ss-type-cards');
+
+      // Ensure all types are shown, even if no counts yet
+      const allTypes = Object.keys(typeConfigs);
+      for (const type of allTypes) {
+        const config = typeConfigs[type];
+        const typeCounts = counts.counts?.[type] || {};
         const pending = typeCounts.pending || 0;
         const resolved = typeCounts.resolved || 0;
         const dismissed = typeCounts.dismissed || 0;
@@ -507,309 +423,56 @@
         const card = SS.createElement('div', {
           className: 'ss-type-card',
           innerHTML: `
-            <div class="ss-type-icon">${config.icon}</div>
-            <div class="ss-type-info">
-              <h3>${config.title}</h3>
-              <p>${config.description}</p>
-              <div class="ss-type-counts">
-                <span class="ss-count-pending">${pending} pending</span>
-                <span class="ss-count-resolved">${resolved} resolved</span>
-                <span class="ss-count-dismissed">${dismissed} dismissed</span>
+            <div class="ss-type-card-header">
+              <span class="ss-type-icon">${config.icon}</span>
+              <div class="ss-type-title-block">
+                <h3>${config.title}</h3>
+                <p>${config.description}</p>
               </div>
             </div>
-            <button class="ss-btn ss-btn-primary" data-type="${type}">
-              View All
-            </button>
+            <div class="ss-type-card-footer">
+              <div class="ss-type-counts">
+                <div class="ss-count-item ss-count-pending">
+                  <span class="ss-count-number">${pending}</span>
+                  <span class="ss-count-label">pending</span>
+                </div>
+                <div class="ss-count-item ss-count-resolved">
+                  <span class="ss-count-number">${resolved}</span>
+                  <span class="ss-count-label">resolved</span>
+                </div>
+                <div class="ss-count-item ss-count-dismissed">
+                  <span class="ss-count-number">${dismissed}</span>
+                  <span class="ss-count-label">dismissed</span>
+                </div>
+              </div>
+              <button class="ss-btn ss-btn-secondary ss-btn-sm" data-type="${type}">
+                View All
+              </button>
+            </div>
           `,
         });
 
         card.querySelector('button').addEventListener('click', () => {
           currentState.type = type;
           currentState.view = 'list';
-          renderCurrentView(container);
+          renderCurrentView(mainContainer);
         });
 
         typeCards.appendChild(card);
       }
 
-      // Render analysis buttons with progress support
-      const analysisButtons = container.querySelector('.ss-analysis-buttons');
-      const buttonOrder = ['duplicate_performer', 'duplicate_scenes', 'duplicate_scene_files', 'upstream_performer_changes', 'upstream_tag_changes'];
-      const sortedTypes = [...analysisTypes.types].sort((a, b) => {
-        const aIdx = buttonOrder.indexOf(a.type);
-        const bIdx = buttonOrder.indexOf(b.type);
-        return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-      });
-
-      // Track polling intervals for analysis progress (synced to module-level for cleanup)
-      const analysisPollers = _activeAnalysisPollers;
-
-      function renderAnalysisProgress(cardEl, run) {
-        const processed = run.items_processed || 0;
-        const total = run.items_total || 0;
-        const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
-        const label = total > 0
-          ? `Processing ${processed} / ${total} items...`
-          : 'Starting analysis...';
-
-        cardEl.querySelector('.ss-analysis-progress').innerHTML = `
-          <div class="ss-progress-bar-container" style="margin:8px 0 4px;">
-            <div class="ss-progress-bar" style="width:${pct}%;">
-              <span class="ss-progress-pct">${pct}%</span>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--ss-text-secondary,#aaa);">${label}</div>
+    } catch (e) {
+      // Update status to show disconnected
+      const statusArea = document.getElementById('ss-status-area');
+      if (statusArea) {
+        statusArea.className = 'ss-app-header-right disconnected';
+        statusArea.innerHTML = `
+          <span class="ss-status-dot"></span>
+          <span class="ss-status-label">Disconnected</span>
         `;
       }
 
-      function startAnalysisPolling(type, runId, cardEl) {
-        if (analysisPollers[type]) clearInterval(analysisPollers[type]);
-        analysisPollers[type] = setInterval(async () => {
-          // Bail out if card has been removed from DOM (navigation away)
-          if (!document.contains(cardEl)) {
-            clearInterval(analysisPollers[type]);
-            delete analysisPollers[type];
-            return;
-          }
-          try {
-            const runs = await RecommendationsAPI.getAnalysisRuns(type, 1);
-            if (!runs || !runs.length) return;
-            const run = runs[0];
-            if (run.status === 'running') {
-              renderAnalysisProgress(cardEl, run);
-            } else {
-              // Completed or failed
-              clearInterval(analysisPollers[type]);
-              delete analysisPollers[type];
-              const progressEl = cardEl.querySelector('.ss-analysis-progress');
-              if (run.status === 'completed') {
-                progressEl.innerHTML = `
-                  <div style="font-size:13px;color:var(--ss-color-success,#4caf50);padding:4px 0;">
-                    Completed \u2014 ${run.recommendations_created} recommendation${run.recommendations_created !== 1 ? 's' : ''} created
-                  </div>
-                `;
-              } else {
-                progressEl.innerHTML = `
-                  <div style="font-size:13px;color:var(--ss-color-error,#f44336);padding:4px 0;">
-                    Failed: ${run.error_message || 'Unknown error'}
-                  </div>
-                `;
-              }
-              // Refresh dashboard after a brief pause
-              setTimeout(() => renderDashboard(container), 3000);
-            }
-          } catch (e) {
-            console.error('[Stash Sense] Error polling analysis progress:', e);
-          }
-        }, 5000);
-      }
-
-      // Fetch latest run for each type to detect already-running analyses
-      const latestRuns = {};
-      await Promise.all(sortedTypes.map(async (analysis) => {
-        try {
-          const runs = await RecommendationsAPI.getAnalysisRuns(analysis.type, 1);
-          if (runs && runs.length) latestRuns[analysis.type] = runs[0];
-        } catch (_) { /* ignore */ }
-      }));
-
-      for (const analysis of sortedTypes) {
-        const latestRun = latestRuns[analysis.type];
-        const isRunning = latestRun && latestRun.status === 'running';
-
-        const card = SS.createElement('div', {
-          className: 'ss-analysis-card',
-          innerHTML: `
-            <button class="ss-btn ss-btn-secondary ss-analysis-btn" ${isRunning ? 'disabled' : ''}>
-              <span class="ss-analysis-icon">
-                ${typeConfigs[analysis.type]?.icon || ''}
-              </span>
-              <span>Check ${typeConfigs[analysis.type]?.title || analysis.type}</span>
-            </button>
-            <div class="ss-analysis-progress"></div>
-          `,
-        });
-
-        const btn = card.querySelector('.ss-analysis-btn');
-
-        // If already running, show progress and start polling
-        if (isRunning) {
-          renderAnalysisProgress(card, latestRun);
-          startAnalysisPolling(analysis.type, latestRun.id, card);
-        }
-
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          btn.innerHTML = '<span class="ss-spinner-small"></span> Starting...';
-          try {
-            const result = await RecommendationsAPI.runAnalysis(analysis.type);
-            btn.innerHTML = `
-              <span class="ss-analysis-icon">
-                ${typeConfigs[analysis.type]?.icon || ''}
-              </span>
-              <span>Check ${typeConfigs[analysis.type]?.title || analysis.type}</span>
-            `;
-            renderAnalysisProgress(card, { items_processed: 0, items_total: 0 });
-            startAnalysisPolling(analysis.type, result.run_id, card);
-          } catch (e) {
-            btn.innerHTML = `Failed: ${e.message}`;
-            btn.classList.add('ss-btn-error');
-            btn.disabled = false;
-          }
-        });
-
-        analysisButtons.appendChild(card);
-      }
-
-      // Fingerprint generation button handler
-      const fpActionBtn = container.querySelector('#ss-fp-action-btn');
-      const fpProgressEl = container.querySelector('#ss-fp-progress');
-      const POLL_INTERVAL = 30; // seconds
-      // Use module-level references for cleanup on navigation
-      let fpPollTimeout = _activeFpPollTimeout;
-      let fpCountdownInterval = _activeFpCountdownInterval;
-      let fpCountdownValue = POLL_INTERVAL;
-
-      function startCountdown() {
-        fpCountdownValue = POLL_INTERVAL;
-        const countdownEl = fpProgressEl.querySelector('.ss-refresh-countdown');
-        const refreshEl = fpProgressEl.querySelector('#ss-fp-refresh');
-        if (refreshEl) refreshEl.style.display = 'block';
-
-        if (fpCountdownInterval) clearInterval(fpCountdownInterval);
-        fpCountdownInterval = setInterval(() => {
-          fpCountdownValue--;
-          if (countdownEl) countdownEl.textContent = fpCountdownValue;
-          if (fpCountdownValue <= 0) {
-            clearInterval(fpCountdownInterval);
-          }
-        }, 1000);
-        _activeFpCountdownInterval = fpCountdownInterval;
-      }
-
-      function stopPolling() {
-        if (fpPollTimeout) {
-          clearTimeout(fpPollTimeout);
-          fpPollTimeout = null;
-        }
-        _activeFpPollTimeout = null;
-        if (fpCountdownInterval) {
-          clearInterval(fpCountdownInterval);
-          fpCountdownInterval = null;
-        }
-        _activeFpCountdownInterval = null;
-        const refreshEl = fpProgressEl?.querySelector('#ss-fp-refresh');
-        if (refreshEl) refreshEl.style.display = 'none';
-      }
-
-      async function updateFingerprintProgress() {
-        // Bail out if our container has been removed from the DOM (navigation away)
-        if (!document.contains(fpProgressEl)) {
-          stopPolling();
-          return;
-        }
-        try {
-          const progress = await RecommendationsAPI.getFingerprintProgress();
-          const pct = Math.round(progress.progress_pct || 0);
-
-          if (progress.status === 'running' || progress.status === 'stopping') {
-            fpProgressEl.style.display = 'block';
-            fpProgressEl.querySelector('.ss-progress-text').textContent =
-              progress.current_scene_title || 'Processing...';
-            fpProgressEl.querySelector('.ss-progress-numbers').textContent =
-              `${progress.processed_scenes || 0} / ${progress.total_scenes || 0}`;
-            fpProgressEl.querySelector('.ss-progress-bar').style.width = `${pct}%`;
-            const pctEl = fpProgressEl.querySelector('.ss-progress-pct');
-            if (pctEl) pctEl.textContent = `${pct}%`;
-            fpProgressEl.querySelector('.ss-stat-success').textContent =
-              `${progress.successful || 0} done`;
-            fpProgressEl.querySelector('.ss-stat-skip').textContent =
-              `${progress.skipped || 0} skipped`;
-            fpProgressEl.querySelector('.ss-stat-fail').textContent =
-              `${progress.failed || 0} failed`;
-
-            if (progress.status === 'stopping') {
-              fpActionBtn.textContent = 'Stopping...';
-              fpActionBtn.disabled = true;
-              stopPolling();
-            } else {
-              // Schedule next poll with countdown
-              startCountdown();
-              fpPollTimeout = setTimeout(updateFingerprintProgress, POLL_INTERVAL * 1000);
-              _activeFpPollTimeout = fpPollTimeout;
-            }
-          } else {
-            // Generation finished
-            stopPolling();
-            fpActionBtn.textContent = 'Generate Fingerprints';
-            fpActionBtn.className = 'ss-btn ss-btn-primary';
-            fpActionBtn.disabled = false;
-
-            if (progress.status === 'completed') {
-              fpProgressEl.querySelector('.ss-progress-text').textContent = 'Complete!';
-              fpProgressEl.querySelector('.ss-progress-bar').style.width = '100%';
-              const pctEl = fpProgressEl.querySelector('.ss-progress-pct');
-              if (pctEl) pctEl.textContent = '100%';
-            } else if (progress.status === 'paused') {
-              fpProgressEl.querySelector('.ss-progress-text').textContent = 'Paused - can resume';
-            }
-          }
-        } catch (e) {
-          console.error('[Stash Sense] Error polling fingerprint progress:', e);
-          // Retry after interval even on error
-          startCountdown();
-          fpPollTimeout = setTimeout(updateFingerprintProgress, POLL_INTERVAL * 1000);
-          _activeFpPollTimeout = fpPollTimeout;
-        }
-      }
-
-      // Start polling if already running
-      if (fpStatus.generation_running) {
-        updateFingerprintProgress();
-      }
-
-      fpActionBtn.addEventListener('click', async () => {
-        const isRunning = fpActionBtn.textContent.includes('Stop');
-
-        if (isRunning) {
-          // Stop generation
-          fpActionBtn.disabled = true;
-          fpActionBtn.textContent = 'Stopping...';
-          stopPolling();
-          try {
-            await RecommendationsAPI.stopFingerprintGeneration();
-          } catch (e) {
-            console.error('[Stash Sense] Error stopping generation:', e);
-          }
-        } else {
-          // Start generation
-          fpActionBtn.disabled = true;
-          fpActionBtn.textContent = 'Starting...';
-          try {
-            await RecommendationsAPI.startFingerprintGeneration({ refreshOutdated: true });
-            fpActionBtn.textContent = 'Stop Generation';
-            fpActionBtn.className = 'ss-btn ss-btn-danger';
-            fpActionBtn.disabled = false;
-            fpProgressEl.style.display = 'block';
-
-            // Start polling with countdown
-            stopPolling();
-            updateFingerprintProgress();
-          } catch (e) {
-            fpActionBtn.textContent = 'Generate Fingerprints';
-            fpActionBtn.className = 'ss-btn ss-btn-primary';
-            fpActionBtn.disabled = false;
-            console.error('[Stash Sense] Error starting generation:', e);
-            showConfirmModal('Failed to start fingerprint generation: ' + e.message, () => {});
-          }
-        }
-      });
-
-    } catch (e) {
-      container.innerHTML = `
-        <div class="ss-dashboard-header">
-          <h1>Stash Sense Recommendations</h1>
-        </div>
+      content.innerHTML = `
         <div class="ss-error-state">
           <div class="ss-error-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
@@ -819,9 +482,11 @@
           <h2>Connection Error</h2>
           <p>${e.message}</p>
           <p class="ss-error-hint">Make sure the Stash Sense sidecar is running and configured correctly.</p>
-          <button class="ss-btn ss-btn-primary" onclick="location.reload()">Retry</button>
+          <button class="ss-btn ss-btn-primary" id="ss-retry-btn">Retry</button>
         </div>
       `;
+      const retryBtn = content.querySelector('#ss-retry-btn');
+      if (retryBtn) retryBtn.addEventListener('click', () => location.reload());
     }
   }
 
@@ -830,6 +495,7 @@
   async function renderList(container) {
     const typeConfigs = {
       duplicate_performer: 'Duplicate Performers',
+      duplicate_scenes: 'Duplicate Scenes',
       duplicate_scene_files: 'Duplicate Scene Files',
       upstream_performer_changes: 'Upstream Performer Changes',
       upstream_tag_changes: 'Upstream Tag Changes',
@@ -1441,47 +1107,34 @@
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) overlay.remove();
     });
+
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        overlay.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
   }
 
   // ==================== Help System ====================
 
   const HELP_FINGERPRINTS = `
     <div class="ss-help-section">
-      <h4>What are Fingerprints?</h4>
-      <p>Scene fingerprints are face recognition data extracted from video frames. Each fingerprint records which performers' faces were detected in a scene.</p>
+      <h4>What is the Identification Database?</h4>
+      <p>The identification database contains face embeddings for known performers across multiple stash-box sources. It powers performer identification and face-based duplicate detection.</p>
     </div>
     <div class="ss-help-section">
-      <h4>Why Generate Them?</h4>
-      <p>Fingerprints enable face-based duplicate scene detection and performer identification. Without them, duplicate scene detection relies only on metadata matching.</p>
+      <h4>What are Fingerprints?</h4>
+      <p>Scene fingerprints are face recognition data extracted from your local video files. Each fingerprint records which performers' faces were detected in a scene. Generate them from the Operations tab.</p>
     </div>
     <div class="ss-help-section">
       <h4>What Does "Need Refresh" Mean?</h4>
       <p>The face recognition database was updated with improved data (better face alignment, more performers). Scenes with outdated fingerprints should be regenerated for improved accuracy.</p>
     </div>
-    <div class="ss-help-section">
-      <h4>How Generation Works</h4>
-      <p>Analyzes multiple frames from each scene, detects faces, and matches them against a database of known performers. Results are stored locally for fast lookups during analysis.</p>
-    </div>
   `;
 
-  const HELP_ACTION_RUNNER = `
-    <div class="ss-help-section">
-      <h4>Check Duplicate Performers</h4>
-      <p>Finds performers in your library that share the same StashDB ID on the same endpoint. These are definite duplicates that can be merged.</p>
-    </div>
-    <div class="ss-help-section">
-      <h4>Check Duplicate Scenes</h4>
-      <p>Compares scenes using multiple signals &mdash; StashDB IDs (exact match), face fingerprints (who appears), and metadata (title, date, duration). Higher confidence means more signals agree.</p>
-    </div>
-    <div class="ss-help-section">
-      <h4>Check Duplicate Scene Files</h4>
-      <p>Finds scenes that have multiple video files attached. Scores each file by resolution, bitrate, and codec to suggest which to keep. Helps reclaim storage space.</p>
-    </div>
-    <div class="ss-help-section">
-      <h4>Check Upstream Performer Changes</h4>
-      <p>Compares your local performer data against StashDB using a 3-way diff (local vs upstream vs last-synced snapshot). Shows only meaningful changes, filtering out false positives from formatting differences.</p>
-    </div>
-  `;
+  // HELP_ACTION_RUNNER removed - actions now live on Operations tab
 
   const HELP_REC_TYPES = `
     <div class="ss-help-section">
@@ -1540,6 +1193,7 @@
     const btn = document.createElement('button');
     btn.className = 'ss-info-btn';
     btn.title = 'Help';
+    btn.setAttribute('aria-label', 'Help');
     btn.textContent = 'i';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1562,6 +1216,7 @@
     titleEl.textContent = title;
     const closeBtn = document.createElement('button');
     closeBtn.style.cssText = 'background:none;border:none;font-size:1.5rem;color:#888;cursor:pointer;padding:0;line-height:1;';
+    closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '\u00d7';
     closeBtn.addEventListener('click', () => overlay.remove());
     header.appendChild(titleEl);
@@ -2555,18 +2210,19 @@
   // ==================== View Router ====================
 
   function renderCurrentView(container) {
+    const content = container.querySelector('.ss-dashboard-content') || container;
     switch (currentState.view) {
       case 'dashboard':
-        renderDashboard(container);
+        renderDashboard(container, content);
         break;
       case 'list':
-        renderList(container);
+        renderList(content);
         break;
       case 'detail':
-        renderDetail(container);
+        renderDetail(content);
         break;
       default:
-        renderDashboard(container);
+        renderDashboard(container, content);
     }
   }
 
@@ -2642,9 +2298,6 @@
     SS.onNavigate((route) => {
       if (route.type === 'plugin') {
         setTimeout(injectPluginPage, 300);
-      } else {
-        // Clean up all polling when navigating away from plugin page
-        cleanupAllPollers();
       }
     });
 

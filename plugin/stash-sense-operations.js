@@ -415,9 +415,12 @@
     if (document.getElementById('ss-operations')) return;
     if (tabBar.querySelector('[data-tab="operations"]')) return;
 
+    // Check if we should start on this tab
+    const initialTab = SS.getTabFromUrl();
+
     // Create Operations tab button -- insert BEFORE Settings tab
     const operationsTab = SS.createElement('button', {
-      className: 'ss-page-tab',
+      className: `ss-page-tab ${initialTab === 'operations' ? 'active' : ''}`,
       textContent: 'Operations',
       attrs: { 'data-tab': 'operations' },
     });
@@ -429,9 +432,9 @@
       tabBar.appendChild(operationsTab);
     }
 
-    // Create operations panel (hidden by default)
+    // Create operations panel
     const operationsPanel = createOperationsContainer();
-    operationsPanel.style.display = 'none';
+    operationsPanel.style.display = initialTab === 'operations' ? '' : 'none';
     operationsPanel.setAttribute('data-panel', 'operations');
 
     // Insert before settings panel
@@ -442,11 +445,29 @@
       dashboard.appendChild(operationsPanel);
     }
 
+    // If starting on operations tab, hide other panels and lazy load
+    if (initialTab === 'operations') {
+      // Deactivate other tabs
+      tabBar.querySelectorAll('.ss-page-tab').forEach(t => {
+        if (t !== operationsTab) t.classList.remove('active');
+      });
+      // Hide other panels
+      const recPanel = dashboard.querySelector('.ss-page-panel[data-panel="recommendations"]');
+      if (recPanel) recPanel.style.display = 'none';
+      if (settingsPanel) settingsPanel.style.display = 'none';
+      // Load content
+      operationsPanel.dataset.loaded = 'true';
+      renderOperations(operationsPanel);
+    }
+
     // Patch the existing tab click handler to include operations
     tabBar.addEventListener('click', (e) => {
       const btn = e.target.closest('.ss-page-tab');
       if (!btn) return;
       const tabName = btn.dataset.tab;
+
+      // Update URL
+      SS.setTabInUrl(tabName);
 
       // Show/hide operations panel
       operationsPanel.style.display = tabName === 'operations' ? '' : 'none';

@@ -673,25 +673,24 @@
     // Check if settings tab already exists
     if (document.getElementById('ss-settings')) return;
 
-    // Find the tab bar (created by recommendations module)
-    // The recommendations module creates tabs at the top of the dashboard
-    // We need to add a "Settings" tab to it
     const dashboard = existing;
 
     // Look for or create a top-level tab bar
     let tabBar = dashboard.querySelector('.ss-page-tabs');
     if (!tabBar) {
+      const initialTab = SS.getTabFromUrl();
+
       // Create page-level tabs (Recommendations | Settings)
       tabBar = SS.createElement('div', { className: 'ss-page-tabs' });
 
       const recTab = SS.createElement('button', {
-        className: 'ss-page-tab active',
+        className: `ss-page-tab ${initialTab === 'recommendations' ? 'active' : ''}`,
         textContent: 'Recommendations',
         attrs: { 'data-tab': 'recommendations' },
       });
 
       const settingsTab = SS.createElement('button', {
-        className: 'ss-page-tab',
+        className: `ss-page-tab ${initialTab === 'settings' ? 'active' : ''}`,
         textContent: 'Settings',
         attrs: { 'data-tab': 'settings' },
       });
@@ -699,27 +698,40 @@
       tabBar.appendChild(recTab);
       tabBar.appendChild(settingsTab);
 
-      // Insert tab bar at the top of the dashboard
-      dashboard.insertBefore(tabBar, dashboard.firstChild);
+      // Insert tab bar after the app header
+      const appHeader = dashboard.querySelector('.ss-app-header');
+      if (appHeader) {
+        appHeader.after(tabBar);
+      } else {
+        dashboard.insertBefore(tabBar, dashboard.firstChild);
+      }
 
-      // Create settings panel (hidden by default)
+      // Create settings panel
       const settingsPanel = createSettingsContainer();
-      settingsPanel.style.display = 'none';
+      settingsPanel.style.display = initialTab === 'settings' ? '' : 'none';
       dashboard.appendChild(settingsPanel);
 
-      // Wrap existing content as the "recommendations" panel
+      // Wrap content (skip app header) as the "recommendations" panel
       const recContent = SS.createElement('div', {
         className: 'ss-page-panel',
         attrs: { 'data-panel': 'recommendations' },
       });
-      // Move all children except tab bar and settings panel into rec panel
       const children = Array.from(dashboard.children);
       for (const child of children) {
-        if (child !== tabBar && child !== settingsPanel) {
+        if (child !== tabBar && child !== settingsPanel && !child.classList.contains('ss-app-header')) {
           recContent.appendChild(child);
         }
       }
       dashboard.insertBefore(recContent, settingsPanel);
+
+      // Show/hide based on initial tab
+      recContent.style.display = initialTab === 'recommendations' ? '' : 'none';
+
+      // Lazy load settings if starting on that tab
+      if (initialTab === 'settings' && !settingsPanel.dataset.loaded) {
+        settingsPanel.dataset.loaded = 'true';
+        renderSettings(settingsPanel);
+      }
 
       // Tab switching
       tabBar.addEventListener('click', (e) => {
@@ -731,6 +743,9 @@
         // Update active state
         tabBar.querySelectorAll('.ss-page-tab').forEach(t => t.classList.remove('active'));
         btn.classList.add('active');
+
+        // Update URL
+        SS.setTabInUrl(tabName);
 
         // Show/hide panels
         recContent.style.display = tabName === 'recommendations' ? '' : 'none';
