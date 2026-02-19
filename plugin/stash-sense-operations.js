@@ -33,6 +33,7 @@
     async cancel(jobId) { return apiCall('queue_cancel', { job_id: jobId }); },
     async stop(jobId) { return apiCall('queue_stop', { job_id: jobId }); },
     async retry(jobId) { return apiCall('queue_retry', { job_id: jobId }); },
+    async clearHistory() { return apiCall('queue_clear_history'); },
   };
 
   // ==================== State ====================
@@ -230,8 +231,11 @@
 
     // Meta row
     const metaRow = SS.createElement('div', { className: 'ss-job-meta' });
+    const triggeredByDisplay = job.triggered_by
+      ? job.triggered_by.charAt(0).toUpperCase() + job.triggered_by.slice(1)
+      : 'Unknown';
     metaRow.appendChild(SS.createElement('span', {
-      textContent: `Triggered by ${job.triggered_by}`,
+      textContent: `Triggered by ${triggeredByDisplay}`,
     }));
     if (job.started_at) {
       const elapsed = getElapsed(job.started_at);
@@ -249,24 +253,50 @@
 
     // Action buttons
     const actions = SS.createElement('div', { className: 'ss-job-actions' });
+
+    function actionHandler(button, action, label, pendingLabel) {
+      return async () => {
+        button.disabled = true;
+        button.textContent = pendingLabel;
+        try {
+          await action();
+          const container = button.closest('#ss-operations');
+          if (container) await refreshContent(container);
+        } catch (err) {
+          button.textContent = 'Error';
+          setTimeout(() => { button.textContent = label; button.disabled = false; }, 2000);
+        }
+      };
+    }
+
     if (job.status === 'running') {
-      actions.appendChild(SS.createElement('button', {
+      const btn = SS.createElement('button', {
         className: 'ss-btn ss-btn-danger ss-btn-sm',
         textContent: 'Stop',
-        events: { click: () => QueueAPI.stop(job.id) },
-      }));
+      });
+      btn.addEventListener('click', actionHandler(btn, () => QueueAPI.stop(job.id), 'Stop', 'Stopping\u2026'));
+      actions.appendChild(btn);
+    } else if (job.status === 'stopping') {
+      const btn = SS.createElement('button', {
+        className: 'ss-btn ss-btn-danger ss-btn-sm',
+        textContent: 'Force Cancel',
+      });
+      btn.addEventListener('click', actionHandler(btn, () => QueueAPI.cancel(job.id), 'Force Cancel', 'Cancelling\u2026'));
+      actions.appendChild(btn);
     } else if (job.status === 'queued') {
-      actions.appendChild(SS.createElement('button', {
+      const btn = SS.createElement('button', {
         className: 'ss-btn ss-btn-secondary ss-btn-sm',
         textContent: 'Cancel',
-        events: { click: () => QueueAPI.cancel(job.id) },
-      }));
+      });
+      btn.addEventListener('click', actionHandler(btn, () => QueueAPI.cancel(job.id), 'Cancel', 'Cancelling\u2026'));
+      actions.appendChild(btn);
     } else if (job.status === 'failed' || job.status === 'cancelled') {
-      actions.appendChild(SS.createElement('button', {
+      const btn = SS.createElement('button', {
         className: 'ss-btn ss-btn-primary ss-btn-sm',
         textContent: 'Retry',
-        events: { click: () => QueueAPI.retry(job.id) },
-      }));
+      });
+      btn.addEventListener('click', actionHandler(btn, () => QueueAPI.retry(job.id), 'Retry', 'Retrying\u2026'));
+      actions.appendChild(btn);
     }
     if (actions.children.length > 0) {
       card.appendChild(actions);
@@ -277,6 +307,8 @@
 
   function renderHistory(container, jobs) {
     const section = SS.createElement('div', { className: 'ss-operations-section' });
+
+    const headerRow = SS.createElement('div', { className: 'ss-setting-row-header' });
 
     const toggle = SS.createElement('h2', {
       className: 'ss-collapsible-header',
@@ -289,12 +321,35 @@
     });
     toggle.textContent = `History (${jobs.length})`;
     toggle.classList.add('ss-collapsed');
-    section.appendChild(toggle);
+    headerRow.appendChild(toggle);
+
+    const clearBtn = SS.createElement('button', {
+      className: 'ss-btn ss-btn-secondary ss-btn-sm',
+      textContent: 'Clear History',
+      events: {
+        click: async (e) => {
+          e.stopPropagation();
+          const button = e.currentTarget;
+          button.disabled = true;
+          button.textContent = 'Clearing...';
+          try {
+            await QueueAPI.clearHistory();
+            await refreshContent(container);
+          } catch (err) {
+            button.textContent = 'Error';
+            setTimeout(() => { button.textContent = 'Clear History'; button.disabled = false; }, 2000);
+          }
+        },
+      },
+    });
+    headerRow.appendChild(clearBtn);
+
+    section.appendChild(headerRow);
 
     const list = SS.createElement('div', {
       className: 'ss-job-list',
-      styles: { display: 'none' },
     });
+    list.style.display = 'none';
     for (const job of jobs.slice(0, 20)) {
       list.appendChild(renderJobCard(job, false));
     }

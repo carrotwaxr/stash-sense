@@ -219,6 +219,26 @@ class TestRequeueInterruptedJobs:
         count = db.requeue_interrupted_jobs()
         assert count == 0
 
+    def test_requeue_clears_stale_fields(self, db):
+        """Re-queued jobs should have stale progress/timing fields cleared."""
+        job_id = db.submit_job("upstream_sync", priority=10, triggered_by="manual")
+        db.start_job(job_id)
+        db.update_job_progress(job_id, items_processed=271, items_total=271)
+        # Simulate completed_at being set (e.g. from partial state)
+        with db._connection() as conn:
+            conn.execute(
+                "UPDATE job_queue SET completed_at = datetime('now') WHERE id = ?",
+                (job_id,),
+            )
+
+        db.requeue_interrupted_jobs()
+        job = db.get_job(job_id)
+        assert job["status"] == "queued"
+        assert job["started_at"] is None
+        assert job["completed_at"] is None
+        assert job["items_processed"] == 0
+        assert job["items_total"] is None
+
 
 class TestGetJobs:
     def test_get_jobs_filtered_by_status(self, db):
@@ -289,6 +309,44 @@ class TestUpsertJobSchedule:
         assert db.get_job_schedule("nonexistent") is None
 
 
+class TestUpsertJobScheduleNextRun:
+    def test_enabling_sets_next_run_at(self, db):
+        """Enabling a schedule should set next_run_at = now + interval."""
+        db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=6.0, priority=10)
+        schedule = db.get_job_schedule("upstream_sync")
+        assert schedule["next_run_at"] is not None
+        last = datetime.fromisoformat(schedule["next_run_at"])
+        now = datetime.utcnow()
+        diff = (last - now).total_seconds()
+        # Should be approximately 6 hours in the future
+        assert abs(diff - 6 * 3600) < 10
+
+    def test_disabling_clears_next_run_at(self, db):
+        """Disabling a schedule should clear next_run_at."""
+        db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=6.0, priority=10)
+        db.upsert_job_schedule("upstream_sync", enabled=False, interval_hours=6.0, priority=10)
+        schedule = db.get_job_schedule("upstream_sync")
+        assert schedule["next_run_at"] is None
+
+    def test_re_enabling_preserves_existing_next_run(self, db):
+        """Re-enabling an already-enabled schedule should not reset next_run_at."""
+        db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=6.0, priority=10)
+        original = db.get_job_schedule("upstream_sync")["next_run_at"]
+        # Update interval but keep enabled
+        db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=12.0, priority=10)
+        updated = db.get_job_schedule("upstream_sync")
+        assert updated["next_run_at"] == original
+        assert updated["interval_hours"] == 12.0
+
+    def test_enabling_after_disabled_sets_new_next_run(self, db):
+        """Enabling a previously disabled schedule should set a new next_run_at."""
+        db.upsert_job_schedule("upstream_sync", enabled=False, interval_hours=6.0, priority=10)
+        assert db.get_job_schedule("upstream_sync")["next_run_at"] is None
+        db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=6.0, priority=10)
+        schedule = db.get_job_schedule("upstream_sync")
+        assert schedule["next_run_at"] is not None
+
+
 class TestGetAllJobSchedules:
     def test_get_all_schedules(self, db):
         db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=6.0, priority=10)
@@ -334,11 +392,13 @@ class TestGetDueSchedules:
         assert len(due) == 1
         assert due[0]["type"] == "upstream_sync"
 
-    def test_get_due_schedules_includes_null_next_run(self, db):
+    def test_get_due_schedules_enabled_has_future_next_run(self, db):
+        """Enabling a schedule sets next_run_at in the future, so it's not immediately due."""
         db.upsert_job_schedule("upstream_sync", enabled=True, interval_hours=6.0, priority=10)
-        # next_run_at is NULL by default
+        schedule = db.get_job_schedule("upstream_sync")
+        assert schedule["next_run_at"] is not None
         due = db.get_due_schedules()
-        assert len(due) == 1
+        assert len(due) == 0
 
     def test_disabled_schedule_not_due(self, db):
         db.upsert_job_schedule("upstream_sync", enabled=False, interval_hours=6.0, priority=10)

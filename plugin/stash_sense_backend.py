@@ -339,6 +339,8 @@ def handle_queue(mode, args, sidecar_url):
         return sidecar_post(sidecar_url, f"/queue/{args['job_id']}/stop")
     elif mode == "queue_retry":
         return sidecar_post(sidecar_url, f"/queue/{args['job_id']}/retry")
+    elif mode == "queue_clear_history":
+        return sidecar_delete(sidecar_url, "/queue/history")
     elif mode == "queue_schedules":
         return sidecar_get(sidecar_url, "/queue/schedules")
     elif mode == "queue_update_schedule":

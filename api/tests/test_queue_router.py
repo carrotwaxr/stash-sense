@@ -111,3 +111,28 @@ class TestQueueRouter:
         # Infrequent tier starts at 24h
         hours_list = [i["hours"] for i in dup["allowed_intervals"]]
         assert min(hours_list) >= 24
+
+    def test_clear_history(self, client, db):
+        # Submit and cancel a job to create history
+        resp = client.post("/queue", json={"type": "duplicate_performer", "triggered_by": "user"})
+        job_id = resp.json()["job_id"]
+        client.delete(f"/queue/{job_id}")
+        # Verify it exists in cancelled state
+        resp = client.get(f"/queue/{job_id}")
+        assert resp.json()["status"] == "cancelled"
+        # Clear history
+        resp = client.delete("/queue/history")
+        assert resp.status_code == 200
+        assert "1" in resp.json()["message"]
+        # Verify job is gone
+        resp = client.get("/queue")
+        assert len(resp.json()["jobs"]) == 0
+
+    def test_clear_history_preserves_active(self, client, db):
+        """Active (queued) jobs should not be deleted by clear_history."""
+        client.post("/queue", json={"type": "duplicate_performer", "triggered_by": "user"})
+        resp = client.delete("/queue/history")
+        assert resp.status_code == 200
+        # Queued job should still exist
+        resp = client.get("/queue")
+        assert len(resp.json()["jobs"]) == 1

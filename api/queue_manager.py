@@ -72,7 +72,7 @@ class QueueManager:
         return self._db.get_jobs(**kwargs)
 
     def cancel(self, job_id: int):
-        """Cancel a queued job. Stop a running job."""
+        """Cancel a queued job. Stop a running job. Force-cancel a stopping job."""
         job = self._db.get_job(job_id)
         if not job:
             return
@@ -80,6 +80,17 @@ class QueueManager:
             self._db.cancel_job(job_id)
         elif job["status"] == "running":
             self._request_job_stop(job_id)
+        elif job["status"] == "stopping":
+            # Force-cancel: kill the task and mark as cancelled
+            task = self._running_tasks.pop(job_id, None)
+            self._running_contexts.pop(job_id, None)
+            if task and not task.done():
+                task.cancel()
+            self._db.cancel_job(job_id)
+
+    def clear_history(self) -> int:
+        """Delete all terminal jobs (completed/failed/cancelled). Returns count deleted."""
+        return self._db.delete_terminal_jobs()
 
     def get_status(self) -> dict:
         """Get queue summary counts."""
@@ -114,11 +125,10 @@ class QueueManager:
             existing = self._db.get_job_schedule(type_id)
             if existing:
                 continue
-            interval = defn.default_interval_hours or 0
             self._db.upsert_job_schedule(
                 type=type_id,
-                enabled=interval > 0,
-                interval_hours=float(interval) if interval else 168.0,
+                enabled=False,
+                interval_hours=float(defn.default_interval_hours or 168),
                 priority=int(defn.default_priority),
             )
 
@@ -174,9 +184,14 @@ class QueueManager:
                 task.cancel()
             for job_id in list(self._running_tasks.keys()):
                 job = self._db.get_job(job_id)
-                if job and job["status"] == "stopping":
-                    self._db.set_job_status(job_id, "queued")
-                    logger.warning(f"Job {job_id} ({job['type']}) re-queued for resume")
+                if job and job["status"] in ("running", "stopping"):
+                    # Only re-queue if the job has a cursor (incomplete work)
+                    if job.get("cursor"):
+                        self._db.set_job_status(job_id, "queued")
+                        logger.warning(f"Job {job_id} ({job['type']}) re-queued for resume")
+                    else:
+                        self._db.complete_job(job_id)
+                        logger.warning(f"Job {job_id} ({job['type']}) completed during shutdown")
         self._running_tasks.clear()
         self._running_contexts.clear()
 
@@ -249,11 +264,13 @@ class QueueManager:
             job_instance = self._create_job_instance(type_id)
             cursor = job_row.get("cursor")
             final_cursor = await job_instance.run(ctx, cursor=cursor)
-            job = self._db.get_job(job_id)
-            if job and job["status"] == "stopping":
+            if final_cursor is not None:
+                # Job interrupted mid-work, wants to resume from cursor
                 self._db.set_job_status(job_id, "queued")
-                logger.warning(f"Job {job_id} ({type_id}) yielded, re-queued")
-            elif job and job["status"] == "running":
+                self._db.update_job_progress(job_id, cursor=final_cursor)
+                logger.warning(f"Job {job_id} ({type_id}) yielded, re-queued at cursor={final_cursor}")
+            else:
+                # Job finished all work — mark completed regardless of stopping status
                 self._db.complete_job(job_id)
                 logger.warning(f"Job {job_id} ({type_id}) completed")
         except Exception as e:
