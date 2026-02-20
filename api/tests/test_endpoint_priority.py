@@ -184,3 +184,113 @@ class TestPriorityAwareProcessing:
         # but it should have been processed by both endpoints (second overwrites first)
         recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
         assert len(recs) >= 1
+
+
+class TestPriorityIntegration:
+    """Integration test: entity linked to 2 endpoints, priority set,
+    verify only 1 recommendation generated from the correct endpoint."""
+
+    @pytest.fixture
+    def rec_db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.mark.asyncio
+    async def test_full_priority_flow(self, rec_db):
+        """Set priority, run analyzer, verify correct endpoint wins."""
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key1"},
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key2"},
+        ])
+
+        # Same entity on both endpoints
+        entity = {
+            "id": "42",
+            "name": "Local Name",
+            "description": "Local desc",
+            "stash_ids": [
+                {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-1"},
+                {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fb-1"},
+            ],
+        }
+        stash.get_test_entities_for_endpoint = AsyncMock(return_value=[entity])
+
+        # StashDB has a change, FansDB also has a (different) change
+        stashdb_data = {"name": "StashDB Name", "description": "desc", "updated": "2026-01-01T00:00:00Z"}
+        fansdb_data = {"name": "FansDB Name", "description": "desc", "updated": "2026-01-01T00:00:00Z"}
+
+        def get_upstream(stash_id):
+            if stash_id == "sb-1":
+                return stashdb_data
+            return fansdb_data
+
+        # Set StashDB as higher priority
+        rec_db.set_endpoint_priorities([
+            "https://stashdb.org/graphql",
+            "https://fansdb.cc/graphql",
+        ])
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_test_entity = AsyncMock(side_effect=get_upstream)
+            MockSBC.return_value = mock_sbc
+
+            analyzer = ConcreteUpstreamAnalyzer(stash, rec_db)
+            result = await analyzer.run()
+
+        recs = rec_db.get_recommendations(
+            type="upstream_test_entity_changes", status="pending"
+        )
+        assert len(recs) == 1
+        assert recs[0].details["endpoint"] == "https://stashdb.org/graphql"
+        # Verify it used StashDB's data (name changed to "StashDB Name")
+        changes = recs[0].details.get("changes", [])
+        name_change = next((c for c in changes if c["field"] == "name"), None)
+        assert name_change is not None
+        assert name_change["upstream_value"] == "StashDB Name"
+
+    @pytest.mark.asyncio
+    async def test_entity_only_on_low_priority_still_processed(self, rec_db):
+        """Entity only linked to a lower-priority endpoint should still get processed."""
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1"},
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key2"},
+        ])
+
+        # Entity only on FansDB (lower priority)
+        def get_entities(ep):
+            if ep == "https://fansdb.cc/graphql":
+                return [{
+                    "id": "99",
+                    "name": "Local Name",
+                    "description": "Local desc",
+                    "stash_ids": [
+                        {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fb-99"},
+                    ],
+                }]
+            return []  # StashDB has no entities
+
+        stash.get_test_entities_for_endpoint = AsyncMock(side_effect=get_entities)
+
+        # Set StashDB as higher priority
+        rec_db.set_endpoint_priorities([
+            "https://stashdb.org/graphql",
+            "https://fansdb.cc/graphql",
+        ])
+
+        upstream_data = {"name": "Upstream Name", "description": "desc", "updated": "2026-01-01T00:00:00Z"}
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_test_entity = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            analyzer = ConcreteUpstreamAnalyzer(stash, rec_db)
+            result = await analyzer.run()
+
+        # Should still generate a recommendation from FansDB
+        recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
+        assert len(recs) == 1
+        assert recs[0].details["endpoint"] == "https://fansdb.cc/graphql"
