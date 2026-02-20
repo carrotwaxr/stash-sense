@@ -26,12 +26,15 @@ After extraction, you should have:
 
 ```
 stash-sense-data/
-├── performers.db        # Performer metadata
-├── face_facenet.voy     # FaceNet512 embedding index
-├── face_arcface.voy     # ArcFace embedding index
-├── faces.json           # Face reference data
-├── performers.json      # Performer lookup data
-└── manifest.json        # Database version and checksums
+├── performers.db            # Performer metadata
+├── face_facenet.voy         # FaceNet512 embedding index
+├── face_arcface.voy         # ArcFace embedding index
+├── face_adaface.voy         # AdaFace IR-101 embedding index
+├── tattoo_embeddings.voy    # Tattoo embedding index
+├── faces.json               # Face reference data
+├── performers.json          # Performer lookup data
+├── tattoo_embeddings.json   # Tattoo reference data
+└── manifest.json            # Database version and checksums
 ```
 
 ---
