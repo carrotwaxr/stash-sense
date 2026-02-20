@@ -371,6 +371,71 @@ class TestUpstreamSceneAnalyzer:
         assert len(recs) == 1
         assert len(recs[0].details["performer_changes"]["added"]) == 1
 
+    @pytest.mark.asyncio
+    async def test_build_local_data_filters_stash_ids_by_endpoint(self, rec_db):
+        """_build_local_data only matches stash_ids for the current endpoint."""
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key"},
+        ])
+        # Performer has stash_ids for TWO endpoints — only fansdb should match
+        stash.get_scenes_for_endpoint = AsyncMock(return_value=[
+            {
+                "id": "1",
+                "title": "Test",
+                "date": "",
+                "details": "",
+                "director": "",
+                "code": "",
+                "urls": [],
+                "studio": None,
+                "performers": [
+                    {
+                        "id": "20",
+                        "name": "Multi-Endpoint Performer",
+                        "stash_ids": [
+                            {"endpoint": "https://stashdb.org/graphql", "stash_id": "stashdb-perf-1"},
+                            {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fansdb-perf-1"},
+                        ],
+                    }
+                ],
+                "tags": [],
+                "stash_ids": [
+                    {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fansdb-scene-1"}
+                ],
+            }
+        ])
+
+        # Upstream matches the fansdb performer ID — no changes expected
+        upstream_data = {
+            "title": "Test",
+            "details": "",
+            "date": "",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": None,
+            "tags": [],
+            "performers": [
+                {"performer": {"id": "fansdb-perf-1", "name": "Multi-Endpoint Performer"}, "as": None}
+            ],
+            "deleted": False,
+            "updated": "2025-01-15T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(stash, rec_db)
+            result = await analyzer.run()
+
+        # No recommendation — fansdb IDs match correctly
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 0
+
 
 class TestEntityCreation:
     @pytest.fixture
@@ -546,6 +611,10 @@ class TestSceneSyncIntegration:
         assert details["tag_changes"]["added"][0]["id"] == "tag-sb-2"
         # No studio change (same studio)
         assert details["studio_change"] is None
+        # Current entity IDs for merge-on-apply
+        assert details["current_performer_ids"] == ["20"]
+        assert details["current_tag_ids"] == ["30"]
+        assert details["current_studio_id"] == "10"
 
     @pytest.mark.asyncio
     async def test_no_changes_auto_resolves_stale_rec(self, mock_stash, rec_db):

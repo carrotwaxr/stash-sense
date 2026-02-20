@@ -2816,6 +2816,7 @@
           cb.checked = true;
           cb.className = 'ss-scene-perf-add-cb';
           cb.dataset.stashboxId = perf.id;
+          cb.dataset.name = perf.name || perf.id;
 
           const nameSpan = document.createElement('span');
           nameSpan.className = 'ss-scene-entity-name';
@@ -2937,6 +2938,7 @@
           cb.checked = true;
           cb.className = 'ss-scene-tag-add-cb';
           cb.dataset.stashboxId = tag.id;
+          cb.dataset.name = tag.name;
 
           const nameSpan = document.createElement('span');
           nameSpan.textContent = tag.name;
@@ -3102,7 +3104,8 @@
         fields[fieldKey] = resultVal;
       });
 
-      // 2. Collect performer IDs (checked additions from cache)
+      // 2. Validate checked entities are created, collect performer IDs
+      const uncreated = [];
       let performerIds = null;
       if (hasPerformers) {
         const addedPerfs = [];
@@ -3112,10 +3115,14 @@
           const localId = entityCache.get(cacheKey);
           if (localId) {
             addedPerfs.push(localId);
+          } else {
+            uncreated.push(`Performer: ${cb.dataset.name || stashboxId}`);
           }
         });
         if (addedPerfs.length > 0) {
-          performerIds = addedPerfs;
+          // Merge with current scene performers (SceneUpdateInput replaces all)
+          const currentIds = details.current_performer_ids || [];
+          performerIds = [...new Set([...currentIds, ...addedPerfs])];
         }
       }
 
@@ -3129,10 +3136,14 @@
           const localId = entityCache.get(cacheKey);
           if (localId) {
             addedTags.push(localId);
+          } else {
+            uncreated.push(`Tag: ${cb.dataset.name || stashboxId}`);
           }
         });
         if (addedTags.length > 0) {
-          tagIds = addedTags;
+          // Merge with current scene tags (SceneUpdateInput replaces all)
+          const currentIds = details.current_tag_ids || [];
+          tagIds = [...new Set([...currentIds, ...addedTags])];
         }
       }
 
@@ -3145,8 +3156,17 @@
           const localId = entityCache.get(cacheKey);
           if (localId) {
             studioId = localId;
+          } else {
+            uncreated.push(`Studio: ${studioChange.upstream.name || studioChange.upstream.id}`);
           }
         }
+      }
+
+      // Block apply if checked entities haven't been created yet
+      if (uncreated.length > 0) {
+        errorDiv.innerHTML = `<strong>Please create these entities first:</strong><br>${uncreated.map(e => escapeHtml(e)).join('<br>')}`;
+        errorDiv.style.display = 'block';
+        return;
       }
 
       const hasAnyChanges = Object.keys(fields).length > 0 || performerIds || tagIds || studioId;

@@ -39,10 +39,19 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
     """Detect upstream changes to scenes linked to stash-box endpoints."""
 
     type = "upstream_scene_changes"
+    _current_endpoint: str = ""
 
     @property
     def entity_type(self) -> str:
         return "scene"
+
+    async def _process_endpoint(
+        self, endpoint: str, api_key: str, incremental: bool,
+        skip_local_ids: set[str] | None = None,
+    ) -> tuple[int, int]:
+        """Store the current endpoint before processing for stash_id filtering."""
+        self._current_endpoint = endpoint
+        return await super()._process_endpoint(endpoint, api_key, incremental, skip_local_ids)
 
     async def _get_local_entities(self, endpoint: str) -> list[dict]:
         return await self.stash.get_scenes_for_endpoint(endpoint)
@@ -55,28 +64,33 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
 
         Maps local entity IDs to stashbox IDs via stash_ids for comparison
         with upstream data (which uses stashbox IDs natively).
+        Filters stash_ids by the current endpoint to avoid cross-endpoint mismatches.
         """
+        endpoint = self._current_endpoint
         performers = []
         for p in (entity.get("performers") or []):
             perf_stash_id = None
             for sid in (p.get("stash_ids") or []):
-                perf_stash_id = sid["stash_id"]
-                break
+                if sid["endpoint"] == endpoint:
+                    perf_stash_id = sid["stash_id"]
+                    break
             if perf_stash_id:
                 performers.append({"id": perf_stash_id, "name": p.get("name"), "as": None})
 
         tags = []
         for t in (entity.get("tags") or []):
             for sid in (t.get("stash_ids") or []):
-                tags.append({"id": sid["stash_id"], "name": t.get("name")})
-                break
+                if sid["endpoint"] == endpoint:
+                    tags.append({"id": sid["stash_id"], "name": t.get("name")})
+                    break
 
         studio = None
         local_studio = entity.get("studio")
         if local_studio:
             for sid in (local_studio.get("stash_ids") or []):
-                studio = {"id": sid["stash_id"], "name": local_studio.get("name")}
-                break
+                if sid["endpoint"] == endpoint:
+                    studio = {"id": sid["stash_id"], "name": local_studio.get("name")}
+                    break
 
         urls = entity.get("urls") or []
         if isinstance(urls, str):
@@ -134,6 +148,18 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
 
         The `changes` param is a dict from diff_scene_fields (not a list like other entities).
         """
+        # Extract current local entity IDs so the UI can merge (not replace) on apply
+        current_performer_ids = [
+            str(p["id"]) for p in (local_entity.get("performers") or [])
+        ]
+        current_tag_ids = [
+            str(t["id"]) for t in (local_entity.get("tags") or [])
+        ]
+        current_studio_id = None
+        local_studio = local_entity.get("studio")
+        if local_studio:
+            current_studio_id = str(local_studio["id"])
+
         details = {
             "endpoint": endpoint,
             "endpoint_name": endpoint_name,
@@ -141,12 +167,12 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
             "scene_id": str(local_entity["id"]),
             "scene_name": local_entity.get("title", ""),
             "upstream_updated_at": updated_at,
+            "current_performer_ids": current_performer_ids,
+            "current_tag_ids": current_tag_ids,
+            "current_studio_id": current_studio_id,
         }
-        if isinstance(changes, dict):
-            details["changes"] = changes.get("changes", [])
-            details["studio_change"] = changes.get("studio_change")
-            details["performer_changes"] = changes.get("performer_changes")
-            details["tag_changes"] = changes.get("tag_changes")
-        else:
-            details["changes"] = changes
+        details["changes"] = changes.get("changes", [])
+        details["studio_change"] = changes.get("studio_change")
+        details["performer_changes"] = changes.get("performer_changes")
+        details["tag_changes"] = changes.get("tag_changes")
         return details
