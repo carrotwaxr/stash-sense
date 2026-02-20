@@ -1135,14 +1135,6 @@ class RecommendationsDB:
         """Set the endpoint priority order. Index 0 = highest priority."""
         self.set_user_setting("endpoint_priorities", endpoints)
 
-    def get_endpoint_priority_rank(self, endpoint: str) -> int | None:
-        """Get the priority rank (0 = highest) of an endpoint, or None if unranked."""
-        priorities = self.get_endpoint_priorities()
-        try:
-            return priorities.index(endpoint)
-        except ValueError:
-            return None
-
     # ==================== Scene Fingerprints ====================
 
     def create_scene_fingerprint(

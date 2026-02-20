@@ -295,9 +295,12 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
             if latest_updated_at is None or (updated_at and updated_at > latest_updated_at):
                 latest_updated_at = updated_at
 
-            # In incremental mode, skip entities not updated since last run
+            # In incremental mode, skip entities not updated since last run.
+            # Still add to skip_local_ids so lower-priority endpoints don't re-process.
             if watermark and updated_at and updated_at <= watermark:
                 skipped += 1
+                if skip_local_ids is not None:
+                    skip_local_ids.add(local_id)
                 continue
 
             if self._is_upstream_deleted(up):

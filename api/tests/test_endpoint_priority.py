@@ -30,15 +30,11 @@ class TestEndpointPriority:
         db.set_endpoint_priorities(["https://b.com/graphql", "https://a.com/graphql"])
         assert db.get_endpoint_priorities() == ["https://b.com/graphql", "https://a.com/graphql"]
 
-    def test_get_endpoint_priority_rank(self, db):
-        """Priority rank returns 0-indexed position, or None if not in list."""
-        db.set_endpoint_priorities([
-            "https://stashdb.org/graphql",
-            "https://fansdb.cc/graphql",
-        ])
-        assert db.get_endpoint_priority_rank("https://stashdb.org/graphql") == 0
-        assert db.get_endpoint_priority_rank("https://fansdb.cc/graphql") == 1
-        assert db.get_endpoint_priority_rank("https://unknown.com/graphql") is None
+    def test_empty_list_clears_priorities(self, db):
+        """Setting an empty list clears any previously stored priorities."""
+        db.set_endpoint_priorities(["https://a.com/graphql"])
+        db.set_endpoint_priorities([])
+        assert db.get_endpoint_priorities() == []
 
 
 from httpx import AsyncClient, ASGITransport

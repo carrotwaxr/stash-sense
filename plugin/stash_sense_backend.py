@@ -69,7 +69,7 @@ def main():
             result = {"error": f"Unknown settings mode: {mode}"}
     elif mode.startswith("queue_"):
         result = handle_queue(mode, args, sidecar_url)
-    elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_"):
+    elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_") or mode.startswith("endpoint_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
             result = {"error": f"Unknown recommendations mode: {mode}"}
