@@ -47,6 +47,33 @@ def get_stash_client() -> StashClientUnified:
     return stash_client
 
 
+# --- Entity name cache for alias dedup ---
+_entity_name_cache: dict[str, set[str]] = {}
+_entity_name_cache_loaded: dict[str, bool] = {}
+
+
+async def _get_entity_names(entity_type: str) -> set[str]:
+    """Get cached set of all entity primary names (lowercased) for cross-entity dedup."""
+    if not _entity_name_cache_loaded.get(entity_type):
+        stash = get_stash_client()
+        if entity_type == "tags":
+            all_entities = await stash.get_all_tags()
+        elif entity_type == "performers":
+            all_entities = await stash.get_all_performers()
+        else:
+            return set()
+        _entity_name_cache[entity_type] = {
+            e["name"].lower() for e in all_entities if e.get("name")
+        }
+        _entity_name_cache_loaded[entity_type] = True
+    return _entity_name_cache[entity_type]
+
+
+def _invalidate_entity_name_cache(entity_type: str):
+    """Invalidate cache after an entity is updated (name may have changed)."""
+    _entity_name_cache_loaded[entity_type] = False
+
+
 def save_scene_fingerprint(
     scene_id: int,
     frames_analyzed: int,
@@ -678,6 +705,42 @@ async def mark_all_fingerprints_for_refresh(confirm: bool = False):
 
 # ==================== Upstream Sync Actions ====================
 
+
+def deduplicate_aliases(
+    aliases: list[str | None],
+    entity_name: str,
+    other_entity_names: set[str],
+) -> list[str]:
+    """Remove duplicate, self-referencing, and cross-entity-conflicting aliases.
+
+    Rules (applied in order per alias):
+    1. Filter out None/empty/whitespace-only values
+    2. Remove aliases matching entity's own name (case-insensitive)
+    3. Remove duplicate aliases (case-insensitive, keep first occurrence)
+    4. Remove aliases matching another entity's primary name (case-insensitive)
+
+    Note: other_entity_names may include the entity's own name — rule 2 handles
+    that case before rule 4, so no alias is incorrectly dropped.
+    """
+    entity_name_lower = entity_name.lower().strip() if entity_name else ""
+    result = []
+    seen = set()
+    for alias in aliases:
+        if alias is None or not str(alias).strip():
+            continue
+        alias_str = str(alias).strip()
+        alias_lower = alias_str.lower()
+        if alias_lower == entity_name_lower:
+            continue
+        if alias_lower in seen:
+            continue
+        if alias_lower in other_entity_names:
+            continue
+        seen.add(alias_lower)
+        result.append(alias_str)
+    return result
+
+
 class UpdatePerformerRequest(BaseModel):
     """Request to apply upstream changes to a performer."""
     performer_id: str
@@ -783,8 +846,17 @@ async def update_performer_fields(request: UpdatePerformerRequest, entity_type: 
                 seen.add(alias.lower())
         fields["alias_list"] = merged
 
+    # --- Deduplicate aliases ---
+    if "alias_list" in fields:
+        new_name = fields.get("name") or (await get_current()).get("name", "")
+        other_names = await _get_entity_names("performers")
+        fields["alias_list"] = deduplicate_aliases(
+            fields["alias_list"], new_name, other_names
+        )
+
     try:
         result = await stash.update_performer(performer_id, **fields)
+        _invalidate_entity_name_cache("performers")
         return {"success": True, "performer": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -807,18 +879,26 @@ async def update_tag_fields(request: UpdateTagRequest):
     fields = dict(request.fields)
     tag_id = request.tag_id
 
+    # Lazy-fetch current tag data (shared by alias merge and dedup)
+    current_tag = None
+
+    async def get_current_tag():
+        nonlocal current_tag
+        if current_tag is None:
+            query = """
+            query GetTag($id: ID!) {
+              findTag(id: $id) { id name aliases }
+            }
+            """
+            data = await stash._execute(query, {"id": tag_id})
+            current_tag = data.get("findTag") or {}
+        return current_tag
+
     # Alias merge (_alias_add meta-key)
     alias_additions = fields.pop("_alias_add", None)
     if alias_additions:
-        # Fetch current tag to merge aliases
-        query = """
-        query GetTag($id: ID!) {
-          findTag(id: $id) { id aliases }
-        }
-        """
-        data = await stash._execute(query, {"id": tag_id})
-        current_tag = data.get("findTag") or {}
-        existing_aliases = current_tag.get("aliases") or []
+        tag_data = await get_current_tag()
+        existing_aliases = tag_data.get("aliases") or []
         seen = {a.lower() for a in existing_aliases}
         merged = list(existing_aliases)
         for alias in alias_additions:
@@ -827,8 +907,17 @@ async def update_tag_fields(request: UpdateTagRequest):
                 seen.add(alias.lower())
         fields["aliases"] = merged
 
+    # --- Deduplicate aliases ---
+    if "aliases" in fields:
+        new_name = fields.get("name") or (await get_current_tag()).get("name", "")
+        other_names = await _get_entity_names("tags")
+        fields["aliases"] = deduplicate_aliases(
+            fields["aliases"], new_name, other_names
+        )
+
     try:
         result = await stash.update_tag(tag_id, **fields)
+        _invalidate_entity_name_cache("tags")
         return {"success": True, "tag": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
