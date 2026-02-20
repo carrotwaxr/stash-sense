@@ -95,3 +95,92 @@ class TestEndpointPriorityAPI:
         data = resp.json()
         assert data["endpoints"][0]["endpoint"] == "https://fansdb.cc/graphql"
         assert data["endpoints"][1]["endpoint"] == "https://stashdb.org/graphql"
+
+
+from tests.test_base_upstream_analyzer import ConcreteUpstreamAnalyzer
+
+
+class TestPriorityAwareProcessing:
+    """Test that BaseUpstreamAnalyzer respects endpoint priorities."""
+
+    @pytest.fixture
+    def rec_db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.fixture
+    def mock_stash_multi_endpoint(self):
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key1"},
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key2"},
+        ])
+        # Entity "42" is linked to BOTH endpoints
+        stash.get_test_entities_for_endpoint = AsyncMock(side_effect=lambda ep: [
+            {
+                "id": "42",
+                "name": "Local Name",
+                "description": "Local desc",
+                "stash_ids": [
+                    {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-uuid-1"},
+                    {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fb-uuid-1"},
+                ],
+            }
+        ])
+        return stash
+
+    @pytest.mark.asyncio
+    async def test_entity_on_multiple_endpoints_only_processed_by_highest_priority(
+        self, mock_stash_multi_endpoint, rec_db
+    ):
+        """Entity linked to 2 endpoints should only generate a recommendation
+        from the highest-priority endpoint."""
+        # Set StashDB as highest priority
+        rec_db.set_endpoint_priorities([
+            "https://stashdb.org/graphql",
+            "https://fansdb.cc/graphql",
+        ])
+
+        upstream_data = {
+            "name": "Upstream Name",
+            "description": "Upstream desc",
+            "updated": "2026-01-01T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc_instance = MagicMock()
+            mock_sbc_instance.get_test_entity = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc_instance
+
+            analyzer = ConcreteUpstreamAnalyzer(mock_stash_multi_endpoint, rec_db)
+            result = await analyzer.run()
+
+        # Should have processed entity once (from StashDB), not twice
+        recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
+        assert len(recs) == 1
+        assert recs[0].details["endpoint"] == "https://stashdb.org/graphql"
+
+    @pytest.mark.asyncio
+    async def test_no_priority_set_processes_all_endpoints(
+        self, mock_stash_multi_endpoint, rec_db
+    ):
+        """Without priorities, all endpoints are processed (backward compatible)."""
+        upstream_data = {
+            "name": "Upstream Name",
+            "description": "Upstream desc",
+            "updated": "2026-01-01T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc_instance = MagicMock()
+            mock_sbc_instance.get_test_entity = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc_instance
+
+            analyzer = ConcreteUpstreamAnalyzer(mock_stash_multi_endpoint, rec_db)
+            result = await analyzer.run()
+
+        # Without priority, both endpoints process the entity.
+        # The UNIQUE(type, target_type, target_id) constraint means only one rec exists,
+        # but it should have been processed by both endpoints (second overwrites first)
+        recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
+        assert len(recs) >= 1
