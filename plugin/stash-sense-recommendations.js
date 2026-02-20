@@ -155,6 +155,28 @@
       return apiCall('rec_dismiss_upstream', { rec_id: recId, reason, permanent: !!permanent });
     },
 
+    async createPerformer(stashboxData, endpoint, stashboxId) {
+      return apiCall('rec_create_performer', { stashbox_data: stashboxData, endpoint, stashbox_id: stashboxId });
+    },
+
+    async createTag(stashboxData, endpoint, stashboxId) {
+      return apiCall('rec_create_tag', { stashbox_data: stashboxData, endpoint, stashbox_id: stashboxId });
+    },
+
+    async createStudio(stashboxData, endpoint, stashboxId) {
+      return apiCall('rec_create_studio', { stashbox_data: stashboxData, endpoint, stashbox_id: stashboxId });
+    },
+
+    async updateScene(sceneId, fields, performerIds, tagIds, studioId) {
+      return apiCall('rec_update_scene', {
+        scene_id: sceneId,
+        fields,
+        performer_ids: performerIds || null,
+        tag_ids: tagIds || null,
+        studio_id: studioId || null,
+      });
+    },
+
     async getFieldConfig(endpoint) {
       return apiCall('rec_get_field_config', { endpoint });
     },
@@ -237,6 +259,10 @@
       return true;
     });
   }
+
+  // Session cache for entities created during this session
+  // Maps "endpoint|stashbox_id" -> local_id
+  const entityCache = new Map();
 
   // ==================== State ====================
 
@@ -356,6 +382,11 @@
           title: 'Upstream Studio Changes',
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>`,
           description: 'Studio fields updated on StashDB since last sync',
+        },
+        upstream_scene_changes: {
+          title: 'Upstream Scene Changes',
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>`,
+          description: 'Scene fields and relationships updated on StashDB since last sync',
         },
       };
 
@@ -511,6 +542,10 @@
     const results = [];
 
     for (const rec of recommendations) {
+      // Scenes have relational fields (performers, tags, studios) that may need entity creation;
+      // skip them in batch processing — user must handle scenes individually.
+      if (rec.type === 'upstream_scene_changes') continue;
+
       const details = rec.details;
       const rawChanges = details.changes || [];
       const changes = filterRealChanges(rawChanges);
@@ -692,6 +727,7 @@
       upstream_performer_changes: 'Upstream Performer Changes',
       upstream_tag_changes: 'Upstream Tag Changes',
       upstream_studio_changes: 'Upstream Studio Changes',
+      upstream_scene_changes: 'Upstream Scene Changes',
     };
 
     container.innerHTML = `
@@ -1009,6 +1045,39 @@
       });
     }
 
+    if (rec.type === 'upstream_scene_changes') {
+      const simpleChanges = filterRealChanges(details.changes || []);
+      const perfChanges = details.performer_changes || { added: [], removed: [], alias_changed: [] };
+      const tagChanges = details.tag_changes || { added: [], removed: [] };
+      const studioChange = details.studio_change;
+
+      const parts = [];
+      if (simpleChanges.length > 0) parts.push(`${simpleChanges.length} field${simpleChanges.length !== 1 ? 's' : ''}`);
+      if (studioChange) parts.push('studio');
+      const perfTotal = perfChanges.added.length + perfChanges.removed.length + perfChanges.alias_changed.length;
+      if (perfTotal > 0) parts.push(`${perfTotal} performer${perfTotal !== 1 ? 's' : ''}`);
+      const tagTotal = tagChanges.added.length + tagChanges.removed.length;
+      if (tagTotal > 0) parts.push(`${tagTotal} tag${tagTotal !== 1 ? 's' : ''}`);
+      const summary = parts.join(', ') || 'changes detected';
+
+      return SS.createElement('div', {
+        className: 'ss-rec-card ss-rec-upstream',
+        innerHTML: `
+          <div class="ss-rec-card-header">
+            <div class="ss-rec-tag-icon">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+            </div>
+            <div class="ss-rec-card-info">
+              <div class="ss-rec-card-title">Upstream Changes: ${details.scene_name || 'Unknown'}</div>
+              <div class="ss-rec-card-subtitle">
+                ${summary} · ${details.endpoint_name || ''}
+              </div>
+            </div>
+          </div>
+        `,
+      });
+    }
+
     // Fallback for unknown types
     return SS.createElement('div', {
       className: 'ss-rec-card',
@@ -1061,6 +1130,8 @@
       await renderUpstreamTagDetail(content, rec);
     } else if (rec.type === 'upstream_studio_changes') {
       await renderUpstreamStudioDetail(content, rec);
+    } else if (rec.type === 'upstream_scene_changes') {
+      await renderUpstreamSceneDetail(content, rec);
     } else {
       content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
     }
@@ -2493,6 +2564,629 @@
         errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
         errorDiv.style.display = 'block';
         applyBtn.textContent = 'Apply Selected Changes';
+        applyBtn.disabled = false;
+      }
+    });
+  }
+
+  // ==================== Upstream Scene Detail ====================
+
+  async function renderUpstreamSceneDetail(container, rec) {
+    const details = rec.details;
+    const simpleChanges = filterRealChanges(details.changes || []);
+    const studioChange = details.studio_change;
+    const performerChanges = details.performer_changes || { added: [], removed: [], alias_changed: [] };
+    const tagChanges = details.tag_changes || { added: [], removed: [] };
+    const sceneId = details.scene_id;
+    const endpoint = details.endpoint;
+
+    const hasSimple = simpleChanges.length > 0;
+    const hasStudio = studioChange !== null && studioChange !== undefined;
+    const hasPerformers = performerChanges.added.length > 0 || performerChanges.removed.length > 0 || performerChanges.alias_changed.length > 0;
+    const hasTags = tagChanges.added.length > 0 || tagChanges.removed.length > 0;
+
+    if (!hasSimple && !hasStudio && !hasPerformers && !hasTags) {
+      try {
+        await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', { note: 'All differences were cosmetic' });
+      } catch (_) {}
+      currentState.view = 'list';
+      currentState.selectedRec = null;
+      renderCurrentView(document.getElementById('ss-recommendations'));
+      return;
+    }
+
+    function displayValue(val) { return formatFieldValue(val); }
+    function smartDefault(localVal, upstreamVal) {
+      const upstreamEmpty = upstreamVal === null || upstreamVal === undefined || upstreamVal === '';
+      return !upstreamEmpty ? 'upstream' : 'local';
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ss-detail-upstream-performer'; // reuse styles
+
+    // Header
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'ss-upstream-header';
+    headerDiv.innerHTML = `
+      <div class="ss-rec-tag-icon" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,0.05);flex-shrink:0;">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+      </div>
+      <div style="flex:1;">
+        <h2 style="margin: 0 0 4px 0;">
+          <a href="/scenes/${sceneId}" target="_blank">${escapeHtml(details.scene_name || 'Unknown Scene')}</a>
+        </h2>
+        <span class="ss-upstream-endpoint-badge">${escapeHtml(details.endpoint_name || 'Upstream')}</span>
+      </div>
+    `;
+    wrapper.appendChild(headerDiv);
+
+    // ===== Simple field diffs =====
+    if (hasSimple) {
+      const simpleSection = document.createElement('div');
+      simpleSection.className = 'ss-scene-section';
+
+      const quickActions = document.createElement('div');
+      quickActions.className = 'ss-upstream-quick-actions';
+      const keepAllBtn = document.createElement('button');
+      keepAllBtn.textContent = 'Keep All Local';
+      const acceptAllBtn = document.createElement('button');
+      acceptAllBtn.textContent = 'Accept All Upstream';
+      quickActions.appendChild(keepAllBtn);
+      quickActions.appendChild(acceptAllBtn);
+      simpleSection.appendChild(quickActions);
+
+      simpleChanges.forEach((change, idx) => {
+        const mergeType = change.merge_type || 'simple';
+        const fieldRow = document.createElement('div');
+        fieldRow.className = 'ss-upstream-field-row';
+        fieldRow.dataset.fieldIndex = idx;
+        fieldRow.dataset.fieldKey = change.field;
+        fieldRow.dataset.mergeType = mergeType;
+
+        const label = document.createElement('div');
+        label.className = 'ss-upstream-field-label';
+        label.textContent = change.field_label || change.field;
+        fieldRow.appendChild(label);
+
+        if (mergeType === 'alias_list') {
+          renderAliasListField(fieldRow, change, idx);
+        } else {
+          renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault);
+        }
+
+        simpleSection.appendChild(fieldRow);
+      });
+
+      wrapper.appendChild(simpleSection);
+
+      // Quick select wiring
+      keepAllBtn.addEventListener('click', () => {
+        simpleSection.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+          const mt = row.dataset.mergeType;
+          if (mt === 'alias_list') {
+            row.querySelectorAll('.ss-upstream-alias-item').forEach(item => {
+              const cb = item.querySelector('input[type="checkbox"]');
+              cb.checked = item.classList.contains('local-only') || item.classList.contains('both');
+            });
+            updateAliasResultSummary(row);
+          } else {
+            const localCb = row.querySelector('.ss-upstream-cb-local');
+            const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+            const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+            if (localCb && upstreamCb && resultInput) {
+              localCb.checked = true;
+              upstreamCb.checked = false;
+              const change = simpleChanges[parseInt(row.dataset.fieldIndex)];
+              resultInput.value = formatFieldValue(change.local_value) === '(empty)' ? '' : formatFieldValue(change.local_value);
+            }
+          }
+        });
+      });
+
+      acceptAllBtn.addEventListener('click', () => {
+        simpleSection.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+          const mt = row.dataset.mergeType;
+          if (mt === 'alias_list') {
+            row.querySelectorAll('.ss-upstream-alias-item').forEach(item => {
+              const cb = item.querySelector('input[type="checkbox"]');
+              cb.checked = true;
+            });
+            updateAliasResultSummary(row);
+          } else {
+            const localCb = row.querySelector('.ss-upstream-cb-local');
+            const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+            const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+            if (upstreamCb) { upstreamCb.checked = true; }
+            if (localCb) { localCb.checked = false; }
+            if (resultInput) {
+              const change = simpleChanges[parseInt(row.dataset.fieldIndex)];
+              resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : formatFieldValue(change.upstream_value);
+            }
+          }
+        });
+      });
+    }
+
+    // ===== Studio change section =====
+    if (hasStudio) {
+      const studioSection = document.createElement('div');
+      studioSection.className = 'ss-scene-section';
+      const studioHeader = document.createElement('h3');
+      studioHeader.className = 'ss-scene-section-title';
+      studioHeader.textContent = 'Studio';
+      studioSection.appendChild(studioHeader);
+
+      const studioRow = document.createElement('div');
+      studioRow.className = 'ss-scene-entity-row';
+      const localStudio = studioChange.local;
+      const upstreamStudio = studioChange.upstream;
+      studioRow.innerHTML = `
+        <div class="ss-scene-entity-compare">
+          <div class="ss-scene-entity-local">
+            <span class="ss-upstream-value-label">Local</span>
+            <span>${localStudio ? escapeHtml(localStudio.name) : '(none)'}</span>
+          </div>
+          <span style="color:#666;">\u2192</span>
+          <div class="ss-scene-entity-upstream">
+            <span class="ss-upstream-value-label">Upstream</span>
+            <span>${upstreamStudio ? escapeHtml(upstreamStudio.name) : '(none)'}</span>
+          </div>
+        </div>
+      `;
+
+      // Check if upstream studio exists in entity cache
+      const studioCheckbox = document.createElement('input');
+      studioCheckbox.type = 'checkbox';
+      studioCheckbox.className = 'ss-scene-studio-cb';
+      studioCheckbox.checked = true;
+      studioCheckbox.dataset.stashboxId = upstreamStudio ? upstreamStudio.id : '';
+
+      const studioLabel = document.createElement('label');
+      studioLabel.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px;';
+      studioLabel.appendChild(studioCheckbox);
+      studioLabel.appendChild(document.createTextNode('Apply studio change'));
+      studioRow.appendChild(studioLabel);
+
+      // Create studio button (shown when studio doesn't exist locally)
+      if (upstreamStudio) {
+        const cacheKey = `${endpoint}|${upstreamStudio.id}`;
+        const cachedId = entityCache.get(cacheKey);
+        if (cachedId) {
+          const note = document.createElement('span');
+          note.className = 'ss-scene-entity-created';
+          note.textContent = `Created (ID: ${cachedId})`;
+          studioRow.appendChild(note);
+        } else {
+          const createBtn = document.createElement('button');
+          createBtn.className = 'ss-btn ss-btn-sm ss-scene-create-btn';
+          createBtn.textContent = 'Create Studio';
+          createBtn.dataset.entityType = 'studio';
+          createBtn.dataset.stashboxId = upstreamStudio.id;
+          createBtn.addEventListener('click', async () => {
+            createBtn.disabled = true;
+            createBtn.textContent = 'Creating...';
+            try {
+              const result = await RecommendationsAPI.createStudio(
+                { name: upstreamStudio.name },
+                endpoint,
+                upstreamStudio.id
+              );
+              entityCache.set(cacheKey, result.studio.id);
+              createBtn.textContent = `Created (ID: ${result.studio.id})`;
+              createBtn.classList.add('ss-btn-success');
+            } catch (e) {
+              createBtn.textContent = `Failed: ${e.message}`;
+              createBtn.disabled = false;
+            }
+          });
+          studioRow.appendChild(createBtn);
+        }
+      }
+
+      studioSection.appendChild(studioRow);
+      wrapper.appendChild(studioSection);
+    }
+
+    // ===== Performer changes section =====
+    if (hasPerformers) {
+      const perfSection = document.createElement('div');
+      perfSection.className = 'ss-scene-section';
+      const perfHeader = document.createElement('h3');
+      perfHeader.className = 'ss-scene-section-title';
+      perfHeader.textContent = 'Performers';
+      perfSection.appendChild(perfHeader);
+
+      // Added performers
+      if (performerChanges.added.length > 0) {
+        const addedDiv = document.createElement('div');
+        addedDiv.className = 'ss-scene-subsection';
+        const addedLabel = document.createElement('div');
+        addedLabel.className = 'ss-scene-subsection-label ss-scene-added';
+        addedLabel.textContent = `+ ${performerChanges.added.length} to add`;
+        addedDiv.appendChild(addedLabel);
+
+        performerChanges.added.forEach(perf => {
+          const row = document.createElement('div');
+          row.className = 'ss-scene-entity-item';
+          row.dataset.stashboxId = perf.id;
+          row.dataset.entityType = 'performer';
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = true;
+          cb.className = 'ss-scene-perf-add-cb';
+          cb.dataset.stashboxId = perf.id;
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'ss-scene-entity-name';
+          nameSpan.textContent = perf.name || perf.id;
+          if (perf.as) {
+            nameSpan.textContent += ` (as "${perf.as}")`;
+          }
+
+          row.appendChild(cb);
+          row.appendChild(nameSpan);
+
+          // Create button or cached status
+          const cacheKey = `${endpoint}|${perf.id}`;
+          const cachedId = entityCache.get(cacheKey);
+          if (cachedId) {
+            const note = document.createElement('span');
+            note.className = 'ss-scene-entity-created';
+            note.textContent = `Created (ID: ${cachedId})`;
+            row.appendChild(note);
+          } else {
+            const createBtn = document.createElement('button');
+            createBtn.className = 'ss-btn ss-btn-sm ss-scene-create-btn';
+            createBtn.textContent = 'Create';
+            createBtn.addEventListener('click', async () => {
+              createBtn.disabled = true;
+              createBtn.textContent = 'Creating...';
+              try {
+                const result = await RecommendationsAPI.createPerformer(
+                  { name: perf.name },
+                  endpoint,
+                  perf.id
+                );
+                entityCache.set(cacheKey, result.performer.id);
+                createBtn.textContent = `Created (ID: ${result.performer.id})`;
+                createBtn.classList.add('ss-btn-success');
+              } catch (e) {
+                createBtn.textContent = `Failed`;
+                createBtn.disabled = false;
+              }
+            });
+            row.appendChild(createBtn);
+          }
+
+          addedDiv.appendChild(row);
+        });
+        perfSection.appendChild(addedDiv);
+      }
+
+      // Removed performers
+      if (performerChanges.removed.length > 0) {
+        const removedDiv = document.createElement('div');
+        removedDiv.className = 'ss-scene-subsection';
+        const removedLabel = document.createElement('div');
+        removedLabel.className = 'ss-scene-subsection-label ss-scene-removed';
+        removedLabel.textContent = `- ${performerChanges.removed.length} removed upstream`;
+        removedDiv.appendChild(removedLabel);
+
+        performerChanges.removed.forEach(perf => {
+          const row = document.createElement('div');
+          row.className = 'ss-scene-entity-item ss-scene-entity-removed';
+          row.innerHTML = `<span class="ss-scene-entity-name">${escapeHtml(perf.name || perf.id)}</span>`;
+          removedDiv.appendChild(row);
+        });
+        perfSection.appendChild(removedDiv);
+      }
+
+      // Alias changes
+      if (performerChanges.alias_changed.length > 0) {
+        const aliasDiv = document.createElement('div');
+        aliasDiv.className = 'ss-scene-subsection';
+        const aliasLabel = document.createElement('div');
+        aliasLabel.className = 'ss-scene-subsection-label';
+        aliasLabel.textContent = `Alias changes`;
+        aliasDiv.appendChild(aliasLabel);
+
+        performerChanges.alias_changed.forEach(perf => {
+          const row = document.createElement('div');
+          row.className = 'ss-scene-entity-item';
+          row.innerHTML = `
+            <span class="ss-scene-entity-name">${escapeHtml(perf.name)}</span>
+            <span style="color:#888;">"${escapeHtml(perf.local_alias || '')}" \u2192 "${escapeHtml(perf.upstream_alias || '')}"</span>
+          `;
+          aliasDiv.appendChild(row);
+        });
+        perfSection.appendChild(aliasDiv);
+      }
+
+      wrapper.appendChild(perfSection);
+    }
+
+    // ===== Tag changes section =====
+    if (hasTags) {
+      const tagSection = document.createElement('div');
+      tagSection.className = 'ss-scene-section';
+      const tagHeader = document.createElement('h3');
+      tagHeader.className = 'ss-scene-section-title';
+      tagHeader.textContent = 'Tags';
+      tagSection.appendChild(tagHeader);
+
+      // Added tags
+      if (tagChanges.added.length > 0) {
+        const addedDiv = document.createElement('div');
+        addedDiv.className = 'ss-scene-subsection';
+        const addedLabel = document.createElement('div');
+        addedLabel.className = 'ss-scene-subsection-label ss-scene-added';
+        addedLabel.textContent = `+ ${tagChanges.added.length} to add`;
+        addedDiv.appendChild(addedLabel);
+
+        const tagList = document.createElement('div');
+        tagList.className = 'ss-scene-tag-list';
+
+        tagChanges.added.forEach(tag => {
+          const chip = document.createElement('div');
+          chip.className = 'ss-scene-tag-chip';
+          chip.dataset.stashboxId = tag.id;
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = true;
+          cb.className = 'ss-scene-tag-add-cb';
+          cb.dataset.stashboxId = tag.id;
+
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = tag.name;
+
+          chip.appendChild(cb);
+          chip.appendChild(nameSpan);
+
+          // Create button or cached status
+          const cacheKey = `${endpoint}|${tag.id}`;
+          const cachedId = entityCache.get(cacheKey);
+          if (cachedId) {
+            const note = document.createElement('span');
+            note.className = 'ss-scene-entity-created';
+            note.textContent = '(created)';
+            chip.appendChild(note);
+          } else {
+            const createBtn = document.createElement('button');
+            createBtn.className = 'ss-btn ss-btn-sm ss-scene-create-btn';
+            createBtn.textContent = 'Create';
+            createBtn.addEventListener('click', async () => {
+              createBtn.disabled = true;
+              createBtn.textContent = '...';
+              try {
+                const result = await RecommendationsAPI.createTag(
+                  { name: tag.name },
+                  endpoint,
+                  tag.id
+                );
+                entityCache.set(cacheKey, result.tag.id);
+                createBtn.textContent = 'Created';
+                createBtn.classList.add('ss-btn-success');
+              } catch (e) {
+                createBtn.textContent = 'Fail';
+                createBtn.disabled = false;
+              }
+            });
+            chip.appendChild(createBtn);
+          }
+
+          tagList.appendChild(chip);
+        });
+        addedDiv.appendChild(tagList);
+        tagSection.appendChild(addedDiv);
+      }
+
+      // Removed tags
+      if (tagChanges.removed.length > 0) {
+        const removedDiv = document.createElement('div');
+        removedDiv.className = 'ss-scene-subsection';
+        const removedLabel = document.createElement('div');
+        removedLabel.className = 'ss-scene-subsection-label ss-scene-removed';
+        removedLabel.textContent = `- ${tagChanges.removed.length} removed upstream`;
+        removedDiv.appendChild(removedLabel);
+
+        const tagList = document.createElement('div');
+        tagList.className = 'ss-scene-tag-list';
+        tagChanges.removed.forEach(tag => {
+          const chip = document.createElement('div');
+          chip.className = 'ss-scene-tag-chip ss-scene-tag-removed';
+          chip.textContent = tag.name;
+          tagList.appendChild(chip);
+        });
+        removedDiv.appendChild(tagList);
+        tagSection.appendChild(removedDiv);
+      }
+
+      wrapper.appendChild(tagSection);
+    }
+
+    // ===== Validation errors =====
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'ss-upstream-validation-errors';
+    errorDiv.className = 'ss-upstream-validation-error';
+    errorDiv.style.display = 'none';
+    wrapper.appendChild(errorDiv);
+
+    // ===== Action bar =====
+    const actionBar = document.createElement('div');
+    actionBar.className = 'ss-upstream-action-bar';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'ss-btn ss-upstream-apply-btn';
+    applyBtn.textContent = 'Apply Changes';
+
+    // Dismiss dropdown
+    const dismissDropdown = document.createElement('div');
+    dismissDropdown.style.cssText = 'position:relative;';
+    const dismissToggle = document.createElement('button');
+    dismissToggle.className = 'ss-btn ss-upstream-dismiss-btn';
+    dismissToggle.textContent = 'Dismiss';
+    const dismissMenu = document.createElement('div');
+    dismissMenu.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px 0;min-width:220px;z-index:10;';
+
+    [
+      { label: 'Dismiss this update', permanent: false },
+      { label: 'Never show for this scene', permanent: true },
+    ].forEach(opt => {
+      const optBtn = document.createElement('button');
+      optBtn.textContent = opt.label;
+      optBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 16px;background:none;border:none;color:#fff;cursor:pointer;font-size:13px;';
+      optBtn.addEventListener('mouseenter', () => { optBtn.style.background = 'rgba(255,255,255,0.05)'; });
+      optBtn.addEventListener('mouseleave', () => { optBtn.style.background = 'none'; });
+      optBtn.addEventListener('click', async () => {
+        dismissToggle.disabled = true;
+        dismissToggle.textContent = 'Dismissing...';
+        try {
+          await RecommendationsAPI.dismissUpstream(rec.id, null, opt.permanent);
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        } catch (e) {
+          errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
+          errorDiv.style.display = 'block';
+          dismissToggle.disabled = false;
+          dismissToggle.textContent = 'Dismiss';
+        }
+      });
+      dismissMenu.appendChild(optBtn);
+    });
+    dismissDropdown.appendChild(dismissToggle);
+    dismissDropdown.appendChild(dismissMenu);
+
+    actionBar.appendChild(applyBtn);
+    actionBar.appendChild(dismissDropdown);
+    wrapper.appendChild(actionBar);
+
+    container.innerHTML = '';
+    container.appendChild(wrapper);
+
+    // === Dismiss menu toggle ===
+    dismissToggle.addEventListener('click', () => {
+      dismissMenu.style.display = dismissMenu.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function closeDismissMenu(e) {
+      if (!dismissToggle.contains(e.target) && !dismissMenu.contains(e.target)) {
+        dismissMenu.style.display = 'none';
+      }
+      if (!document.contains(container)) {
+        document.removeEventListener('click', closeDismissMenu);
+      }
+    });
+
+    // === Apply handler ===
+    applyBtn.addEventListener('click', async () => {
+      errorDiv.style.display = 'none';
+      errorDiv.innerHTML = '';
+
+      // 1. Collect simple field changes
+      const fields = {};
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const fieldKey = row.dataset.fieldKey;
+        const fieldIndex = parseInt(row.dataset.fieldIndex);
+        const change = simpleChanges[fieldIndex];
+        if (!change) return;
+
+        const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+        if (!resultInput) return;
+
+        const resultVal = resultInput.value.trim();
+        const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+        if (resultVal === localStr) return;
+
+        fields[fieldKey] = resultVal;
+      });
+
+      // 2. Collect performer IDs (checked additions from cache)
+      let performerIds = null;
+      if (hasPerformers) {
+        const addedPerfs = [];
+        wrapper.querySelectorAll('.ss-scene-perf-add-cb:checked').forEach(cb => {
+          const stashboxId = cb.dataset.stashboxId;
+          const cacheKey = `${endpoint}|${stashboxId}`;
+          const localId = entityCache.get(cacheKey);
+          if (localId) {
+            addedPerfs.push(localId);
+          }
+        });
+        if (addedPerfs.length > 0) {
+          performerIds = addedPerfs;
+        }
+      }
+
+      // 3. Collect tag IDs
+      let tagIds = null;
+      if (hasTags) {
+        const addedTags = [];
+        wrapper.querySelectorAll('.ss-scene-tag-add-cb:checked').forEach(cb => {
+          const stashboxId = cb.dataset.stashboxId;
+          const cacheKey = `${endpoint}|${stashboxId}`;
+          const localId = entityCache.get(cacheKey);
+          if (localId) {
+            addedTags.push(localId);
+          }
+        });
+        if (addedTags.length > 0) {
+          tagIds = addedTags;
+        }
+      }
+
+      // 4. Collect studio ID
+      let studioId = null;
+      if (hasStudio) {
+        const studioCb = wrapper.querySelector('.ss-scene-studio-cb:checked');
+        if (studioCb && studioChange.upstream) {
+          const cacheKey = `${endpoint}|${studioChange.upstream.id}`;
+          const localId = entityCache.get(cacheKey);
+          if (localId) {
+            studioId = localId;
+          }
+        }
+      }
+
+      const hasAnyChanges = Object.keys(fields).length > 0 || performerIds || tagIds || studioId;
+
+      if (!hasAnyChanges) {
+        try {
+          applyBtn.disabled = true;
+          applyBtn.textContent = 'Resolving...';
+          await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
+          applyBtn.textContent = 'Done!';
+          applyBtn.classList.add('ss-btn-success');
+          setTimeout(() => {
+            currentState.view = 'list';
+            currentState.selectedRec = null;
+            renderCurrentView(document.getElementById('ss-recommendations'));
+          }, 1500);
+        } catch (e) {
+          applyBtn.textContent = `Failed: ${e.message}`;
+          applyBtn.disabled = false;
+        }
+        return;
+      }
+
+      try {
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying...';
+        await RecommendationsAPI.updateScene(sceneId, fields, performerIds, tagIds, studioId);
+
+        applyBtn.textContent = 'Applied!';
+        applyBtn.classList.add('ss-btn-success');
+
+        setTimeout(() => {
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        }, 1500);
+      } catch (e) {
+        errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
+        errorDiv.style.display = 'block';
+        applyBtn.textContent = 'Apply Changes';
         applyBtn.disabled = false;
       }
     });
