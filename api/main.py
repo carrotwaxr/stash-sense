@@ -38,6 +38,8 @@ from settings import init_settings, migrate_env_vars
 from settings_router import router as settings_router, init_settings_router
 from stashbox_connection_manager import init_connection_manager
 from queue_router import router as queue_router
+from model_manager import init_model_manager
+from model_router import router as model_router, init_model_router
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,12 @@ async def lifespan(app: FastAPI):
     # Detect hardware and classify tier
     hw_profile = init_hardware(str(data_dir))
 
+    # Initialize model manager
+    manifest_path = Path(__file__).parent / "models.json"
+    models_dir = data_dir / "models"
+    model_mgr = init_model_manager(manifest_path, models_dir)
+    init_model_router(model_mgr)
+
     # Load face recognition database
     try:
         reload_database(data_dir)
@@ -301,6 +309,7 @@ app.include_router(database_health_router)
 app.include_router(recommendations_router)
 app.include_router(settings_router)
 app.include_router(queue_router)
+app.include_router(model_router)
 
 
 if __name__ == "__main__":
