@@ -566,6 +566,36 @@ def handle_recommendations(mode, args, sidecar_url):
             timeout=30,
         )
 
+    elif mode == "rec_create_performer":
+        return sidecar_post(sidecar_url, "/recommendations/actions/create-performer", {
+            "stashbox_data": args.get("stashbox_data", {}),
+            "endpoint": args.get("endpoint", ""),
+            "stashbox_id": args.get("stashbox_id", ""),
+        })
+
+    elif mode == "rec_create_tag":
+        return sidecar_post(sidecar_url, "/recommendations/actions/create-tag", {
+            "stashbox_data": args.get("stashbox_data", {}),
+            "endpoint": args.get("endpoint", ""),
+            "stashbox_id": args.get("stashbox_id", ""),
+        })
+
+    elif mode == "rec_create_studio":
+        return sidecar_post(sidecar_url, "/recommendations/actions/create-studio", {
+            "stashbox_data": args.get("stashbox_data", {}),
+            "endpoint": args.get("endpoint", ""),
+            "stashbox_id": args.get("stashbox_id", ""),
+        })
+
+    elif mode == "rec_update_scene":
+        return sidecar_post(sidecar_url, "/recommendations/actions/update-scene", {
+            "scene_id": str(args.get("scene_id", "")),
+            "fields": args.get("fields", {}),
+            "performer_ids": args.get("performer_ids"),
+            "tag_ids": args.get("tag_ids"),
+            "studio_id": args.get("studio_id"),
+        })
+
     elif mode == "rec_dismiss_upstream":
         rec_id = args.get("rec_id")
         if not rec_id:
