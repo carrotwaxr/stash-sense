@@ -1,4 +1,4 @@
-name: Deploy Documentation
+name: Deploy Documentation & Plugin Index
 
 on:
   push:
@@ -6,7 +6,10 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "plugin/**"
+      - "build_plugin_index.sh"
       - ".github/workflows/docs.yml"
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,5 +32,11 @@ jobs:
       - name: Install mkdocs-material
         run: pip install mkdocs-material
 
+      - name: Build mkdocs site
+        run: mkdocs build
+
+      - name: Build plugin index
+        run: ./build_plugin_index.sh site/plugin
+
       - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
+        run: ghp-import --push --force --no-jekyll site
