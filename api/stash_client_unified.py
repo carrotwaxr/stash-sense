@@ -345,6 +345,19 @@ class StashClientUnified:
         data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
         return data["performerUpdate"]
 
+    async def create_performer(self, **fields) -> dict:
+        """Create a new performer in Stash."""
+        query = """
+        mutation PerformerCreate($input: PerformerCreateInput!) {
+          performerCreate(input: $input) {
+            id
+            name
+          }
+        }
+        """
+        data = await self._execute(query, {"input": fields}, priority=Priority.CRITICAL)
+        return data["performerCreate"]
+
     # ==================== Scenes ====================
 
     async def get_multi_file_scenes(self, exclude_tag_ids: list[str] | None = None) -> list[dict]:
@@ -644,6 +657,19 @@ class StashClientUnified:
         input_dict = {"id": tag_id, **fields}
         data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
         return data["tagUpdate"]
+
+    async def create_tag(self, **fields) -> dict:
+        """Create a new tag in Stash."""
+        query = """
+        mutation TagCreate($input: TagCreateInput!) {
+          tagCreate(input: $input) {
+            id
+            name
+          }
+        }
+        """
+        data = await self._execute(query, {"input": fields}, priority=Priority.CRITICAL)
+        return data["tagCreate"]
 
     # ==================== Studios ====================
 

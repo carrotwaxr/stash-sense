@@ -370,3 +370,80 @@ class TestUpstreamSceneAnalyzer:
         recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
         assert len(recs) == 1
         assert len(recs[0].details["performer_changes"]["added"]) == 1
+
+
+class TestEntityCreation:
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.create_studio = AsyncMock(return_value={"id": "100", "name": "New Studio"})
+        stash.create_performer = AsyncMock(return_value={"id": "200", "name": "New Performer"})
+        stash.create_tag = AsyncMock(return_value={"id": "300", "name": "New Tag"})
+        return stash
+
+    @pytest.mark.asyncio
+    async def test_create_performer_from_stashbox(self, mock_stash):
+        """Creates a performer with stash_id link."""
+        from recommendations_router import _create_performer_from_stashbox
+        result = await _create_performer_from_stashbox(
+            mock_stash,
+            stashbox_data={"name": "Jane Doe", "aliases": ["JD"], "gender": "FEMALE"},
+            endpoint="https://stashdb.org/graphql",
+            stashbox_id="perf-uuid-1",
+        )
+        assert result["id"] == "200"
+        mock_stash.create_performer.assert_called_once()
+        call_kwargs = mock_stash.create_performer.call_args[1]
+        assert call_kwargs["name"] == "Jane Doe"
+        assert call_kwargs["stash_ids"] == [{"endpoint": "https://stashdb.org/graphql", "stash_id": "perf-uuid-1"}]
+
+    @pytest.mark.asyncio
+    async def test_create_tag_from_stashbox(self, mock_stash):
+        """Creates a tag with stash_id link."""
+        from recommendations_router import _create_tag_from_stashbox
+        result = await _create_tag_from_stashbox(
+            mock_stash,
+            stashbox_data={"name": "HD", "description": "High definition"},
+            endpoint="https://stashdb.org/graphql",
+            stashbox_id="tag-uuid-1",
+        )
+        assert result["id"] == "300"
+        mock_stash.create_tag.assert_called_once()
+
+
+class TestUpdateSceneAction:
+    @pytest.mark.asyncio
+    async def test_apply_scene_update_simple_fields(self):
+        """_apply_scene_update passes simple fields to update_scene."""
+        from recommendations_router import _apply_scene_update
+
+        mock_stash = MagicMock()
+        mock_stash.update_scene = AsyncMock(return_value={"id": "1"})
+
+        await _apply_scene_update(mock_stash, scene_id="1", fields={
+            "title": "New Title",
+            "date": "2025-02-01",
+        })
+
+        mock_stash.update_scene.assert_called_once()
+        call_args = mock_stash.update_scene.call_args
+        assert call_args[0][0] == "1"  # scene_id
+        assert call_args[1]["title"] == "New Title"
+
+    @pytest.mark.asyncio
+    async def test_apply_scene_update_with_relational_ids(self):
+        """_apply_scene_update includes performer_ids, tag_ids, studio_id."""
+        from recommendations_router import _apply_scene_update
+
+        mock_stash = MagicMock()
+        mock_stash.update_scene = AsyncMock(return_value={"id": "1"})
+
+        await _apply_scene_update(
+            mock_stash, scene_id="1", fields={"title": "Scene"},
+            performer_ids=["10", "20"], tag_ids=["30"], studio_id="5"
+        )
+
+        call_args = mock_stash.update_scene.call_args
+        assert call_args[1]["performer_ids"] == ["10", "20"]
+        assert call_args[1]["tag_ids"] == ["30"]
+        assert call_args[1]["studio_id"] == "5"
