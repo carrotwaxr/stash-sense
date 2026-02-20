@@ -3,16 +3,19 @@
 One-time conversion script. Converts:
 - FaceNet512 and ArcFace (TensorFlow -> ONNX) for face recognition
 - YOLOv5s tattoo detector (PyTorch -> ONNX) for tattoo detection
+- EfficientNet-B0 tattoo embedder (PyTorch -> ONNX) for tattoo matching
 
 Usage:
     cd api
-    python convert_models_to_onnx.py              # Convert all models
-    python convert_models_to_onnx.py --yolov5      # Convert YOLOv5 only
+    python convert_models_to_onnx.py                  # Convert all models
+    python convert_models_to_onnx.py --yolov5          # Convert YOLOv5 only
+    python convert_models_to_onnx.py --efficientnet    # Convert EfficientNet only
 
 Output:
     models/facenet512.onnx
     models/arcface.onnx
     models/tattoo_yolov5s.onnx
+    models/tattoo_efficientnet_b0.onnx
 """
 import os
 import sys
@@ -314,10 +317,141 @@ def verify_yolov5_equivalence(onnx_path):
     print("\n  YOLOv5 equivalence checks PASSED!")
 
 
+def convert_efficientnet_tattoo():
+    """Convert EfficientNet-B0 tattoo embedder from PyTorch to ONNX.
+
+    Exports the model with the classification head replaced by nn.Identity(),
+    producing 1280-dim feature vectors for tattoo similarity matching.
+
+    Input:  (batch, 3, 224, 224) float32, ImageNet-normalized
+    Output: (batch, 1280) float32
+    """
+    import torch
+    from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+
+    output_path = str(MODELS_DIR / "tattoo_efficientnet_b0.onnx")
+
+    print("Loading EfficientNet-B0 with ImageNet weights...")
+    weights = EfficientNet_B0_Weights.DEFAULT
+    model = efficientnet_b0(weights=weights)
+    model.classifier = torch.nn.Identity()  # Strip classification head, expose 1280-dim features
+    model.eval()
+
+    # Input: (batch, 3, 224, 224), float32, ImageNet-normalized
+    input_shape = (1, 3, 224, 224)
+    dummy_input = torch.randn(*input_shape)
+
+    print(f"  Input shape: {input_shape}")
+
+    # Verify forward pass works before export
+    with torch.no_grad():
+        test_output = model(dummy_input)
+    print(f"  PyTorch output shape: {test_output.shape}")  # (1, 1280)
+
+    print("  Exporting to ONNX...")
+    torch.onnx.export(
+        model,
+        dummy_input,
+        output_path,
+        opset_version=17,
+        input_names=["input"],
+        output_names=["embedding"],
+        dynamic_axes={
+            "input": {0: "batch_size"},
+            "embedding": {0: "batch_size"},
+        },
+        dynamo=False,
+    )
+
+    print(f"  Saved to {output_path}")
+    return output_path
+
+
+def verify_efficientnet_equivalence(onnx_path):
+    """Verify ONNX EfficientNet-B0 produces same embeddings as PyTorch.
+
+    Compares using:
+    - Max absolute difference (must be < 1e-4)
+    - Cosine similarity (must be > 0.9999)
+    - Batch inference with batch=4
+    """
+    import torch
+    import onnxruntime as ort
+    from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+
+    print("\nVerifying EfficientNet-B0 numerical equivalence...")
+
+    # Load PyTorch model
+    weights = EfficientNet_B0_Weights.DEFAULT
+    pt_model = efficientnet_b0(weights=weights)
+    pt_model.classifier = torch.nn.Identity()
+    pt_model.eval()
+
+    # Load ONNX model
+    onnx_session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    onnx_input_name = onnx_session.get_inputs()[0].name
+    onnx_output_name = onnx_session.get_outputs()[0].name
+    print(f"  ONNX input: {onnx_input_name}, output: {onnx_output_name}")
+
+    # Test with deterministic input (ImageNet-normalized range)
+    np.random.seed(42)
+    test_input = np.random.randn(1, 3, 224, 224).astype(np.float32)
+
+    # PyTorch inference
+    with torch.no_grad():
+        pt_output = pt_model(torch.from_numpy(test_input)).numpy()
+
+    # ONNX inference
+    onnx_output = onnx_session.run([onnx_output_name], {onnx_input_name: test_input})[0]
+
+    print(f"  PyTorch output shape: {pt_output.shape}")
+    print(f"  ONNX output shape:    {onnx_output.shape}")
+
+    # Numerical comparison (single sample)
+    max_diff = np.max(np.abs(pt_output - onnx_output))
+    cos_sim = np.dot(pt_output[0], onnx_output[0]) / (
+        np.linalg.norm(pt_output[0]) * np.linalg.norm(onnx_output[0])
+    )
+
+    print(f"  Max absolute diff: {max_diff:.2e}")
+    print(f"  Cosine similarity: {cos_sim:.8f}")
+
+    # Verify output dimensions
+    assert onnx_output.shape == (1, 1280), f"Expected (1, 1280), got {onnx_output.shape}"
+
+    # Check tolerances
+    assert max_diff < 1e-4, f"Max diff too large: {max_diff:.2e}"
+    assert cos_sim > 0.9999, f"Cosine similarity too low: {cos_sim:.8f}"
+
+    # Test batch inference (batch=4)
+    batch_input = np.random.randn(4, 3, 224, 224).astype(np.float32)
+
+    with torch.no_grad():
+        pt_batch = pt_model(torch.from_numpy(batch_input)).numpy()
+    onnx_batch = onnx_session.run([onnx_output_name], {onnx_input_name: batch_input})[0]
+
+    print(f"  Batch (4) output shape: {onnx_batch.shape}")
+    assert onnx_batch.shape == (4, 1280), f"Batch shape mismatch: {onnx_batch.shape}"
+
+    batch_max_diff = np.max(np.abs(pt_batch - onnx_batch))
+    # Per-sample cosine similarities
+    for i in range(4):
+        sample_cos = np.dot(pt_batch[i], onnx_batch[i]) / (
+            np.linalg.norm(pt_batch[i]) * np.linalg.norm(onnx_batch[i])
+        )
+        assert sample_cos > 0.9999, f"Batch sample {i} cosine sim too low: {sample_cos:.8f}"
+
+    print(f"  Batch max absolute diff: {batch_max_diff:.2e}")
+    assert batch_max_diff < 1e-4, f"Batch max diff too large: {batch_max_diff:.2e}"
+
+    print("\n  EfficientNet-B0 equivalence checks PASSED!")
+
+
 if __name__ == "__main__":
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     yolov5_only = "--yolov5" in sys.argv
+    efficientnet_only = "--efficientnet" in sys.argv
 
     if yolov5_only:
         # Convert only YOLOv5 tattoo detector
@@ -327,6 +461,16 @@ if __name__ == "__main__":
         yolo_size = os.path.getsize(yolo_path) / (1024 * 1024)
         print("\nModel sizes:")
         print(f"  YOLOv5s tattoo: {yolo_size:.1f} MB")
+
+    elif efficientnet_only:
+        # Convert only EfficientNet-B0 tattoo embedder
+        eff_path = convert_efficientnet_tattoo()
+        verify_efficientnet_equivalence(eff_path)
+
+        eff_size = os.path.getsize(eff_path) / (1024 * 1024)
+        print("\nModel sizes:")
+        print(f"  EfficientNet-B0 tattoo: {eff_size:.1f} MB")
+
     else:
         # Convert all models
         facenet_path, _ = convert_facenet512()
@@ -336,12 +480,17 @@ if __name__ == "__main__":
         yolo_path = convert_yolov5_tattoo()
         verify_yolov5_equivalence(yolo_path)
 
+        eff_path = convert_efficientnet_tattoo()
+        verify_efficientnet_equivalence(eff_path)
+
         fn_size = os.path.getsize(facenet_path) / (1024 * 1024)
         af_size = os.path.getsize(arcface_path) / (1024 * 1024)
         yolo_size = os.path.getsize(yolo_path) / (1024 * 1024)
+        eff_size = os.path.getsize(eff_path) / (1024 * 1024)
         print("\nModel sizes:")
-        print(f"  FaceNet512:     {fn_size:.1f} MB")
-        print(f"  ArcFace:        {af_size:.1f} MB")
-        print(f"  YOLOv5s tattoo: {yolo_size:.1f} MB")
+        print(f"  FaceNet512:             {fn_size:.1f} MB")
+        print(f"  ArcFace:                {af_size:.1f} MB")
+        print(f"  YOLOv5s tattoo:         {yolo_size:.1f} MB")
+        print(f"  EfficientNet-B0 tattoo: {eff_size:.1f} MB")
 
     print("\nDone! Models saved to api/models/")
