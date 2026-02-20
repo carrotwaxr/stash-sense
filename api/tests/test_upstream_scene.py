@@ -107,3 +107,139 @@ class TestStashSceneQueries:
         assert input_dict["id"] == "1"
         assert input_dict["title"] == "New Title"
         assert input_dict["date"] == "2025-02-01"
+
+
+class TestSceneFieldMapper:
+    def test_scene_field_config_registered(self):
+        """Scene fields are registered in ENTITY_FIELD_CONFIGS."""
+        from upstream_field_mapper import ENTITY_FIELD_CONFIGS
+        assert "scene" in ENTITY_FIELD_CONFIGS
+        cfg = ENTITY_FIELD_CONFIGS["scene"]
+        assert "title" in cfg["default_fields"]
+        assert "date" in cfg["default_fields"]
+        assert "studio" in cfg["default_fields"]
+        assert "performers" in cfg["default_fields"]
+        assert "tags" in cfg["default_fields"]
+
+    def test_normalize_upstream_scene_simple_fields(self):
+        """normalize_upstream_scene extracts simple scalar fields."""
+        from upstream_field_mapper import normalize_upstream_scene
+
+        upstream = {
+            "title": "Test Scene",
+            "details": "Some details",
+            "date": "2025-01-15",
+            "director": "John",
+            "code": "TS-001",
+            "urls": [{"url": "https://example.com/1", "site": {"name": "Example"}}],
+            "studio": {"id": "studio-1", "name": "Studio A"},
+            "tags": [{"id": "tag-1", "name": "HD"}],
+            "performers": [
+                {"performer": {"id": "perf-1", "name": "Jane"}, "as": "Jane Smith"}
+            ],
+        }
+
+        result = normalize_upstream_scene(upstream)
+        assert result["title"] == "Test Scene"
+        assert result["date"] == "2025-01-15"
+        assert result["details"] == "Some details"
+        assert result["director"] == "John"
+        assert result["code"] == "TS-001"
+        assert result["urls"] == ["https://example.com/1"]
+
+    def test_normalize_upstream_scene_relational_fields(self):
+        """normalize_upstream_scene extracts relational entity data."""
+        from upstream_field_mapper import normalize_upstream_scene
+
+        upstream = {
+            "title": "Test",
+            "details": None,
+            "date": None,
+            "director": None,
+            "code": None,
+            "urls": [],
+            "studio": {"id": "studio-1", "name": "Studio A"},
+            "tags": [
+                {"id": "tag-1", "name": "HD"},
+                {"id": "tag-2", "name": "POV"},
+            ],
+            "performers": [
+                {"performer": {"id": "perf-1", "name": "Jane"}, "as": "Jane Smith"},
+                {"performer": {"id": "perf-2", "name": "John"}, "as": None},
+            ],
+        }
+
+        result = normalize_upstream_scene(upstream)
+        assert result["studio"] == {"id": "studio-1", "name": "Studio A"}
+        assert len(result["performers"]) == 2
+        assert result["performers"][0] == {"id": "perf-1", "name": "Jane", "as": "Jane Smith"}
+        assert result["performers"][1] == {"id": "perf-2", "name": "John", "as": None}
+        assert len(result["tags"]) == 2
+        assert result["tags"][0] == {"id": "tag-1", "name": "HD"}
+
+    def test_diff_scene_simple_fields(self):
+        """diff_scene_fields detects simple scalar changes."""
+        from upstream_field_mapper import diff_scene_fields
+
+        local = {"title": "Old Title", "date": "2025-01-01", "details": "", "director": "", "code": "", "urls": [],
+                 "studio": None, "performers": [], "tags": []}
+        upstream = {"title": "New Title", "date": "2025-01-01", "details": "", "director": "", "code": "", "urls": [],
+                    "studio": None, "performers": [], "tags": []}
+
+        result = diff_scene_fields(local, upstream, None, {"title", "date"})
+        assert len(result["changes"]) == 1
+        assert result["changes"][0]["field"] == "title"
+        assert result["changes"][0]["upstream_value"] == "New Title"
+
+    def test_diff_scene_relational_performers(self):
+        """diff_scene_fields detects added/removed performers."""
+        from upstream_field_mapper import diff_scene_fields
+
+        local = {
+            "title": "Scene", "date": "", "details": "", "director": "", "code": "", "urls": [],
+            "studio": None,
+            "performers": [{"id": "perf-1", "name": "Jane", "as": None}],
+            "tags": [],
+        }
+        upstream = {
+            "title": "Scene", "date": "", "details": "", "director": "", "code": "", "urls": [],
+            "studio": None,
+            "performers": [
+                {"id": "perf-1", "name": "Jane", "as": None},
+                {"id": "perf-2", "name": "John", "as": "Johnny"},
+            ],
+            "tags": [],
+        }
+
+        result = diff_scene_fields(local, upstream, None, {"performers"})
+        assert len(result["performer_changes"]["added"]) == 1
+        assert result["performer_changes"]["added"][0]["id"] == "perf-2"
+        assert len(result["performer_changes"]["removed"]) == 0
+
+    def test_diff_scene_no_changes(self):
+        """diff_scene_fields returns empty results when nothing changed."""
+        from upstream_field_mapper import diff_scene_fields
+
+        data = {"title": "Same", "date": "2025-01-01", "details": "", "director": "", "code": "", "urls": [],
+                "studio": {"id": "s1", "name": "S"}, "performers": [{"id": "p1", "name": "P", "as": None}],
+                "tags": [{"id": "t1", "name": "T"}]}
+
+        result = diff_scene_fields(data, data, None, {"title", "date", "studio", "performers", "tags"})
+        assert result["changes"] == []
+        assert result["studio_change"] is None
+        assert result["performer_changes"]["added"] == []
+        assert result["performer_changes"]["removed"] == []
+        assert result["tag_changes"]["added"] == []
+        assert result["tag_changes"]["removed"] == []
+
+    def test_diff_scene_has_any_changes(self):
+        """has_any_scene_changes returns True when there are changes."""
+        from upstream_field_mapper import diff_scene_fields
+
+        local = {"title": "Scene", "date": "", "details": "", "director": "", "code": "", "urls": [],
+                 "studio": None, "performers": [], "tags": []}
+        upstream = {"title": "Scene", "date": "", "details": "", "director": "", "code": "", "urls": [],
+                    "studio": None, "performers": [], "tags": [{"id": "t1", "name": "New Tag"}]}
+
+        result = diff_scene_fields(local, upstream, None, {"tags"})
+        assert len(result["tag_changes"]["added"]) == 1
