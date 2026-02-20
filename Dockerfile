@@ -54,10 +54,8 @@ WORKDIR /app
 COPY --from=build /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
-# Download ONNX models from GitHub Release (~220MB)
-RUN mkdir -p ./models \
-    && curl -fSL -o ./models/facenet512.onnx https://github.com/carrotwaxr/stash-sense/releases/download/models/facenet512.onnx \
-    && curl -fSL -o ./models/arcface.onnx https://github.com/carrotwaxr/stash-sense/releases/download/models/arcface.onnx
+# Copy ONNX models (downloaded by CI workflow, or present locally)
+COPY api/models/*.onnx ./models/
 
 # Copy application code
 COPY api/ ./
