@@ -54,8 +54,8 @@ WORKDIR /app
 COPY --from=build /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
-# Copy ONNX models (downloaded by CI workflow, or present locally)
-COPY api/models/*.onnx ./models/
+# Copy bundled model manifest
+COPY api/models.json ./models.json
 
 # Copy application code
 COPY api/ ./
