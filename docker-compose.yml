@@ -10,7 +10,7 @@ services:
       - ./api/data:/data
       - stash-sense-insightface:/root/.insightface
     environment:
-      - STASH_URL=${STASH_URL:-http://10.0.0.4:6969}
+      - STASH_URL=${STASH_URL:-http://stash:9999}
       - STASH_API_KEY=${STASH_API_KEY}
       - DATA_DIR=/data
       - PYTHONUNBUFFERED=1

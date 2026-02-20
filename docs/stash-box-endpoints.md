@@ -55,27 +55,9 @@ This document describes the different stash-box endpoints supported for building
   - **Limited to ~1 image per performer** (see below)
   - Square images (705x705)
 
-## Running Builds
+## Database Building
 
-```bash
-# These commands apply to the stash-sense-trainer repo
-cd /home/carrot/code/stash-sense-trainer/api
-source ../.venv/bin/activate
-
-# StashDB (default)
-python database_builder.py --output ./data --resume
-
-# PMVStash
-STASHDB_URL=$PMVSTASH_URL STASHDB_API_KEY=$PMVSTASH_API_KEY \
-  python database_builder.py --output ./data-pmvstash --resume
-
-# JAVStash
-STASHDB_URL=$JAVSTASH_URL STASHDB_API_KEY=$JAVSTASH_API_KEY \
-  python database_builder.py --output ./data-javstash --resume
-
-# ThePornDB (different script)
-python build_theporndb.py --output ./data-theporndb
-```
+Database building is handled by a separate private training pipeline. Pre-built databases are published as releases on the [stash-sense-data](https://github.com/carrotwaxr/stash-sense-data/releases) repository.
 
 ---
 

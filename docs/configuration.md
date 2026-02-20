@@ -4,90 +4,83 @@
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `STASH_URL` | Yes | - | URL to your Stash instance |
-| `STASH_API_KEY` | Yes | - | Stash API key for fetching sprites |
-| `DATA_DIR` | No | `/data` | Path to database files |
-| `LOG_LEVEL` | No | `info` | Logging verbosity: debug, info, warning, error |
+| `STASH_URL` | Yes | — | URL to your Stash instance (e.g., `http://stash:9999`) |
+| `STASH_API_KEY` | Yes | — | Stash API key (Settings > Security > API Key) |
+| `DATA_DIR` | No | `/data` | Path to database files inside the container |
+| `LOG_LEVEL` | No | `warning` | Logging verbosity: `debug`, `info`, `warning`, `error` |
+
+### Stash-Box API Keys (Optional)
+
+For upstream sync to detect metadata changes on stash-box endpoints, add API keys for each endpoint you want to monitor:
+
+| Variable | Endpoint |
+|----------|----------|
+| `STASHDB_API_KEY` | [StashDB](https://stashdb.org) |
+| `FANSDB_API_KEY` | [FansDB](https://fansdb.cc) |
+| `THEPORNDB_API_KEY` | [ThePornDB](https://theporndb.net) |
+| `PMVSTASH_API_KEY` | [PMVStash](https://pmvstash.org) |
+| `JAVSTASH_API_KEY` | [JAVStash](https://javstash.org) |
+
+These are only needed for upstream sync. Face recognition works without them.
+
+> **Tip**: Get API keys from each stash-box site's user settings page. StashDB requires an account at [stashdb.org](https://stashdb.org).
+
+---
 
 ## Volume Mounts
 
 | Container Path | Purpose | Mode |
 |----------------|---------|------|
-| `/data` | Database files | Read-only |
-| `/root/.insightface` | Model weights cache | Read-write |
+| `/data` | Database files (Voyager indices, performers.db, manifest) | Read-only |
+| `/root/.insightface` | Cached model weights (~500 MB) | Read-write |
 
 ### Database Files
 
-The `/data` volume should contain:
+The `/data` volume should contain the files from a [stash-sense-data release](https://github.com/carrotwaxr/stash-sense-data/releases):
 
 ```
 /data/
-├── face_facenet.voy     # FaceNet embedding index
+├── performers.db        # Performer metadata (SQLite)
+├── face_facenet.voy     # FaceNet512 embedding index
 ├── face_arcface.voy     # ArcFace embedding index
-├── performers.json      # Performer metadata
-└── manifest.json        # Database version info
+├── faces.json           # Face-to-performer mapping
+├── performers.json      # Performer lookup data
+├── manifest.json        # Version and checksums
+└── stash_sense.db       # (auto-created) Your local data — do not delete
 ```
+
+!!! note
+    `stash_sense.db` is created automatically by the sidecar and stores your recommendations, settings, and analysis history. It is **not** part of the database release and should not be deleted during updates.
 
 ### Model Cache
 
-The `/root/.insightface` volume caches downloaded model weights. Without this mount, models are re-downloaded on every container start (~500MB).
+The `/root/.insightface` volume caches the RetinaFace detection model weights. Without this mount, the model is re-downloaded on every container start (~500 MB download).
 
-## API Endpoints
+---
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check, returns database status |
-| `/database/info` | GET | Database version and stats |
-| `/identify` | POST | Identify faces in a single image |
-| `/identify/scene` | POST | Identify performers in a scene (uses sprite sheet) |
+## Ports
 
-### Example: Health Check
+The sidecar listens on port **5000** inside the container. The recommended host port is **6960**:
 
-```bash
-curl http://localhost:5000/health
+```
+-p 6960:5000
 ```
 
-```json
-{
-  "status": "healthy",
-  "database_loaded": true,
-  "performer_count": 50000,
-  "face_count": 150000
-}
-```
+---
 
-### Example: Scene Identification
+## Runtime Settings
 
-```bash
-curl -X POST http://localhost:5000/identify/scene \
-  -H "Content-Type: application/json" \
-  -d '{"scene_id": "123"}'
-```
+Most performance and recognition settings are configured via the plugin's **Settings** tab rather than environment variables. The sidecar auto-detects your hardware and sets sensible defaults.
 
-## Performance Tuning
+See [Settings Reference](settings-system.md) for the full list of adjustable options.
 
-### GPU Memory
+### Migrated Environment Variables
 
-The default configuration uses ~2-3GB VRAM. If you have memory constraints:
+The following environment variables have been replaced by runtime settings. If detected at startup, they are automatically migrated to the settings database:
 
-- Face detection (RetinaFace): ~1GB
-- Embeddings run on CPU, don't use VRAM
-
-### Concurrent Requests
-
-The API handles one request at a time by default. For higher throughput, increase uvicorn workers (requires more VRAM):
-
-```bash
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "2"]
-```
-
-## Confidence Thresholds
-
-Scores are cosine distances (lower = better match):
-
-| Score | Interpretation |
-|-------|----------------|
-| < 0.4 | High confidence match |
-| 0.4 - 0.6 | Likely match, verify visually |
-| 0.6 - 0.8 | Possible match, needs review |
-| > 0.8 | Unlikely match |
+| Old Variable | New Setting |
+|-------------|-------------|
+| `STASH_RATE_LIMIT` | `stash_api_rate` |
+| `ENABLE_BODY_SIGNAL` | `body_signal_enabled` |
+| `ENABLE_TATTOO_SIGNAL` | `tattoo_signal_enabled` |
+| `FACE_CANDIDATES` | `face_candidates` |
