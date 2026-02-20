@@ -608,6 +608,13 @@ def handle_recommendations(mode, args, sidecar_url):
             {"value": value},
         )
 
+    elif mode == "endpoint_priorities_get":
+        return sidecar_get(sidecar_url, "/settings/endpoint-priorities")
+
+    elif mode == "endpoint_priorities_set":
+        endpoints = args.get("endpoints", [])
+        return sidecar_post(sidecar_url, "/settings/endpoint-priorities", {"endpoints": endpoints})
+
     # Fingerprint operations
     elif mode == "fp_status":
         return fp_status(sidecar_url)
