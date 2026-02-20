@@ -469,6 +469,75 @@ class StashClientUnified:
         """
         await self._execute(query, {"id": gallery_id, "performer_ids": performer_ids}, priority=Priority.CRITICAL)
 
+    async def get_scenes_for_endpoint(self, endpoint: str) -> list[dict]:
+        """Query local Stash for all scenes linked to a specific stash-box endpoint."""
+        query = """
+        query ScenesForEndpoint($scene_filter: SceneFilterType) {
+          findScenes(scene_filter: $scene_filter, filter: { per_page: -1 }) {
+            scenes {
+              id
+              title
+              date
+              details
+              director
+              code
+              urls
+              studio {
+                id
+                name
+                stash_ids {
+                  endpoint
+                  stash_id
+                }
+              }
+              performers {
+                id
+                name
+                stash_ids {
+                  endpoint
+                  stash_id
+                }
+              }
+              tags {
+                id
+                name
+                stash_ids {
+                  endpoint
+                  stash_id
+                }
+              }
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            "scene_filter": {
+                "stash_id_endpoint": {
+                    "endpoint": endpoint,
+                    "modifier": "NOT_NULL",
+                }
+            }
+        }
+        data = await self._execute(query, variables)
+        return data["findScenes"]["scenes"]
+
+    async def update_scene(self, scene_id: str, **fields) -> dict:
+        """Generic scene update via SceneUpdateInput mutation."""
+        query = """
+        mutation SceneUpdate($input: SceneUpdateInput!) {
+          sceneUpdate(input: $input) {
+            id
+          }
+        }
+        """
+        input_dict = {"id": scene_id, **fields}
+        data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
+        return data["sceneUpdate"]
+
     # ==================== Files ====================
 
     async def set_scene_primary_file(self, scene_id: str, file_id: str) -> None:

@@ -50,3 +50,60 @@ class TestStashBoxSceneQuery:
 
         result = await client.get_scene("nonexistent")
         assert result is None
+
+
+class TestStashSceneQueries:
+    @pytest.mark.asyncio
+    async def test_get_scenes_for_endpoint(self):
+        """get_scenes_for_endpoint returns scenes linked to a specific endpoint."""
+        from stash_client_unified import StashClientUnified
+
+        mock_response = {
+            "findScenes": {
+                "scenes": [
+                    {
+                        "id": "1",
+                        "title": "Scene One",
+                        "date": "2025-01-01",
+                        "details": "Details here",
+                        "director": "Director",
+                        "code": "SC-001",
+                        "urls": ["https://example.com/1"],
+                        "studio": {"id": "10", "name": "Studio A", "stash_ids": []},
+                        "performers": [{"id": "20", "name": "Perf A", "stash_ids": []}],
+                        "tags": [{"id": "30", "name": "Tag A", "stash_ids": []}],
+                        "stash_ids": [
+                            {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-scene-1"}
+                        ],
+                    }
+                ]
+            }
+        }
+
+        client = StashClientUnified("http://localhost:9999", "key")
+        client._execute = AsyncMock(return_value=mock_response)
+
+        scenes = await client.get_scenes_for_endpoint("https://stashdb.org/graphql")
+        assert len(scenes) == 1
+        assert scenes[0]["title"] == "Scene One"
+        assert scenes[0]["stash_ids"][0]["stash_id"] == "sb-scene-1"
+
+    @pytest.mark.asyncio
+    async def test_update_scene(self):
+        """update_scene sends mutation with correct fields."""
+        from stash_client_unified import StashClientUnified
+
+        client = StashClientUnified("http://localhost:9999", "key")
+        client._execute = AsyncMock(return_value={"sceneUpdate": {"id": "1"}})
+
+        result = await client.update_scene("1", title="New Title", date="2025-02-01")
+        assert result["id"] == "1"
+        # Verify the input dict was passed correctly
+        call_args = client._execute.call_args
+        # _execute is called as (query, {"input": input_dict}, priority=Priority.CRITICAL)
+        # positional args: call_args[0][1] is the variables dict
+        variables = call_args[0][1]
+        input_dict = variables["input"]
+        assert input_dict["id"] == "1"
+        assert input_dict["title"] == "New Title"
+        assert input_dict["date"] == "2025-02-01"
