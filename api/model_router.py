@@ -1,15 +1,19 @@
 """Model management API router.
 
 Endpoints for checking model installation status, downloading models
-from GitHub Releases, and monitoring download progress.
+from GitHub Releases, monitoring download progress, and reporting
+available capabilities.
 """
 
 import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from capabilities import detect_capabilities
 from model_manager import ModelManager
 
 logger = logging.getLogger(__name__)
@@ -91,3 +95,16 @@ async def get_download_progress():
     """Get progress of active and recent downloads."""
     mgr = _get_manager()
     return {"progress": mgr.get_progress()}
+
+
+@router.get("/capabilities")
+async def get_capabilities():
+    """Get available capabilities based on installed models and data."""
+    mgr = _get_manager()
+    data_dir = Path(os.environ.get("DATA_DIR", "./data"))
+    models_dir = data_dir / "models"
+    caps = detect_capabilities(data_dir=data_dir, models_dir=models_dir)
+    return {
+        "capabilities": caps,
+        "models": mgr.get_status(),
+    }
