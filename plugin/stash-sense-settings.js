@@ -95,6 +95,9 @@
       container.appendChild(renderHardwareBanner(systemInfo));
     }
 
+    // Models section
+    container.appendChild(await renderModelsCategory());
+
     // Endpoint priority ordering
     container.appendChild(await renderEndpointPriorityCategory());
 
@@ -149,6 +152,233 @@
       </div>
     `;
     return banner;
+  }
+
+  // ==================== Models Category ====================
+
+  async function renderModelsCategory() {
+    const section = SS.createElement('div', { className: 'ss-settings-category' });
+
+    const header = SS.createElement('div', {
+      className: 'ss-settings-cat-header',
+      innerHTML: '<h2>Models</h2>',
+    });
+    section.appendChild(header);
+
+    const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
+
+    try {
+      const [modelsResult, capabilitiesResult] = await Promise.all([
+        apiCall('models_status'),
+        apiCall('capabilities'),
+      ]);
+
+      const models = modelsResult.models || [];
+
+      if (models.length === 0) {
+        const emptyRow = SS.createElement('div', {
+          className: 'ss-setting-row ss-setting-hint',
+          textContent: 'No models found.',
+        });
+        body.appendChild(emptyRow);
+        section.appendChild(body);
+        return section;
+      }
+
+      // Group models by their group field
+      const groups = {};
+      for (const model of models) {
+        const group = model.group || 'other';
+        if (!groups[group]) groups[group] = [];
+        groups[group].push(model);
+      }
+
+      let hasNotInstalled = false;
+
+      for (const [groupKey, groupModels] of Object.entries(groups)) {
+        // Group sub-header
+        const groupLabel = groupKey
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+
+        const groupHeader = SS.createElement('div', {
+          className: 'ss-setting-row ss-models-group-header',
+        });
+        groupHeader.innerHTML = `<span class="ss-setting-label" style="margin-bottom:0">${groupLabel}</span>`;
+        body.appendChild(groupHeader);
+
+        for (const model of groupModels) {
+          const row = SS.createElement('div', { className: 'ss-setting-row' });
+
+          const modelName = (model.name || '')
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase());
+
+          const sizeMB = model.size_bytes
+            ? `${(model.size_bytes / (1024 * 1024)).toFixed(0)} MB`
+            : '';
+
+          const info = SS.createElement('div', { className: 'ss-setting-info' });
+          info.innerHTML = `
+            <label class="ss-setting-label">${modelName}</label>
+            <span class="ss-setting-desc">${sizeMB}</span>
+          `;
+
+          const control = SS.createElement('div', { className: 'ss-setting-control' });
+
+          // Status badge
+          const statusClass = model.status === 'installed' ? 'ss-model-installed'
+            : model.status === 'corrupted' ? 'ss-model-corrupted'
+            : 'ss-model-not_installed';
+
+          const statusLabel = model.status === 'installed' ? 'Installed'
+            : model.status === 'corrupted' ? 'Corrupted'
+            : 'Not Installed';
+
+          const badge = SS.createElement('span', {
+            className: `ss-model-status ${statusClass}`,
+            textContent: statusLabel,
+          });
+          control.appendChild(badge);
+
+          // Download button for non-installed models
+          if (model.status !== 'installed') {
+            hasNotInstalled = true;
+            const dlBtn = SS.createElement('button', {
+              className: 'ss-btn ss-btn-primary ss-btn-sm',
+              textContent: 'Download',
+            });
+
+            dlBtn.addEventListener('click', async () => {
+              dlBtn.disabled = true;
+              dlBtn.textContent = 'Starting...';
+
+              try {
+                await apiCall('models_download', { model_name: model.name });
+
+                // Poll for progress
+                const pollInterval = setInterval(async () => {
+                  try {
+                    const progress = await apiCall('models_progress');
+                    const dl = progress.downloads?.[model.name] || progress.current;
+
+                    if (dl && dl.percent !== undefined) {
+                      dlBtn.textContent = `${Math.round(dl.percent)}%`;
+                    }
+
+                    // Check if complete
+                    const isComplete = dl?.status === 'completed'
+                      || dl?.percent >= 100
+                      || progress.status === 'idle';
+
+                    if (isComplete || (!dl && progress.status !== 'downloading')) {
+                      clearInterval(pollInterval);
+                      badge.className = 'ss-model-status ss-model-installed';
+                      badge.textContent = 'Installed';
+                      dlBtn.remove();
+                    }
+
+                    // Check if failed
+                    if (dl?.status === 'failed' || dl?.status === 'error') {
+                      clearInterval(pollInterval);
+                      dlBtn.textContent = 'Retry';
+                      dlBtn.disabled = false;
+                      dlBtn.className = 'ss-btn ss-btn-danger ss-btn-sm';
+                    }
+                  } catch (pollErr) {
+                    // Ignore poll errors, keep polling
+                  }
+                }, 1000);
+              } catch (err) {
+                dlBtn.textContent = 'Error';
+                dlBtn.disabled = false;
+                dlBtn.className = 'ss-btn ss-btn-danger ss-btn-sm';
+                console.error(`[Stash Sense] Failed to download ${model.name}:`, err);
+              }
+            });
+
+            control.appendChild(dlBtn);
+          }
+
+          row.appendChild(info);
+          row.appendChild(control);
+          body.appendChild(row);
+        }
+      }
+
+      // Download All button
+      if (hasNotInstalled) {
+        const downloadAllRow = SS.createElement('div', {
+          className: 'ss-setting-row',
+          style: 'justify-content: flex-end; margin-top: 8px;',
+        });
+
+        const downloadAllBtn = SS.createElement('button', {
+          className: 'ss-btn ss-btn-primary',
+          textContent: 'Download All',
+        });
+
+        downloadAllBtn.addEventListener('click', async () => {
+          downloadAllBtn.disabled = true;
+          downloadAllBtn.textContent = 'Downloading...';
+
+          try {
+            await apiCall('models_download_all');
+
+            // Poll for progress
+            const pollInterval = setInterval(async () => {
+              try {
+                const progress = await apiCall('models_progress');
+
+                if (progress.percent !== undefined) {
+                  downloadAllBtn.textContent = `Downloading... ${Math.round(progress.percent)}%`;
+                }
+
+                if (progress.status === 'idle' || progress.status === 'completed' || progress.percent >= 100) {
+                  clearInterval(pollInterval);
+                  downloadAllBtn.textContent = 'Done';
+                  downloadAllBtn.className = 'ss-btn ss-btn-success';
+
+                  // Refresh the entire settings page after a brief delay
+                  setTimeout(() => {
+                    if (window.StashSenseSettings) {
+                      window.StashSenseSettings.refresh();
+                    }
+                  }, 1500);
+                }
+
+                if (progress.status === 'failed' || progress.status === 'error') {
+                  clearInterval(pollInterval);
+                  downloadAllBtn.textContent = 'Retry';
+                  downloadAllBtn.disabled = false;
+                  downloadAllBtn.className = 'ss-btn ss-btn-danger';
+                }
+              } catch (pollErr) {
+                // Ignore poll errors
+              }
+            }, 1000);
+          } catch (err) {
+            downloadAllBtn.textContent = 'Error';
+            downloadAllBtn.disabled = false;
+            downloadAllBtn.className = 'ss-btn ss-btn-danger';
+            console.error('[Stash Sense] Failed to download all models:', err);
+          }
+        });
+
+        downloadAllRow.appendChild(downloadAllBtn);
+        body.appendChild(downloadAllRow);
+      }
+    } catch (e) {
+      const errorRow = SS.createElement('div', {
+        className: 'ss-setting-row ss-setting-hint',
+        textContent: `Failed to load model status: ${e.message}`,
+      });
+      errorRow.style.color = '#ef4444';
+      body.appendChild(errorRow);
+    }
+
+    section.appendChild(body);
+    return section;
   }
 
   function renderCategory(catKey, cat) {
