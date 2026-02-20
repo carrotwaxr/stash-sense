@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hardware import get_hardware_profile
+from recommendations_router import get_rec_db
 from settings import get_settings_manager, SETTING_DEFS
 from stashbox_connection_manager import get_connection_manager
 
@@ -45,6 +46,56 @@ async def get_all_settings():
     mgr = get_settings_manager()
     return mgr.get_all_with_metadata()
 
+
+# ==================== Endpoint Priority ====================
+# NOTE: These must be registered BEFORE /settings/{key} to avoid
+# the path parameter route catching "endpoint-priorities" as a key.
+
+class EndpointPriorityRequest(BaseModel):
+    endpoints: list[str]
+
+
+@router.get("/settings/endpoint-priorities")
+async def get_endpoint_priorities():
+    """Get stash-box endpoints in priority order.
+
+    Returns all configured endpoints with their names, ordered by priority.
+    Endpoints without explicit priority are appended in their default order.
+    """
+    mgr = get_connection_manager()
+    connections = {c["endpoint"]: c for c in mgr.get_connections()}
+
+    db = get_rec_db()
+    priority_order = db.get_endpoint_priorities()
+
+    # Build ordered result: prioritized endpoints first, then any remaining
+    result = []
+    seen = set()
+    for ep in priority_order:
+        if ep in connections:
+            result.append(connections[ep])
+            seen.add(ep)
+    for ep, conn in connections.items():
+        if ep not in seen:
+            result.append(conn)
+
+    return {"endpoints": result}
+
+
+@router.post("/settings/endpoint-priorities")
+async def set_endpoint_priorities(request: EndpointPriorityRequest):
+    """Set the priority order for stash-box endpoints.
+
+    Endpoints listed first have highest priority. When an entity is linked
+    to multiple endpoints, only the highest-priority endpoint generates
+    upstream change recommendations.
+    """
+    db = get_rec_db()
+    db.set_endpoint_priorities(request.endpoints)
+    return {"success": True}
+
+
+# ==================== Individual settings ====================
 
 @router.get("/settings/{key}")
 async def get_setting(key: str):
