@@ -180,6 +180,14 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
         """
         connections = await self.stash.get_stashbox_connections()
 
+        # Sort connections by endpoint priority
+        priority_order = self.rec_db.get_endpoint_priorities()
+        if priority_order:
+            priority_map = {ep: i for i, ep in enumerate(priority_order)}
+            connections.sort(
+                key=lambda c: priority_map.get(c["endpoint"], len(priority_order))
+            )
+
         settings = self.rec_db.get_settings(self.type)
         endpoint_config = {}
         if settings and settings.config:
@@ -188,6 +196,9 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
         total_processed = 0
         total_created = 0
         errors = []
+
+        # Track entities already processed by a higher-priority endpoint
+        processed_local_ids: set[str] = set()
 
         logger.info(
             f"Starting upstream {self.entity_type} analysis (incremental={incremental}), "
@@ -204,7 +215,8 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
 
             try:
                 created, processed = await self._process_endpoint(
-                    endpoint, api_key, incremental
+                    endpoint, api_key, incremental,
+                    skip_local_ids=processed_local_ids if priority_order else None,
                 )
                 total_created += created
                 total_processed += processed
@@ -220,7 +232,8 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
         )
 
     async def _process_endpoint(
-        self, endpoint: str, api_key: str, incremental: bool
+        self, endpoint: str, api_key: str, incremental: bool,
+        skip_local_ids: set[str] | None = None,
     ) -> tuple[int, int]:
         """Process a single stash-box endpoint. Returns (created, processed)."""
         local_entities = await self._get_local_entities(endpoint)
@@ -252,7 +265,15 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
         skipped = 0
 
         for i, (stash_box_id, local_entity) in enumerate(local_lookup.items()):
-            local_id = local_entity["id"]
+            local_id = str(local_entity["id"])
+
+            if skip_local_ids is not None and local_id in skip_local_ids:
+                logger.info(
+                    f"Skipping {self.entity_type} {local_id} on {endpoint} "
+                    f"(already processed by higher-priority endpoint)"
+                )
+                skipped += 1
+                continue
 
             if self.rec_db.is_permanently_dismissed(self.type, self.entity_type, local_id):
                 skipped += 1
@@ -274,9 +295,12 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
             if latest_updated_at is None or (updated_at and updated_at > latest_updated_at):
                 latest_updated_at = updated_at
 
-            # In incremental mode, skip entities not updated since last run
+            # In incremental mode, skip entities not updated since last run.
+            # Still add to skip_local_ids so lower-priority endpoints don't re-process.
             if watermark and updated_at and updated_at <= watermark:
                 skipped += 1
+                if skip_local_ids is not None:
+                    skip_local_ids.add(local_id)
                 continue
 
             if self._is_upstream_deleted(up):
@@ -325,6 +349,8 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
                         stale.id, action="auto_resolved",
                         details={"reason": "no_differences"},
                     )
+                if skip_local_ids is not None:
+                    skip_local_ids.add(local_id)
                 continue
 
             endpoint_name = get_stashbox_shortname(endpoint)
@@ -363,6 +389,9 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
                     )
                     if rec_id:
                         created += 1
+
+            if skip_local_ids is not None:
+                skip_local_ids.add(local_id)
 
         self.update_progress(processed, created)
 

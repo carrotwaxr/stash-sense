@@ -95,6 +95,9 @@
       container.appendChild(renderHardwareBanner(systemInfo));
     }
 
+    // Endpoint priority ordering
+    container.appendChild(await renderEndpointPriorityCategory());
+
     // Settings categories
     if (settingsData?.categories) {
       const cats = Object.entries(settingsData.categories)
@@ -272,6 +275,128 @@
       debouncedSave(key, input.value, input.closest('.ss-setting-row'));
     });
     return input;
+  }
+
+  // ==================== Endpoint Priority ====================
+
+  async function renderEndpointPriorityCategory() {
+    const section = SS.createElement('div', { className: 'ss-settings-category' });
+
+    const header = SS.createElement('div', {
+      className: 'ss-settings-cat-header',
+      innerHTML: '<h2>Endpoint Priority</h2>',
+    });
+    section.appendChild(header);
+
+    const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
+
+    const desc = SS.createElement('div', {
+      className: 'ss-setting-row ss-setting-hint',
+      textContent: 'Set the priority order for stash-box endpoints. Higher priority endpoints are checked first for upstream changes. When an entity is linked to multiple endpoints, only the highest-priority one generates recommendations.',
+    });
+    body.appendChild(desc);
+
+    try {
+      const result = await apiCall('endpoint_priorities_get');
+      const endpoints = result.endpoints || [];
+
+      if (endpoints.length === 0) {
+        const emptyRow = SS.createElement('div', {
+          className: 'ss-setting-row ss-setting-hint',
+          textContent: 'No stash-box endpoints configured.',
+        });
+        body.appendChild(emptyRow);
+        section.appendChild(body);
+        return section;
+      }
+
+      const list = SS.createElement('div', { className: 'ss-priority-list' });
+      const saveStatus = SS.createElement('span', { className: 'ss-setting-hint' });
+
+      function renderList() {
+        list.innerHTML = '';
+        endpoints.forEach((ep, i) => {
+          const row = SS.createElement('div', { className: 'ss-priority-row' });
+
+          const rank = SS.createElement('span', {
+            className: 'ss-priority-rank',
+            textContent: `${i + 1}`,
+          });
+
+          const name = SS.createElement('span', {
+            className: 'ss-priority-name',
+            textContent: ep.name || ep.domain || ep.endpoint,
+          });
+
+          const arrows = SS.createElement('div', { className: 'ss-priority-arrows' });
+
+          const upBtn = SS.createElement('button', {
+            className: 'ss-btn ss-btn-sm ss-priority-arrow',
+            textContent: '\u25B2',
+            attrs: { title: 'Move up', disabled: i === 0 ? 'true' : undefined },
+          });
+          upBtn.addEventListener('click', () => {
+            if (i > 0) {
+              [endpoints[i - 1], endpoints[i]] = [endpoints[i], endpoints[i - 1]];
+              renderList();
+              savePriorities();
+            }
+          });
+
+          const downBtn = SS.createElement('button', {
+            className: 'ss-btn ss-btn-sm ss-priority-arrow',
+            textContent: '\u25BC',
+            attrs: { title: 'Move down', disabled: i === endpoints.length - 1 ? 'true' : undefined },
+          });
+          downBtn.addEventListener('click', () => {
+            if (i < endpoints.length - 1) {
+              [endpoints[i], endpoints[i + 1]] = [endpoints[i + 1], endpoints[i]];
+              renderList();
+              savePriorities();
+            }
+          });
+
+          arrows.appendChild(upBtn);
+          arrows.appendChild(downBtn);
+          row.appendChild(rank);
+          row.appendChild(name);
+          row.appendChild(arrows);
+          list.appendChild(row);
+        });
+      }
+
+      let saveTimeout;
+      async function savePriorities() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(async () => {
+          try {
+            await apiCall('endpoint_priorities_set', {
+              endpoints: endpoints.map(ep => ep.endpoint),
+            });
+            saveStatus.textContent = 'Saved';
+            saveStatus.style.color = '#22c55e';
+            setTimeout(() => { saveStatus.textContent = ''; }, 2000);
+          } catch (e) {
+            saveStatus.textContent = `Error: ${e.message}`;
+            saveStatus.style.color = '#ef4444';
+          }
+        }, 300);
+      }
+
+      renderList();
+      body.appendChild(list);
+      body.appendChild(saveStatus);
+    } catch (e) {
+      const errorRow = SS.createElement('div', {
+        className: 'ss-setting-row ss-setting-hint',
+        textContent: `Failed to load endpoint priorities: ${e.message}`,
+      });
+      errorRow.style.color = '#ef4444';
+      body.appendChild(errorRow);
+    }
+
+    section.appendChild(body);
+    return section;
   }
 
   // ==================== Display Settings ====================
