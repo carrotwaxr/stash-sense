@@ -147,6 +147,10 @@
       return apiCall('rec_update_tag', { tag_id: tagId, fields });
     },
 
+    async updateStudio(studioId, fields, endpoint) {
+      return apiCall('rec_update_studio', { studio_id: studioId, fields, endpoint });
+    },
+
     async dismissUpstream(recId, reason, permanent) {
       return apiCall('rec_dismiss_upstream', { rec_id: recId, reason, permanent: !!permanent });
     },
@@ -348,6 +352,11 @@
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`,
           description: 'Tag fields updated on StashDB since last sync',
         },
+        upstream_studio_changes: {
+          title: 'Upstream Studio Changes',
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>`,
+          description: 'Studio fields updated on StashDB since last sync',
+        },
       };
 
       content.innerHTML = `
@@ -508,9 +517,10 @@
       if (changes.length === 0) continue;
 
       const isTag = rec.type === 'upstream_tag_changes';
-      const entityName = isTag ? details.tag_name : details.performer_name;
-      const entityType = isTag ? 'Tag' : 'Performer';
-      const entityId = isTag ? details.tag_id : details.performer_id;
+      const isStudio = rec.type === 'upstream_studio_changes';
+      const entityName = isStudio ? details.studio_name : (isTag ? details.tag_name : details.performer_name);
+      const entityType = isStudio ? 'Studio' : (isTag ? 'Tag' : 'Performer');
+      const entityId = isStudio ? details.studio_id : (isTag ? details.tag_id : details.performer_id);
 
       const fields = {};
       const fieldSummaries = [];
@@ -650,6 +660,8 @@
       try {
         if (item.entityType === 'Tag') {
           await RecommendationsAPI.updateTag(item.entityId, item.fields);
+        } else if (item.entityType === 'Studio') {
+          await RecommendationsAPI.updateStudio(item.entityId, item.fields, item.rec.details.endpoint);
         } else {
           await RecommendationsAPI.updatePerformer(item.entityId, item.fields);
         }
@@ -679,6 +691,7 @@
       duplicate_scene_files: 'Duplicate Scene Files',
       upstream_performer_changes: 'Upstream Performer Changes',
       upstream_tag_changes: 'Upstream Tag Changes',
+      upstream_studio_changes: 'Upstream Studio Changes',
     };
 
     container.innerHTML = `
@@ -704,7 +717,7 @@
             Dismissed
           </button>
         </div>
-        ${currentState.status === 'pending' && (currentState.type === 'upstream_performer_changes' || currentState.type === 'upstream_tag_changes')
+        ${currentState.status === 'pending' && (currentState.type === 'upstream_performer_changes' || currentState.type === 'upstream_tag_changes' || currentState.type === 'upstream_studio_changes')
           ? '<button class="ss-accept-all-btn" id="ss-accept-all-btn">Accept All Changes</button>'
           : ''
         }
@@ -972,6 +985,30 @@
       });
     }
 
+    if (rec.type === 'upstream_studio_changes') {
+      const realChanges = filterRealChanges(details.changes);
+      const changeCount = realChanges.length;
+      const changedFields = realChanges.map(c => c.field_label).join(', ');
+
+      return SS.createElement('div', {
+        className: 'ss-rec-card ss-rec-upstream',
+        innerHTML: `
+          <div class="ss-rec-card-header">
+            <div class="ss-rec-tag-icon">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+            </div>
+            <div class="ss-rec-card-info">
+              <div class="ss-rec-card-title">Upstream Changes: ${details.studio_name || 'Unknown'}</div>
+              <div class="ss-rec-card-subtitle">
+                ${changeCount} field${changeCount !== 1 ? 's' : ''} changed · ${details.endpoint_name || ''}
+              </div>
+              <div class="ss-rec-card-fields">${changedFields}</div>
+            </div>
+          </div>
+        `,
+      });
+    }
+
     // Fallback for unknown types
     return SS.createElement('div', {
       className: 'ss-rec-card',
@@ -1022,6 +1059,8 @@
       await renderUpstreamPerformerDetail(content, rec);
     } else if (rec.type === 'upstream_tag_changes') {
       await renderUpstreamTagDetail(content, rec);
+    } else if (rec.type === 'upstream_studio_changes') {
+      await renderUpstreamStudioDetail(content, rec);
     } else {
       content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
     }
@@ -2186,6 +2225,260 @@
         applyBtn.disabled = true;
         applyBtn.textContent = 'Applying...';
         await RecommendationsAPI.updateTag(tagId, fields);
+        await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
+
+        applyBtn.textContent = 'Applied!';
+        applyBtn.classList.add('ss-btn-success');
+
+        setTimeout(() => {
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        }, 1500);
+      } catch (e) {
+        errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
+        errorDiv.style.display = 'block';
+        applyBtn.textContent = 'Apply Selected Changes';
+        applyBtn.disabled = false;
+      }
+    });
+  }
+
+  /**
+   * Upstream Studio Detail View
+   * Similar to tag — name, url, parent_studio. No image, no compound fields.
+   * Parent studio shows human-readable name with StashBox UUID stored for resolution.
+   */
+  async function renderUpstreamStudioDetail(container, rec) {
+    const details = rec.details;
+    const rawChanges = details.changes || [];
+    const studioId = details.studio_id;
+
+    const changes = filterRealChanges(rawChanges);
+
+    // If all changes were filtered out, auto-resolve and go back
+    if (changes.length === 0) {
+      try {
+        await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', { note: 'All differences were cosmetic' });
+      } catch (_) {}
+      currentState.view = 'list';
+      currentState.selectedRec = null;
+      renderCurrentView(document.getElementById('ss-recommendations'));
+      return;
+    }
+
+    // Display value helper
+    function displayValue(val) {
+      return formatFieldValue(val);
+    }
+
+    // Smart default: prefer upstream (stash-box is source of truth)
+    function smartDefault(localVal, upstreamVal) {
+      const upstreamEmpty = upstreamVal === null || upstreamVal === undefined || upstreamVal === '';
+      if (!upstreamEmpty) return 'upstream';
+      return 'local';
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ss-detail-upstream-performer'; // reuse performer styles
+
+    // Header (studio icon instead of image)
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'ss-upstream-header';
+    headerDiv.innerHTML = `
+      <div class="ss-rec-tag-icon" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,0.05);flex-shrink:0;">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+      </div>
+      <div style="flex:1;">
+        <h2 style="margin: 0 0 4px 0;">
+          <a href="/studios/${studioId}" target="_blank">${details.studio_name || 'Unknown'}</a>
+        </h2>
+        <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
+      </div>
+    `;
+    wrapper.appendChild(headerDiv);
+
+    // Quick select buttons
+    const quickActions = document.createElement('div');
+    quickActions.className = 'ss-upstream-quick-actions';
+    const keepAllBtn = document.createElement('button');
+    keepAllBtn.textContent = 'Keep All Local';
+    const acceptAllBtn = document.createElement('button');
+    acceptAllBtn.textContent = 'Accept All Upstream';
+    quickActions.appendChild(keepAllBtn);
+    quickActions.appendChild(acceptAllBtn);
+    wrapper.appendChild(quickActions);
+
+    // Build field rows
+    changes.forEach((change, idx) => {
+      const mergeType = change.merge_type || 'simple';
+      const fieldRow = document.createElement('div');
+      fieldRow.className = 'ss-upstream-field-row';
+      fieldRow.dataset.fieldIndex = idx;
+      fieldRow.dataset.fieldKey = change.field;
+      fieldRow.dataset.mergeType = mergeType;
+
+      const label = document.createElement('div');
+      label.className = 'ss-upstream-field-label';
+      label.textContent = change.field_label || change.field;
+      fieldRow.appendChild(label);
+
+      renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault);
+
+      wrapper.appendChild(fieldRow);
+    });
+
+    // Validation errors
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'ss-upstream-validation-errors';
+    errorDiv.className = 'ss-upstream-validation-error';
+    errorDiv.style.display = 'none';
+    wrapper.appendChild(errorDiv);
+
+    // Action bar
+    const actionBar = document.createElement('div');
+    actionBar.className = 'ss-upstream-action-bar';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'ss-btn ss-upstream-apply-btn';
+    applyBtn.textContent = 'Apply Selected Changes';
+
+    // Dismiss dropdown (reuse tag pattern)
+    const dismissDropdown = document.createElement('div');
+    dismissDropdown.style.cssText = 'position:relative;';
+    const dismissToggle = document.createElement('button');
+    dismissToggle.className = 'ss-btn ss-upstream-dismiss-btn';
+    dismissToggle.textContent = 'Dismiss';
+    const dismissMenu = document.createElement('div');
+    dismissMenu.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px 0;min-width:220px;z-index:10;';
+
+    const dismissOptions = [
+      { label: 'Dismiss this update', permanent: false },
+      { label: 'Never show for this studio', permanent: true },
+    ];
+    dismissOptions.forEach(opt => {
+      const optBtn = document.createElement('button');
+      optBtn.textContent = opt.label;
+      optBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 16px;background:none;border:none;color:#fff;cursor:pointer;font-size:13px;';
+      optBtn.addEventListener('mouseenter', () => { optBtn.style.background = 'rgba(255,255,255,0.05)'; });
+      optBtn.addEventListener('mouseleave', () => { optBtn.style.background = 'none'; });
+      optBtn.addEventListener('click', async () => {
+        dismissToggle.disabled = true;
+        dismissToggle.textContent = 'Dismissing...';
+        try {
+          await RecommendationsAPI.dismissUpstream(rec.id, null, opt.permanent);
+          currentState.view = 'list';
+          currentState.selectedRec = null;
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        } catch (e) {
+          errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
+          errorDiv.style.display = 'block';
+          dismissToggle.disabled = false;
+          dismissToggle.textContent = 'Dismiss';
+        }
+      });
+      dismissMenu.appendChild(optBtn);
+    });
+    dismissDropdown.appendChild(dismissToggle);
+    dismissDropdown.appendChild(dismissMenu);
+
+    actionBar.appendChild(applyBtn);
+    actionBar.appendChild(dismissDropdown);
+    wrapper.appendChild(actionBar);
+
+    container.innerHTML = '';
+    container.appendChild(wrapper);
+
+    // === Event handlers ===
+
+    dismissToggle.addEventListener('click', () => {
+      dismissMenu.style.display = dismissMenu.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Close dismiss menu when clicking outside (match tag pattern)
+    document.addEventListener('click', function closeDismissMenu(e) {
+      if (!dismissToggle.contains(e.target) && !dismissMenu.contains(e.target)) {
+        dismissMenu.style.display = 'none';
+      }
+      if (!document.contains(container)) {
+        document.removeEventListener('click', closeDismissMenu);
+      }
+    });
+
+    keepAllBtn.addEventListener('click', () => {
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const localCb = row.querySelector('.ss-upstream-cb-local');
+        const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+        if (localCb) { localCb.checked = true; localCb.dispatchEvent(new Event('change')); }
+        if (upstreamCb) upstreamCb.checked = false;
+      });
+    });
+
+    acceptAllBtn.addEventListener('click', () => {
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const localCb = row.querySelector('.ss-upstream-cb-local');
+        const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+        if (upstreamCb) { upstreamCb.checked = true; upstreamCb.dispatchEvent(new Event('change')); }
+        if (localCb) localCb.checked = false;
+        // Update result input
+        const fieldIndex = parseInt(row.dataset.fieldIndex);
+        const change = changes[fieldIndex];
+        const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+        if (resultInput) {
+          resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : formatFieldValue(change.upstream_value);
+        }
+      });
+    });
+
+    // === Apply handler ===
+    applyBtn.addEventListener('click', async () => {
+      errorDiv.style.display = 'none';
+      errorDiv.innerHTML = '';
+      const fields = {};
+
+      wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
+        const fieldKey = row.dataset.fieldKey;
+        const mergeType = row.dataset.mergeType;
+        const fieldIndex = parseInt(row.dataset.fieldIndex);
+        const change = changes[fieldIndex];
+
+        const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+        if (!resultInput) return;
+
+        const resultVal = resultInput.value.trim();
+        const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+
+        // Skip if result equals local (no change)
+        if (resultVal === localStr) return;
+
+        fields[fieldKey] = resultVal;
+      });
+
+      const hasChanges = Object.keys(fields).length > 0;
+      if (!hasChanges) {
+        try {
+          applyBtn.disabled = true;
+          applyBtn.textContent = 'Resolving...';
+          await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
+          applyBtn.textContent = 'Done!';
+          applyBtn.classList.add('ss-btn-success');
+          setTimeout(() => {
+            currentState.view = 'list';
+            currentState.selectedRec = null;
+            renderCurrentView(document.getElementById('ss-recommendations'));
+          }, 1500);
+        } catch (e) {
+          applyBtn.textContent = `Failed: ${e.message}`;
+          applyBtn.classList.add('ss-btn-error');
+          applyBtn.disabled = false;
+        }
+        return;
+      }
+
+      try {
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying...';
+        await RecommendationsAPI.updateStudio(studioId, fields, details.endpoint);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
         applyBtn.textContent = 'Applied!';
