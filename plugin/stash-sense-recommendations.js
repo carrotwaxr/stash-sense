@@ -549,14 +549,26 @@
       });
     });
 
-    // Load recommendations
+    // Load recommendations and counts in parallel
     try {
       const PAGE_SIZE = 25;
-      const result = await RecommendationsAPI.getList({
-        type: currentState.type,
-        status: currentState.status,
-        limit: PAGE_SIZE,
-        offset: currentState.page * PAGE_SIZE,
+      const [result, countsResult] = await Promise.all([
+        RecommendationsAPI.getList({
+          type: currentState.type,
+          status: currentState.status,
+          limit: PAGE_SIZE,
+          offset: currentState.page * PAGE_SIZE,
+        }),
+        RecommendationsAPI.getCounts(),
+      ]);
+
+      // Update tab labels with counts
+      const typeCounts = countsResult.counts?.[currentState.type] || {};
+      container.querySelectorAll('.ss-filter-tab').forEach(tab => {
+        const status = tab.dataset.status;
+        const count = typeCounts[status] || 0;
+        const label = status.charAt(0).toUpperCase() + status.slice(1);
+        tab.textContent = `${label} (${count})`;
       });
 
       const listContent = container.querySelector('.ss-list-content');
@@ -2055,7 +2067,7 @@
       const aliasCb = document.createElement('input');
       aliasCb.type = 'checkbox';
       aliasCb.className = 'ss-upstream-name-alias-cb';
-      aliasCb.checked = false;
+      aliasCb.checked = true;
       aliasLabel.appendChild(aliasCb);
       aliasLabel.appendChild(document.createTextNode(' Add old name as alias when switching'));
       aliasOption.appendChild(aliasLabel);
