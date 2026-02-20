@@ -1119,6 +1119,30 @@ class RecommendationsDB:
         with self._connection() as conn:
             conn.execute("DELETE FROM user_settings WHERE key = ?", (key,))
 
+    # ==================== Endpoint Priorities ====================
+
+    def get_endpoint_priorities(self) -> list[str]:
+        """Get the ordered list of endpoint URLs, highest priority first.
+
+        Returns empty list if no priorities are configured.
+        """
+        result = self.get_user_setting("endpoint_priorities")
+        if isinstance(result, list):
+            return result
+        return []
+
+    def set_endpoint_priorities(self, endpoints: list[str]):
+        """Set the endpoint priority order. Index 0 = highest priority."""
+        self.set_user_setting("endpoint_priorities", endpoints)
+
+    def get_endpoint_priority_rank(self, endpoint: str) -> int | None:
+        """Get the priority rank (0 = highest) of an endpoint, or None if unranked."""
+        priorities = self.get_endpoint_priorities()
+        try:
+            return priorities.index(endpoint)
+        except ValueError:
+            return None
+
     # ==================== Scene Fingerprints ====================
 
     def create_scene_fingerprint(
