@@ -3117,3 +3117,22 @@
   opacity: 0.2;
   cursor: default;
 }
+
+/* Scene upstream sync */
+.ss-scene-section { margin-top: 16px; }
+.ss-scene-section-title { font-size: 14px; font-weight: 600; color: #ccc; margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.ss-scene-subsection { margin: 8px 0; }
+.ss-scene-subsection-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.ss-scene-subsection-label.ss-scene-added { color: #4caf50; }
+.ss-scene-subsection-label.ss-scene-removed { color: #f44336; }
+.ss-scene-entity-row { padding: 8px 0; }
+.ss-scene-entity-compare { display: flex; align-items: center; gap: 12px; }
+.ss-scene-entity-local, .ss-scene-entity-upstream { display: flex; flex-direction: column; gap: 2px; }
+.ss-scene-entity-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.ss-scene-entity-item.ss-scene-entity-removed { opacity: 0.6; text-decoration: line-through; }
+.ss-scene-entity-name { font-size: 13px; }
+.ss-scene-entity-created { font-size: 11px; color: #4caf50; }
+.ss-scene-create-btn { font-size: 11px !important; padding: 2px 8px !important; }
+.ss-scene-tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ss-scene-tag-chip { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); font-size: 12px; }
+.ss-scene-tag-chip.ss-scene-tag-removed { opacity: 0.6; text-decoration: line-through; background: rgba(244,67,54,0.1); }

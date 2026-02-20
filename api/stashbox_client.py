@@ -76,6 +76,23 @@ STUDIO_FIELDS = """
     updated
 """
 
+# Fragment with all scene fields used by get_scene
+SCENE_FIELDS = """
+    id
+    title
+    details
+    date
+    urls { url site { name } }
+    studio { id name }
+    tags { id name }
+    performers { performer { id name } as }
+    director
+    code
+    deleted
+    created
+    updated
+"""
+
 
 class StashBoxClient:
     """
@@ -250,3 +267,24 @@ class StashBoxClient:
 
         data = await self._execute(query, variables={"id": performer_id})
         return data.get("findPerformer")
+
+    async def get_scene(self, scene_id: str) -> Optional[dict]:
+        """
+        Get a single scene by ID from the stash-box endpoint.
+
+        Args:
+            scene_id: The stash-box scene UUID
+
+        Returns:
+            Scene dict if found, None otherwise
+        """
+        query = f"""
+        query FindScene($id: ID!) {{
+            findScene(id: $id) {{
+                {SCENE_FIELDS}
+            }}
+        }}
+        """
+
+        data = await self._execute(query, variables={"id": scene_id})
+        return data.get("findScene")

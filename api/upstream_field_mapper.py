@@ -552,3 +552,224 @@ def diff_performer_fields(
         merge_types=FIELD_MERGE_TYPES,
         labels=FIELD_LABELS,
     )
+
+
+# ==================== Scene Field Config ====================
+
+DEFAULT_SCENE_FIELDS: set[str] = {
+    "title", "date", "details", "director", "code", "urls",
+    "studio", "performers", "tags",
+}
+
+SCENE_FIELD_LABELS: dict[str, str] = {
+    "title": "Title",
+    "date": "Date",
+    "details": "Details",
+    "director": "Director",
+    "code": "Code",
+    "urls": "URLs",
+    "studio": "Studio",
+    "performers": "Performers",
+    "tags": "Tags",
+}
+
+SCENE_FIELD_MERGE_TYPES: dict[str, str] = {
+    "title": "name",
+    "date": "simple",
+    "details": "text",
+    "director": "simple",
+    "code": "simple",
+    "urls": "alias_list",
+    "studio": "simple",
+    "performers": "performer_list",
+    "tags": "id_list",
+}
+
+SCENE_SIMPLE_FIELDS = {"title", "date", "details", "director", "code", "urls"}
+SCENE_RELATIONAL_FIELDS = {"studio", "performers", "tags"}
+
+
+def normalize_upstream_scene(upstream: dict) -> dict:
+    """Normalize a StashBox scene to canonical field names."""
+    urls = []
+    for u in (upstream.get("urls") or []):
+        if isinstance(u, dict):
+            urls.append(u.get("url", ""))
+        else:
+            urls.append(str(u))
+
+    performers = []
+    for pa in (upstream.get("performers") or []):
+        perf = pa.get("performer", {})
+        performers.append({
+            "id": perf.get("id"),
+            "name": perf.get("name"),
+            "as": pa.get("as"),
+        })
+
+    tags = []
+    for t in (upstream.get("tags") or []):
+        tags.append({"id": t.get("id"), "name": t.get("name")})
+
+    studio = upstream.get("studio")
+    if studio:
+        studio = {"id": studio.get("id"), "name": studio.get("name")}
+
+    return {
+        "title": upstream.get("title") or "",
+        "date": upstream.get("date") or "",
+        "details": upstream.get("details") or "",
+        "director": upstream.get("director") or "",
+        "code": upstream.get("code") or "",
+        "urls": urls,
+        "studio": studio,
+        "performers": performers,
+        "tags": tags,
+    }
+
+
+def diff_scene_fields(
+    local: dict,
+    upstream: dict,
+    snapshot: dict | None,
+    enabled_fields: set[str],
+) -> dict:
+    """Compute changes between local and upstream scene data.
+
+    Returns a dict with:
+      - changes: list of simple field diffs (same format as other entities)
+      - studio_change: dict or None (old/new studio)
+      - performer_changes: {added: [], removed: [], alias_changed: []}
+      - tag_changes: {added: [], removed: []}
+    """
+    # Simple field diffs (reuse existing diff_fields)
+    simple_changes = diff_fields(
+        local=local,
+        upstream=upstream,
+        snapshot=snapshot,
+        enabled_fields=enabled_fields & SCENE_SIMPLE_FIELDS,
+        merge_types=SCENE_FIELD_MERGE_TYPES,
+        labels=SCENE_FIELD_LABELS,
+    )
+
+    # Studio diff
+    studio_change = None
+    if "studio" in enabled_fields:
+        local_studio = local.get("studio")
+        upstream_studio = upstream.get("studio")
+        if _studio_changed(local_studio, upstream_studio, snapshot):
+            studio_change = {
+                "local": local_studio,
+                "upstream": upstream_studio,
+            }
+
+    # Performer diff (set comparison by stashbox ID)
+    performer_changes = {"added": [], "removed": [], "alias_changed": []}
+    if "performers" in enabled_fields:
+        performer_changes = _diff_performers(
+            local.get("performers", []),
+            upstream.get("performers", []),
+            snapshot.get("performers", []) if snapshot else None,
+        )
+
+    # Tag diff (set comparison by stashbox ID)
+    tag_changes = {"added": [], "removed": []}
+    if "tags" in enabled_fields:
+        tag_changes = _diff_tags(
+            local.get("tags", []),
+            upstream.get("tags", []),
+            snapshot.get("tags", []) if snapshot else None,
+        )
+
+    return {
+        "changes": simple_changes,
+        "studio_change": studio_change,
+        "performer_changes": performer_changes,
+        "tag_changes": tag_changes,
+    }
+
+
+def _studio_changed(local_studio, upstream_studio, snapshot):
+    """Check if studio changed (3-way aware)."""
+    local_id = local_studio.get("id") if local_studio else None
+    upstream_id = upstream_studio.get("id") if upstream_studio else None
+    if local_id == upstream_id:
+        return False
+    if snapshot is not None:
+        snapshot_studio = snapshot.get("studio")
+        snapshot_id = snapshot_studio.get("id") if snapshot_studio else None
+        if upstream_id == snapshot_id:
+            return False  # user intentionally set local differently
+    return True
+
+
+def _diff_performers(local_perfs, upstream_perfs, snapshot_perfs):
+    """Set-based performer diff with alias tracking."""
+    local_by_id = {p["id"]: p for p in local_perfs}
+    upstream_by_id = {p["id"]: p for p in upstream_perfs}
+
+    # 3-way: only flag changes if upstream differs from snapshot
+    if snapshot_perfs is not None:
+        snapshot_by_id = {p["id"]: p for p in snapshot_perfs}
+        upstream_ids = set(upstream_by_id.keys())
+        snapshot_ids = set(snapshot_by_id.keys())
+        if upstream_ids == snapshot_ids:
+            # Check alias changes too
+            aliases_same = all(
+                upstream_by_id[pid].get("as") == snapshot_by_id[pid].get("as")
+                for pid in upstream_ids
+            )
+            if aliases_same:
+                return {"added": [], "removed": [], "alias_changed": []}
+
+    added = []
+    removed = []
+    alias_changed = []
+
+    for pid, up_perf in upstream_by_id.items():
+        if pid not in local_by_id:
+            added.append(up_perf)
+        else:
+            # Check alias change
+            local_alias = local_by_id[pid].get("as")
+            upstream_alias = up_perf.get("as")
+            if local_alias != upstream_alias:
+                alias_changed.append({
+                    **up_perf,
+                    "local_alias": local_alias,
+                    "upstream_alias": upstream_alias,
+                })
+
+    for pid, local_perf in local_by_id.items():
+        if pid not in upstream_by_id:
+            removed.append(local_perf)
+
+    return {"added": added, "removed": removed, "alias_changed": alias_changed}
+
+
+def _diff_tags(local_tags, upstream_tags, snapshot_tags):
+    """Set-based tag diff."""
+    local_ids = {t["id"] for t in local_tags}
+    upstream_ids = {t["id"] for t in upstream_tags}
+
+    # 3-way: only flag if upstream set changed from snapshot
+    if snapshot_tags is not None:
+        snapshot_ids = {t["id"] for t in snapshot_tags}
+        if upstream_ids == snapshot_ids:
+            return {"added": [], "removed": []}
+
+    upstream_by_id = {t["id"]: t for t in upstream_tags}
+    local_by_id = {t["id"]: t for t in local_tags}
+
+    added = [upstream_by_id[tid] for tid in upstream_ids - local_ids]
+    removed = [local_by_id[tid] for tid in local_ids - upstream_ids]
+
+    return {"added": added, "removed": removed}
+
+
+# Register scene fields in the entity config registry
+ENTITY_FIELD_CONFIGS["scene"] = {
+    "default_fields": DEFAULT_SCENE_FIELDS,
+    "labels": SCENE_FIELD_LABELS,
+    "merge_types": SCENE_FIELD_MERGE_TYPES,
+}

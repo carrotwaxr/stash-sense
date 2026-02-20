@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 import face_config
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
-from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer
+from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer, UpstreamSceneAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -406,6 +406,7 @@ ANALYZERS = {
     "upstream_performer_changes": UpstreamPerformerAnalyzer,
     "upstream_tag_changes": UpstreamTagAnalyzer,
     "upstream_studio_changes": UpstreamStudioAnalyzer,
+    "upstream_scene_changes": UpstreamSceneAnalyzer,
 }
 
 
@@ -1020,6 +1021,129 @@ async def _resolve_stashbox_studio_to_local(
         f"from StashBox {stashbox_id}"
     )
     return new_studio["id"]
+
+
+class CreatePerformerRequest(BaseModel):
+    """Request to create a performer from StashBox data."""
+    stashbox_data: dict
+    endpoint: str
+    stashbox_id: str
+
+
+class CreateTagRequest(BaseModel):
+    """Request to create a tag from StashBox data."""
+    stashbox_data: dict
+    endpoint: str
+    stashbox_id: str
+
+
+class CreateStudioRequest(BaseModel):
+    """Request to create a studio from StashBox data."""
+    stashbox_data: dict
+    endpoint: str
+    stashbox_id: str
+
+
+class UpdateSceneRequest(BaseModel):
+    """Request to apply upstream changes to a scene."""
+    scene_id: str
+    fields: dict = {}
+    performer_ids: list[str] | None = None
+    tag_ids: list[str] | None = None
+    studio_id: str | None = None
+
+
+async def _create_performer_from_stashbox(stash, stashbox_data: dict, endpoint: str, stashbox_id: str) -> dict:
+    """Create a local performer from StashBox data with stash_id link."""
+    fields = {"name": stashbox_data.get("name", "")}
+    if stashbox_data.get("aliases"):
+        fields["alias_list"] = stashbox_data["aliases"]
+    if stashbox_data.get("gender"):
+        fields["gender"] = stashbox_data["gender"]
+    fields["stash_ids"] = [{"endpoint": endpoint, "stash_id": stashbox_id}]
+    return await stash.create_performer(**fields)
+
+
+async def _create_tag_from_stashbox(stash, stashbox_data: dict, endpoint: str, stashbox_id: str) -> dict:
+    """Create a local tag from StashBox data with stash_id link."""
+    fields = {"name": stashbox_data.get("name", "")}
+    if stashbox_data.get("description"):
+        fields["description"] = stashbox_data["description"]
+    if stashbox_data.get("aliases"):
+        fields["aliases"] = stashbox_data["aliases"]
+    fields["stash_ids"] = [{"endpoint": endpoint, "stash_id": stashbox_id}]
+    return await stash.create_tag(**fields)
+
+
+async def _apply_scene_update(
+    stash, scene_id: str, fields: dict,
+    performer_ids: list[str] | None = None,
+    tag_ids: list[str] | None = None,
+    studio_id: str | None = None,
+):
+    """Apply a scene update including simple fields and relational IDs."""
+    update_fields = dict(fields)
+    if performer_ids is not None:
+        update_fields["performer_ids"] = performer_ids
+    if tag_ids is not None:
+        update_fields["tag_ids"] = tag_ids
+    if studio_id is not None:
+        update_fields["studio_id"] = studio_id
+    return await stash.update_scene(scene_id, **update_fields)
+
+
+@router.post("/actions/create-performer")
+async def create_performer_action(request: CreatePerformerRequest):
+    """Create a new local performer from StashBox data."""
+    stash = get_stash_client()
+    result = await _create_performer_from_stashbox(
+        stash, request.stashbox_data, request.endpoint, request.stashbox_id
+    )
+    return {"success": True, "performer": result}
+
+
+@router.post("/actions/create-tag")
+async def create_tag_action(request: CreateTagRequest):
+    """Create a new local tag from StashBox data."""
+    stash = get_stash_client()
+    result = await _create_tag_from_stashbox(
+        stash, request.stashbox_data, request.endpoint, request.stashbox_id
+    )
+    return {"success": True, "tag": result}
+
+
+@router.post("/actions/create-studio")
+async def create_studio_action(request: CreateStudioRequest):
+    """Create a new local studio from StashBox data."""
+    stash = get_stash_client()
+    result = await stash.create_studio(
+        name=request.stashbox_data.get("name", ""),
+        stash_ids=[{"endpoint": request.endpoint, "stash_id": request.stashbox_id}],
+        url=(request.stashbox_data.get("urls") or [{}])[0].get("url") if request.stashbox_data.get("urls") else None,
+    )
+    return {"success": True, "studio": result}
+
+
+@router.post("/actions/update-scene")
+async def update_scene_fields(request: UpdateSceneRequest):
+    """Apply selected upstream changes to a scene."""
+    stash = get_stash_client()
+    result = await _apply_scene_update(
+        stash,
+        scene_id=request.scene_id,
+        fields=request.fields,
+        performer_ids=request.performer_ids,
+        tag_ids=request.tag_ids,
+        studio_id=request.studio_id,
+    )
+
+    # Resolve recommendation
+    db = get_rec_db()
+    rec = db.get_recommendation_by_target("upstream_scene_changes", "scene", request.scene_id, status="pending")
+    if rec:
+        db.resolve_recommendation(rec.id, action="update_scene")
+
+    return {"success": True, "scene": result}
 
 
 class UpstreamDismissRequest(BaseModel):

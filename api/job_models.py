@@ -238,6 +238,18 @@ _register(
 )
 
 _register(
+    "upstream_scene_changes",
+    "Upstream Scene Change Detection",
+    "Detects field and relational changes to scenes from stash-box sources",
+    ResourceType.NETWORK,
+    JobPriority.NORMAL,
+    supports_incremental=True,
+    schedulable=True,
+    default_interval_hours=24,
+    allowed_intervals=INTERVALS_FREQUENT,
+)
+
+_register(
     "fingerprint_generation",
     "Fingerprint Generation",
     "Generates face recognition fingerprints for scenes",
