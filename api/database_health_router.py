@@ -93,7 +93,12 @@ class UpdateStatusResponse(BaseModel):
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Check API health and database status."""
+    """Check API health and database status.
+
+    Does NOT trigger lazy loading -- reports current state without
+    side effects. The face recognition database loads on first
+    /identify request.
+    """
     if _recognizer is None:
         return HealthResponse(
             status="degraded",

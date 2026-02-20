@@ -40,15 +40,18 @@ class RecognitionResult:
 class FaceRecognizer:
     """Recognize faces against the performer database."""
 
-    def __init__(self, db_config: DatabaseConfig):
+    def __init__(self, db_config: DatabaseConfig, models_dir: "Path | None" = None):
         """
         Initialize the recognizer.
 
         Args:
             db_config: Database configuration with paths to index files
+            models_dir: Directory containing ONNX embedding models.
+                If None, FaceEmbeddingGenerator will auto-detect
+                (DATA_DIR/models first, then ./models).
         """
         self.db_config = db_config
-        self.generator = FaceEmbeddingGenerator()
+        self.generator = FaceEmbeddingGenerator(models_dir=models_dir)
 
         # Load indices
         print(f"Loading FaceNet index from {db_config.facenet_index_path}...")

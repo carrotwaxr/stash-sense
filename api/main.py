@@ -4,6 +4,7 @@ Provides REST API endpoints for:
 - Face recognition (identify performers in images)
 - Recommendations engine (library analysis and curation)
 """
+import asyncio
 import json
 import logging
 import os
@@ -40,68 +41,67 @@ from stashbox_connection_manager import init_connection_manager
 from queue_router import router as queue_router
 from model_manager import init_model_manager
 from model_router import router as model_router, init_model_router
+from resource_manager import ResourceManager, init_resource_manager, get_resource_manager
 
 logger = logging.getLogger(__name__)
 
 
-# Global recognizer instance
-recognizer: Optional[FaceRecognizer] = None
-db_manifest: dict = {}
-
-# Multi-signal components
-multi_signal_matcher: Optional[MultiSignalMatcher] = None
-body_extractor: Optional[BodyProportionExtractor] = None
-tattoo_detector: Optional[TattooDetector] = None
-tattoo_matcher = None  # Optional[TattooMatcher]
-multi_signal_config: Optional[MultiSignalConfig] = None
-
 # Database self-updater
 db_updater: Optional[DatabaseUpdater] = None
 
+# Resource group name for face recognition resources
+FACE_RECOGNITION_RESOURCE = "face_recognition"
 
-def reload_database(data_dir: Path) -> bool:
-    """Load (or reload) the face recognition database and multi-signal components.
 
-    Sets the module-level globals: recognizer, db_manifest, multi_signal_matcher,
-    body_extractor, tattoo_detector, tattoo_matcher, multi_signal_config.
+def _load_face_recognition(data_dir: Path) -> dict:
+    """Loader for face recognition resource group.
 
-    When called for a hot-swap (not first startup), stale references for
-    body_extractor, tattoo_detector, tattoo_matcher, and multi_signal_matcher
-    are explicitly cleared before rebuilding.
+    Loads the face recognition database, multi-signal components (body,
+    tattoo), and returns them as a dict. This function is called by
+    ResourceManager.require() on first access.
+
+    Uses the model manager to resolve ONNX model paths, checking the
+    data volume (DATA_DIR/models/) first and falling back to local
+    ./models/ for development.
 
     Args:
         data_dir: Path to the data directory containing DB files.
 
     Returns:
-        True on success.
+        Dict with keys: recognizer, multi_signal_matcher, db_manifest.
 
     Raises:
         Exception: on any failure during loading.
     """
-    global recognizer, db_manifest
-    global multi_signal_matcher, body_extractor, tattoo_detector, tattoo_matcher, multi_signal_config
-
-    # Clear stale references so a hot-swap doesn't leave dangling pointers
-    body_extractor = None
-    tattoo_detector = None
-    tattoo_matcher = None
-    multi_signal_matcher = None
+    from model_manager import get_model_manager
 
     print(f"Loading face database from {data_dir}...")
 
     db_config = DatabaseConfig(data_dir=data_dir)
 
     # Load manifest for database info
+    db_manifest = {}
     if db_config.manifest_json_path.exists():
         with open(db_config.manifest_json_path) as f:
             db_manifest = json.load(f)
 
-    recognizer = FaceRecognizer(db_config)
+    # Determine models directory from model manager
+    mgr = get_model_manager()
+    facenet_path = mgr.get_model_path("facenet512")
+    arcface_path = mgr.get_model_path("arcface")
+
+    if facenet_path and arcface_path:
+        models_dir = facenet_path.parent
+    else:
+        models_dir = None  # let embeddings.py auto-detect
+
+    recognizer = FaceRecognizer(db_config, models_dir=models_dir)
     print("Face database loaded successfully!")
 
     # Initialize multi-signal components
     multi_signal_config = MultiSignalConfig.from_settings()
 
+    body_extractor = None
     if multi_signal_config.enable_body:
         print("Initializing body proportion extractor...")
         body_extractor = BodyProportionExtractor()
@@ -115,9 +115,17 @@ def reload_database(data_dir: Path) -> bool:
             and db_config.tattoo_json_path.exists())
     )
 
+    tattoo_detector = None
+    tattoo_matcher = None
     if tattoo_enabled:
+        # Use model manager paths for tattoo models
+        tattoo_det_path = mgr.get_model_path("tattoo_detector")
+        tattoo_emb_path = mgr.get_model_path("tattoo_embedder")
+
         print("Initializing tattoo detector...")
-        tattoo_detector = TattooDetector()
+        tattoo_detector = TattooDetector(
+            model_path=str(tattoo_det_path) if tattoo_det_path else None,
+        )
 
         # Initialize embedding-based matcher if index is available
         if recognizer.tattoo_index is not None and recognizer.tattoo_mapping is not None:
@@ -125,9 +133,11 @@ def reload_database(data_dir: Path) -> bool:
             tattoo_matcher = TattooMatcher(
                 tattoo_index=recognizer.tattoo_index,
                 tattoo_mapping=recognizer.tattoo_mapping,
+                embedder_model_path=str(tattoo_emb_path) if tattoo_emb_path else None,
             )
             print(f"Tattoo embedding matching ready: {len(recognizer.tattoo_index)} embeddings loaded")
 
+    multi_signal_matcher = None
     if recognizer.db_reader and (body_extractor or tattoo_detector):
         print("Initializing multi-signal matcher...")
         multi_signal_matcher = MultiSignalMatcher(
@@ -146,7 +156,13 @@ def reload_database(data_dir: Path) -> bool:
         set_db_version(db_manifest["version"])
         print(f"Face recognition DB version: {db_manifest['version']}")
 
-    # Update router globals after hot-swap
+    resources = {
+        "recognizer": recognizer,
+        "multi_signal_matcher": multi_signal_matcher,
+        "db_manifest": db_manifest,
+    }
+
+    # Update router globals so endpoints can use the loaded data
     update_identification_globals(
         recognizer=recognizer,
         multi_signal_matcher=multi_signal_matcher,
@@ -158,13 +174,68 @@ def reload_database(data_dir: Path) -> bool:
         db_manifest=db_manifest,
     )
 
-    return True
+    return resources
+
+
+def _unload_face_recognition() -> None:
+    """Unloader for face recognition resource group.
+
+    Clears router globals so endpoints know the database is not loaded.
+    """
+    update_identification_globals(
+        recognizer=None,
+        multi_signal_matcher=None,
+        db_manifest={},
+    )
+    update_database_health_globals(
+        recognizer=None,
+        multi_signal_matcher=None,
+        db_manifest={},
+    )
+
+
+def reload_database(data_dir: Path) -> bool:
+    """Reload the face recognition database via ResourceManager.
+
+    Called by DatabaseUpdater after hot-swapping data files. Unloads the
+    current face_recognition resource group so the next require() call
+    reloads everything from disk.
+
+    Args:
+        data_dir: Path to the data directory containing DB files.
+
+    Returns:
+        True on success.
+    """
+    try:
+        mgr = get_resource_manager()
+        # Unload current resources (clears router globals)
+        mgr.unload(FACE_RECOGNITION_RESOURCE)
+        # Immediately reload so the hot-swap takes effect
+        mgr.require(FACE_RECOGNITION_RESOURCE)
+        return True
+    except RuntimeError:
+        # ResourceManager not initialized yet (shouldn't happen during
+        # normal operation, but guard against it)
+        logger.warning("ResourceManager not initialized, cannot reload database")
+        return False
+
+
+async def _idle_checker(resource_mgr: ResourceManager, interval: float = 60.0) -> None:
+    """Background task that periodically checks for idle resource groups.
+
+    Runs forever until cancelled. Calls resource_mgr.check_idle() every
+    *interval* seconds to unload resources that have been idle beyond their
+    configured timeout.
+    """
+    while True:
+        await asyncio.sleep(interval)
+        resource_mgr.check_idle()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load the recognizer and initialize recommendations on startup."""
-    global recognizer
+    """Initialize services on startup, clean up on shutdown."""
 
     data_dir = Path(DATA_DIR)
 
@@ -179,13 +250,15 @@ async def lifespan(app: FastAPI):
     model_mgr = init_model_manager(manifest_path, models_dir)
     init_model_router(model_mgr)
 
-    # Load face recognition database
-    try:
-        reload_database(data_dir)
-    except Exception as e:
-        print(f"Warning: Failed to load face database: {e}")
-        print("API will start but /identify will not work until database is available")
-        recognizer = None
+    # Initialize resource manager for lazy loading of heavy resources
+    resource_mgr = init_resource_manager(idle_timeout_seconds=1800.0)
+    resource_mgr.register(
+        FACE_RECOGNITION_RESOURCE,
+        loader=lambda: _load_face_recognition(data_dir),
+        unloader=_unload_face_recognition,
+    )
+    # Face recognition is NOT loaded eagerly — it loads on first /identify request
+    print("Face recognition registered for lazy loading (loads on first use)")
 
     # Initialize database self-updater
     db_updater = DatabaseUpdater(
@@ -194,10 +267,11 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize identification router with runtime dependencies
+    # recognizer and multi_signal_matcher start as None (lazy loaded)
     init_identification_router(
-        recognizer=recognizer,
-        multi_signal_matcher=multi_signal_matcher,
-        db_manifest=db_manifest,
+        recognizer=None,
+        multi_signal_matcher=None,
+        db_manifest={},
         db_updater=db_updater,
         stash_url=STASH_URL,
         stash_api_key=STASH_API_KEY,
@@ -211,9 +285,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize database health router
     init_database_health_router(
-        recognizer=recognizer,
-        multi_signal_matcher=multi_signal_matcher,
-        db_manifest=db_manifest,
+        recognizer=None,
+        multi_signal_matcher=None,
+        db_manifest={},
         db_updater=db_updater,
     )
 
@@ -271,6 +345,9 @@ async def lifespan(app: FastAPI):
         queue_mgr.request_shutdown()
     signal.signal(signal.SIGTERM, handle_sigterm)
 
+    # Start background idle checker for resource manager
+    idle_task = asyncio.create_task(_idle_checker(resource_mgr))
+
     if STASH_URL:
         print(f"Stash connection configured: {STASH_URL}")
     else:
@@ -278,12 +355,19 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Graceful shutdown — cancel idle checker
+    idle_task.cancel()
+    try:
+        await idle_task
+    except asyncio.CancelledError:
+        pass
+
     # Graceful shutdown — wait for jobs to checkpoint
     await queue_mgr.stop(timeout=30.0)
     logger.warning("Queue manager stopped")
 
-    # Cleanup
-    recognizer = None
+    # Unload all managed resources
+    resource_mgr.unload_all()
 
 
 app = FastAPI(

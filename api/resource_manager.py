@@ -170,6 +170,28 @@ class ResourceManager:
         if unloaded_any:
             gc.collect()
 
+    def unload(self, name: str) -> None:
+        """Unload a single resource group by name.
+
+        If the group is not loaded, this is a no-op. Intended for use by
+        hot-swap logic (e.g. database updater) to force a reload on next
+        require() call.
+
+        Args:
+            name: Name of the resource group to unload.
+
+        Raises:
+            KeyError: If the resource group name is not registered.
+        """
+        with self._lock:
+            group = self._groups.get(name)
+            if group is None:
+                raise KeyError(f"Resource group not registered: {name}")
+            if group.loaded:
+                logger.warning(f"Unloading resource group: {name}")
+                self._unload_group(group)
+        gc.collect()
+
     def unload_all(self) -> None:
         """Unload all resource groups. Intended for clean shutdown."""
         unloaded_any = False

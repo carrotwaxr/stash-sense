@@ -477,6 +477,90 @@ class TestIsLoaded:
         mgr.unload_all()
         assert not mgr.is_loaded("face_data")
 
+    def test_false_after_single_unload(self, mgr):
+        """is_loaded() returns False after unload(name)."""
+        mgr.register("face_data", _make_loader(), _make_unloader())
+        mgr.require("face_data")
+        mgr.unload("face_data")
+        assert not mgr.is_loaded("face_data")
+
+
+# ============================================================================
+# unload() tests (single group)
+# ============================================================================
+
+class TestUnload:
+    """Test the unload(name) method for single-group unloading."""
+
+    def test_unload_calls_unloader(self, mgr):
+        """unload() calls the registered unloader."""
+        unloader = _make_unloader()
+        mgr.register("face_data", _make_loader(), unloader)
+        mgr.require("face_data")
+
+        mgr.unload("face_data")
+
+        unloader.assert_called_once()
+        assert not mgr.is_loaded("face_data")
+
+    def test_unload_noop_when_not_loaded(self, mgr):
+        """unload() is a no-op when the resource is not loaded."""
+        unloader = _make_unloader()
+        mgr.register("face_data", _make_loader(), unloader)
+
+        mgr.unload("face_data")
+
+        unloader.assert_not_called()
+        assert not mgr.is_loaded("face_data")
+
+    def test_unload_unknown_raises(self, mgr):
+        """unload() raises KeyError for unknown group."""
+        with pytest.raises(KeyError, match="not registered"):
+            mgr.unload("nonexistent")
+
+    def test_unload_then_require_reloads(self, mgr):
+        """After unload(), require() calls the loader again."""
+        call_count = 0
+
+        def counting_loader():
+            nonlocal call_count
+            call_count += 1
+            return f"data_v{call_count}"
+
+        mgr.register("face_data", counting_loader, _make_unloader())
+
+        result1 = mgr.require("face_data")
+        assert result1 == "data_v1"
+        assert call_count == 1
+
+        mgr.unload("face_data")
+
+        result2 = mgr.require("face_data")
+        assert result2 == "data_v2"
+        assert call_count == 2
+
+    def test_unload_only_affects_target_group(self, mgr):
+        """unload() does not affect other loaded groups."""
+        mgr.register("face_data", _make_loader("face"), _make_unloader())
+        mgr.register("tattoo_data", _make_loader("tattoo"), _make_unloader())
+
+        mgr.require("face_data")
+        mgr.require("tattoo_data")
+
+        mgr.unload("face_data")
+
+        assert not mgr.is_loaded("face_data")
+        assert mgr.is_loaded("tattoo_data")
+
+    def test_unload_calls_gc_collect(self, mgr):
+        """unload() calls gc.collect() after unloading."""
+        mgr.register("face_data", _make_loader(), _make_unloader())
+        mgr.require("face_data")
+
+        with patch("resource_manager.gc.collect") as mock_gc:
+            mgr.unload("face_data")
+            mock_gc.assert_called_once()
+
 
 # ============================================================================
 # Singleton tests
