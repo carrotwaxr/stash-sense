@@ -7,7 +7,7 @@ description: Use when copying face recognition database from stash-sense-trainer
 
 ## Overview
 
-The trainer (`stash-sense-trainer`) produces face recognition data. The sidecar (`stash-sense/api`) consumes it read-only. After each enrichment run, 6 files must be copied and validated.
+The trainer (`stash-sense-trainer`) produces face recognition data. The sidecar (`stash-sense/api`) consumes it read-only. After each enrichment run, up to 9 files must be copied and validated (6 required + 3 optional).
 
 ## File Manifest
 
@@ -16,8 +16,11 @@ The trainer (`stash-sense-trainer`) produces face recognition data. The sidecar 
 | `performers.db` | `data/performers.db` | `api/data/performers.db` | SQLite performer metadata, faces, stashbox IDs, aliases |
 | `face_facenet.voy` | `data/face_facenet.voy` | `api/data/face_facenet.voy` | Voyager index - FaceNet512 embeddings |
 | `face_arcface.voy` | `data/face_arcface.voy` | `api/data/face_arcface.voy` | Voyager index - ArcFace embeddings |
+| `face_adaface.voy` | `data/face_adaface.voy` | `api/data/face_adaface.voy` | Voyager index - AdaFace IR-101 embeddings (optional) |
+| `tattoo_embeddings.voy` | `data/tattoo_embeddings.voy` | `api/data/tattoo_embeddings.voy` | Voyager index - tattoo embeddings (optional) |
 | `performers.json` | `data/performers.json` | `api/data/performers.json` | universal_id -> name/country/image/body/tattoo lookup |
 | `faces.json` | `data/faces.json` | `api/data/faces.json` | Voyager index -> universal_id mapping |
+| `tattoo_embeddings.json` | `data/tattoo_embeddings.json` | `api/data/tattoo_embeddings.json` | Tattoo index -> universal_id mapping (optional) |
 | `manifest.json` | `data/manifest.json` | `api/data/manifest.json` | Version, checksums, model info, counts |
 
 ## Import Procedure
@@ -36,8 +39,9 @@ sqlite3 performers.db "PRAGMA wal_checkpoint(TRUNCATE);"
 sqlite3 performers.db "PRAGMA integrity_check;"
 
 # Verify checksums against manifest
-sha256sum performers.db face_facenet.voy face_arcface.voy
+sha256sum performers.db face_facenet.voy face_arcface.voy face_adaface.voy tattoo_embeddings.voy
 # Compare with manifest.json checksums (performers.db may drift due to WAL - update manifest if so)
+# face_adaface.voy and tattoo_embeddings.voy are optional - skip if not present
 ```
 
 ### 2. Cross-Validate Counts
@@ -90,6 +94,11 @@ DST=/home/carrot/code/stash-sense/api/data
 for f in performers.db face_facenet.voy face_arcface.voy performers.json faces.json manifest.json; do
   cp "$SRC/$f" "$DST/$f"
 done
+
+# Copy optional files if they exist
+for f in face_adaface.voy tattoo_embeddings.voy tattoo_embeddings.json; do
+  [ -f "$SRC/$f" ] && cp "$SRC/$f" "$DST/$f"
+done
 ```
 
 ### 5. Post-Copy Verification
@@ -117,22 +126,27 @@ The `SCHEMA_VERSION` in `recommendations_db.py` is for the `stash_sense.db` sche
 
 ```json
 {
-  "version": "2026.02.12",
-  "created_at": "2026-02-12T13:08:30Z",
-  "performer_count": 107759,
-  "face_count": 277097,
+  "version": "2026.02.18",
+  "created_at": "2026-02-18T01:09:34Z",
+  "performer_count": 108001,
+  "face_count": 366794,
   "sources": ["fansdb", "javstash", "pmvstash", "stashdb", "theporndb"],
   "models": {
     "detector": "retinaface_buffalo_sc",
     "alignment": "insightface_norm_crop_5point",
     "facenet_dim": 512,
     "arcface_dim": 512,
+    "adaface_dim": 512,
+    "tattoo_dim": 1280,
     "flip_averaging": true
   },
   "checksums": {
     "performers.db": "sha256:...",
     "face_facenet.voy": "sha256:...",
-    "face_arcface.voy": "sha256:..."
+    "face_arcface.voy": "sha256:...",
+    "face_adaface.voy": "sha256:...",
+    "tattoo_embeddings.voy": "sha256:...",
+    "tattoo_embeddings.json": "sha256:..."
   }
 }
 ```
