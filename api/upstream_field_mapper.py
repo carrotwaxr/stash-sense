@@ -203,6 +203,80 @@ def diff_tag_fields(
     )
 
 
+# ==================== Studio Field Config ====================
+
+DEFAULT_STUDIO_FIELDS: set[str] = {
+    "name",
+    "url",
+    "parent_studio",
+}
+
+STUDIO_FIELD_MERGE_TYPES: dict[str, str] = {
+    "name": "name",
+    "url": "simple",
+    "parent_studio": "simple",
+}
+
+STUDIO_FIELD_LABELS: dict[str, str] = {
+    "name": "Name",
+    "url": "URL",
+    "parent_studio": "Parent Studio",
+}
+
+# Register studio fields in the entity config registry
+ENTITY_FIELD_CONFIGS["studio"] = {
+    "default_fields": DEFAULT_STUDIO_FIELDS,
+    "labels": STUDIO_FIELD_LABELS,
+    "merge_types": STUDIO_FIELD_MERGE_TYPES,
+}
+
+
+def normalize_upstream_studio(upstream: dict) -> dict:
+    """Convert stash-box studio data to normalized dict using local Stash field names.
+
+    Handles:
+    - Direct name mapping
+    - URL list flattened to first URL string (StashBox has list, Stash has single url)
+    - Parent studio extracted as StashBox UUID (resolved to local ID at action time)
+    """
+    result = {}
+
+    if "name" in upstream:
+        result["name"] = upstream["name"]
+
+    # URLs: take first from list, or None
+    if "urls" in upstream:
+        urls = upstream["urls"]
+        if urls and len(urls) > 0:
+            result["url"] = urls[0].get("url") if isinstance(urls[0], dict) else urls[0]
+        else:
+            result["url"] = None
+
+    # Parent: extract StashBox UUID
+    if "parent" in upstream:
+        parent = upstream["parent"]
+        result["parent_studio"] = parent["id"] if parent else None
+
+    return result
+
+
+def diff_studio_fields(
+    local: dict,
+    upstream: dict,
+    snapshot: Optional[dict],
+    enabled_fields: set[str],
+) -> list[dict]:
+    """Convenience wrapper: 3-way diff using studio field config."""
+    return diff_fields(
+        local=local,
+        upstream=upstream,
+        snapshot=snapshot,
+        enabled_fields=enabled_fields,
+        merge_types=STUDIO_FIELD_MERGE_TYPES,
+        labels=STUDIO_FIELD_LABELS,
+    )
+
+
 # ==================== Performer-Specific Mapping Constants ====================
 
 # Fields that map directly from upstream to local with the same name
