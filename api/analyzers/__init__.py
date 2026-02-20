@@ -13,6 +13,7 @@ from .duplicate_scenes import DuplicateScenesAnalyzer
 from .upstream_performer import UpstreamPerformerAnalyzer
 from .upstream_tag import UpstreamTagAnalyzer
 from .upstream_studio import UpstreamStudioAnalyzer
+from .upstream_scene import UpstreamSceneAnalyzer
 
 __all__ = [
     "BaseAnalyzer",
@@ -24,4 +25,5 @@ __all__ = [
     "UpstreamPerformerAnalyzer",
     "UpstreamTagAnalyzer",
     "UpstreamStudioAnalyzer",
+    "UpstreamSceneAnalyzer",
 ]

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 import face_config
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
-from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer
+from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer, UpstreamSceneAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -406,6 +406,7 @@ ANALYZERS = {
     "upstream_performer_changes": UpstreamPerformerAnalyzer,
     "upstream_tag_changes": UpstreamTagAnalyzer,
     "upstream_studio_changes": UpstreamStudioAnalyzer,
+    "upstream_scene_changes": UpstreamSceneAnalyzer,
 }
 
 

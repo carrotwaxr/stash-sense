@@ -243,3 +243,130 @@ class TestSceneFieldMapper:
 
         result = diff_scene_fields(local, upstream, None, {"tags"})
         assert len(result["tag_changes"]["added"]) == 1
+
+
+class TestUpstreamSceneAnalyzer:
+    @pytest.fixture
+    def rec_db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key"},
+        ])
+        stash.get_scenes_for_endpoint = AsyncMock(return_value=[
+            {
+                "id": "1",
+                "title": "Local Title",
+                "date": "2025-01-01",
+                "details": "",
+                "director": "",
+                "code": "",
+                "urls": [],
+                "studio": None,
+                "performers": [],
+                "tags": [],
+                "stash_ids": [
+                    {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-scene-1"}
+                ],
+            }
+        ])
+        return stash
+
+    @pytest.mark.asyncio
+    async def test_detects_title_change(self, mock_stash, rec_db):
+        """Analyzer detects when upstream scene title differs from local."""
+        upstream_data = {
+            "title": "Upstream Title",
+            "details": "",
+            "date": "2025-01-01",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": None,
+            "tags": [],
+            "performers": [],
+            "deleted": False,
+            "updated": "2025-01-15T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(mock_stash, rec_db)
+            result = await analyzer.run()
+
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 1
+        assert recs[0].details["scene_name"] == "Local Title"
+        changes = recs[0].details.get("changes", [])
+        title_change = next((c for c in changes if c["field"] == "title"), None)
+        assert title_change is not None
+        assert title_change["upstream_value"] == "Upstream Title"
+
+    @pytest.mark.asyncio
+    async def test_no_changes_creates_no_recommendation(self, mock_stash, rec_db):
+        """Analyzer creates no recommendation when upstream matches local."""
+        upstream_data = {
+            "title": "Local Title",
+            "details": "",
+            "date": "2025-01-01",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": None,
+            "tags": [],
+            "performers": [],
+            "deleted": False,
+            "updated": "2025-01-15T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(mock_stash, rec_db)
+            result = await analyzer.run()
+
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 0
+
+    @pytest.mark.asyncio
+    async def test_detects_performer_addition(self, mock_stash, rec_db):
+        """Analyzer detects when upstream has additional performers."""
+        upstream_data = {
+            "title": "Local Title",
+            "details": "",
+            "date": "2025-01-01",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": None,
+            "tags": [],
+            "performers": [
+                {"performer": {"id": "perf-1", "name": "Jane"}, "as": None}
+            ],
+            "deleted": False,
+            "updated": "2025-01-15T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(mock_stash, rec_db)
+            result = await analyzer.run()
+
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 1
+        assert len(recs[0].details["performer_changes"]["added"]) == 1
