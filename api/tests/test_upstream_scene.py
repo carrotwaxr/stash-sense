@@ -447,3 +447,185 @@ class TestUpdateSceneAction:
         assert call_args[1]["performer_ids"] == ["10", "20"]
         assert call_args[1]["tag_ids"] == ["30"]
         assert call_args[1]["studio_id"] == "5"
+
+
+class TestSceneSyncIntegration:
+    """End-to-end tests: analyzer + recommendation + action resolution."""
+
+    @pytest.fixture
+    def rec_db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key"},
+        ])
+        stash.get_scenes_for_endpoint = AsyncMock(return_value=[
+            {
+                "id": "42",
+                "title": "Original Scene",
+                "date": "2025-01-01",
+                "details": "Original details",
+                "director": "",
+                "code": "",
+                "urls": [],
+                "studio": {
+                    "id": "10",
+                    "name": "Local Studio",
+                    "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-sb-1"}],
+                },
+                "performers": [
+                    {
+                        "id": "20",
+                        "name": "Existing Performer",
+                        "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "perf-sb-1"}],
+                    }
+                ],
+                "tags": [
+                    {
+                        "id": "30",
+                        "name": "HD",
+                        "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "tag-sb-1"}],
+                    }
+                ],
+                "stash_ids": [
+                    {"endpoint": "https://stashdb.org/graphql", "stash_id": "scene-sb-42"}
+                ],
+            }
+        ])
+        return stash
+
+    @pytest.mark.asyncio
+    async def test_full_flow_with_simple_and_relational_changes(self, mock_stash, rec_db):
+        """Complete flow: title change + new performer + new tag -> recommendation."""
+        upstream_data = {
+            "title": "Updated Scene Title",
+            "details": "Original details",
+            "date": "2025-01-01",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": {"id": "studio-sb-1", "name": "Local Studio"},
+            "performers": [
+                {"performer": {"id": "perf-sb-1", "name": "Existing Performer"}, "as": None},
+                {"performer": {"id": "perf-sb-2", "name": "New Performer"}, "as": "Stage Name"},
+            ],
+            "tags": [
+                {"id": "tag-sb-1", "name": "HD"},
+                {"id": "tag-sb-2", "name": "4K"},
+            ],
+            "deleted": False,
+            "updated": "2025-02-01T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(mock_stash, rec_db)
+            result = await analyzer.run()
+
+        assert result.recommendations_created == 1
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 1
+
+        details = recs[0].details
+        # Simple field change
+        assert any(c["field"] == "title" and c["upstream_value"] == "Updated Scene Title" for c in details["changes"])
+        # Performer addition
+        assert len(details["performer_changes"]["added"]) == 1
+        assert details["performer_changes"]["added"][0]["id"] == "perf-sb-2"
+        assert details["performer_changes"]["added"][0]["as"] == "Stage Name"
+        # Tag addition
+        assert len(details["tag_changes"]["added"]) == 1
+        assert details["tag_changes"]["added"][0]["id"] == "tag-sb-2"
+        # No studio change (same studio)
+        assert details["studio_change"] is None
+
+    @pytest.mark.asyncio
+    async def test_no_changes_auto_resolves_stale_rec(self, mock_stash, rec_db):
+        """If upstream matches local, any stale pending rec is auto-resolved."""
+        # First run: create a stale recommendation manually
+        rec_db.create_recommendation(
+            type="upstream_scene_changes",
+            target_type="scene",
+            target_id="42",
+            details={"changes": [{"field": "title"}], "performer_changes": {"added": [], "removed": [], "alias_changed": []}, "tag_changes": {"added": [], "removed": []}},
+            confidence=1.0,
+        )
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 1
+
+        # Upstream now matches local — no changes
+        upstream_data = {
+            "title": "Original Scene",
+            "details": "Original details",
+            "date": "2025-01-01",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": {"id": "studio-sb-1", "name": "Local Studio"},
+            "performers": [
+                {"performer": {"id": "perf-sb-1", "name": "Existing Performer"}, "as": None},
+            ],
+            "tags": [
+                {"id": "tag-sb-1", "name": "HD"},
+            ],
+            "deleted": False,
+            "updated": "2025-02-01T00:00:00Z",
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(mock_stash, rec_db)
+            result = await analyzer.run()
+
+        # Stale rec should be auto-resolved
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 0
+
+    @pytest.mark.asyncio
+    async def test_incremental_uses_watermark(self, mock_stash, rec_db):
+        """Incremental run skips scenes not updated since watermark."""
+        # Set watermark
+        rec_db.set_watermark(
+            "upstream_scene_changes:https://stashdb.org/graphql",
+            last_cursor="2025-03-01T00:00:00Z",
+        )
+
+        # Upstream scene updated BEFORE watermark
+        upstream_data = {
+            "title": "Updated Title",
+            "details": "",
+            "date": "2025-01-01",
+            "director": "",
+            "code": "",
+            "urls": [],
+            "studio": None,
+            "performers": [],
+            "tags": [],
+            "deleted": False,
+            "updated": "2025-02-01T00:00:00Z",  # Before watermark
+        }
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_scene = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            from analyzers.upstream_scene import UpstreamSceneAnalyzer
+            analyzer = UpstreamSceneAnalyzer(mock_stash, rec_db)
+            result = await analyzer.run(incremental=True)
+
+        # Should skip (updated before watermark)
+        recs = rec_db.get_recommendations(type="upstream_scene_changes", status="pending")
+        assert len(recs) == 0
