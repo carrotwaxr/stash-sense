@@ -11,28 +11,28 @@
       
       
       
-        <link rel="prev" href="../setup/">
+        <link rel="prev" href="../features/">
       
       
-        <link rel="next" href="../../architecture/">
+        <link rel="next" href="../settings-system/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.2">
     
     
       
-        <title>GPU Passthrough - Stash Sense</title>
+        <title>Database & Updates - Stash Sense</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +51,7 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#gpu-passthrough-for-unraid" class="md-skip">
+        <a href="#database-updates" class="md-skip">
           Skip to content
         </a>
       
@@ -92,7 +92,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="Stash Sense" class="md-header__button md-logo" aria-label="Stash Sense" data-md-component="logo">
+    <a href=".." title="Stash Sense" class="md-header__button md-logo" aria-label="Stash Sense" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -112,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              GPU Passthrough
+              Database & Updates
             
           </span>
         </div>
@@ -214,7 +214,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Stash Sense" class="md-nav__button md-logo" aria-label="Stash Sense" data-md-component="logo">
+    <a href=".." title="Stash Sense" class="md-nav__button md-logo" aria-label="Stash Sense" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -244,7 +244,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -325,7 +325,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../installation/" class="md-nav__link">
+      <a href="../installation/" class="md-nav__link">
         
   
   
@@ -353,7 +353,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../configuration/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
@@ -381,7 +381,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../plugin/" class="md-nav__link">
+      <a href="../plugin/" class="md-nav__link">
         
   
   
@@ -389,179 +389,6 @@
     
   
     Plugin Setup
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    User Guide
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    User Guide
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../features/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Features
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../database/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Database & Updates
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../settings-system/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Settings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../stash-box-endpoints/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    StashBox Endpoints
   
 
     
@@ -604,17 +431,17 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Unraid
+    User Guide
   
 
     
@@ -625,12 +452,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Unraid
+    User Guide
   
 
           </label>
@@ -643,14 +470,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../setup/" class="md-nav__link">
+      <a href="../features/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Setup
+    Features
   
 
     
@@ -687,7 +514,7 @@
   <span class="md-ellipsis">
     
   
-    GPU Passthrough
+    Database & Updates
   
 
     
@@ -705,7 +532,7 @@
   <span class="md-ellipsis">
     
   
-    GPU Passthrough
+    Database & Updates
   
 
     
@@ -731,10 +558,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#where-the-data-comes-from" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Prerequisites
+        Where the Data Comes From
       
     </span>
   </a>
@@ -742,10 +569,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-1-install-nvidia-driver-plugin" class="md-nav__link">
+  <a href="#database-files" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 1: Install Nvidia Driver Plugin
+        Database Files
       
     </span>
   </a>
@@ -753,10 +580,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-2-verify-gpu-detection" class="md-nav__link">
+  <a href="#two-database-design" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 2: Verify GPU Detection
+        Two-Database Design
       
     </span>
   </a>
@@ -764,33 +591,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-3-container-configuration" class="md-nav__link">
+  <a href="#checking-for-updates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 3: Container Configuration
+        Checking for Updates
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
+    <nav class="md-nav" aria-label="Checking for Updates">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#nvidia-smi-command-not-found" class="md-nav__link">
+  <a href="#via-the-plugin-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        "nvidia-smi: command not found"
+        Via the Plugin UI
       
     </span>
   </a>
@@ -798,43 +614,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#no-gpu-detected-in-container" class="md-nav__link">
+  <a href="#via-the-api" class="md-nav__link">
     <span class="md-ellipsis">
       
-        "No GPU detected in container"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cuda-out-of-memory" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "CUDA out of memory"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#failed-to-initialize-nvml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "Failed to initialize NVML"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#selecting-a-specific-gpu-multi-gpu-systems" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Selecting a Specific GPU (Multi-GPU Systems)
+        Via the API
       
     </span>
   </a>
@@ -846,10 +629,205 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#manual-database-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Database Update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update Safety
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stash-box-endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    StashBox Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unraid
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Unraid
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../unraid/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../unraid/gpu-passthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Passthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -923,7 +901,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/" class="md-nav__link">
+      <a href="../architecture/" class="md-nav__link">
         
   
   
@@ -951,7 +929,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../troubleshooting/" class="md-nav__link">
+      <a href="../troubleshooting/" class="md-nav__link">
         
   
   
@@ -1006,10 +984,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#where-the-data-comes-from" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Prerequisites
+        Where the Data Comes From
       
     </span>
   </a>
@@ -1017,10 +995,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-1-install-nvidia-driver-plugin" class="md-nav__link">
+  <a href="#database-files" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 1: Install Nvidia Driver Plugin
+        Database Files
       
     </span>
   </a>
@@ -1028,10 +1006,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-2-verify-gpu-detection" class="md-nav__link">
+  <a href="#two-database-design" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 2: Verify GPU Detection
+        Two-Database Design
       
     </span>
   </a>
@@ -1039,33 +1017,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-3-container-configuration" class="md-nav__link">
+  <a href="#checking-for-updates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 3: Container Configuration
+        Checking for Updates
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
+    <nav class="md-nav" aria-label="Checking for Updates">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#nvidia-smi-command-not-found" class="md-nav__link">
+  <a href="#via-the-plugin-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        "nvidia-smi: command not found"
+        Via the Plugin UI
       
     </span>
   </a>
@@ -1073,43 +1040,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#no-gpu-detected-in-container" class="md-nav__link">
+  <a href="#via-the-api" class="md-nav__link">
     <span class="md-ellipsis">
       
-        "No GPU detected in container"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cuda-out-of-memory" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "CUDA out of memory"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#failed-to-initialize-nvml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "Failed to initialize NVML"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#selecting-a-specific-gpu-multi-gpu-systems" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Selecting a Specific GPU (Multi-GPU Systems)
+        Via the API
       
     </span>
   </a>
@@ -1118,6 +1052,28 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-database-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Database Update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update Safety
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1141,92 +1097,156 @@
   
 
 
-<h1 id="gpu-passthrough-for-unraid">GPU Passthrough for Unraid</h1>
-<h2 id="prerequisites">Prerequisites</h2>
-<ul>
-<li>NVIDIA GPU (GTX 10-series or newer recommended)</li>
-<li>Unraid 6.12+</li>
-</ul>
-<h2 id="step-1-install-nvidia-driver-plugin">Step 1: Install Nvidia Driver Plugin</h2>
-<ol>
-<li>Go to <strong>Apps</strong> → Search "Nvidia Driver"</li>
-<li>Install <strong>Nvidia-Driver</strong> by ich777</li>
-<li>Reboot Unraid</li>
-</ol>
-<h2 id="step-2-verify-gpu-detection">Step 2: Verify GPU Detection</h2>
-<p>Open Unraid terminal and run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>nvidia-smi
-</code></pre></div>
-<p>You should see your GPU listed:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>+-----------------------------------------------------------------------------+
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>| NVIDIA-SMI 550.xx       Driver Version: 550.xx       CUDA Version: 12.x     |
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>|-------------------------------+----------------------+----------------------+
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>|===============================+======================+======================|
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>|   0  NVIDIA GeForce ...  Off  | 00000000:XX:00.0 Off |                  N/A |
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>+-------------------------------+----------------------+----------------------+
-</code></pre></div>
-<h2 id="step-3-container-configuration">Step 3: Container Configuration</h2>
-<p>The Stash Sense template automatically includes GPU settings.</p>
-<p>If configuring manually, ensure these are set:</p>
+<h1 id="database-updates">Database &amp; Updates</h1>
+<h2 id="where-the-data-comes-from">Where the Data Comes From</h2>
+<p>The face recognition database is built and published in the <a href="https://github.com/carrotwaxr/stash-sense-data">stash-sense-data</a> repository. It contains performer metadata and face embeddings sourced from multiple stash-box endpoints:</p>
 <table>
 <thead>
 <tr>
-<th>Setting</th>
-<th>Value</th>
+<th>Source</th>
+<th>Type</th>
+<th>Performers</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Extra Parameters</td>
-<td><code>--runtime=nvidia --gpus all</code></td>
+<td><a href="https://stashdb.org">StashDB</a></td>
+<td>Primary</td>
+<td>~100,000+</td>
 </tr>
 <tr>
-<td>NVIDIA_VISIBLE_DEVICES</td>
-<td><code>all</code> (or specific GPU UUID)</td>
+<td><a href="https://fansdb.cc">FansDB</a></td>
+<td>Supplementary</td>
+<td>Varies</td>
+</tr>
+<tr>
+<td><a href="https://theporndb.net">ThePornDB</a></td>
+<td>Supplementary</td>
+<td>~10,000</td>
+</tr>
+<tr>
+<td><a href="https://pmvstash.org">PMVStash</a></td>
+<td>Supplementary</td>
+<td>~6,500</td>
+</tr>
+<tr>
+<td><a href="https://javstash.org">JAVStash</a></td>
+<td>Supplementary</td>
+<td>~21,700</td>
 </tr>
 </tbody>
 </table>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="nvidia-smi-command-not-found">"nvidia-smi: command not found"</h3>
-<p>Driver plugin not installed or Unraid needs reboot.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Check if plugin is installed</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>ls<span class="w"> </span>/boot/config/plugins/nvidia-driver.plg
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># If missing, reinstall from Apps</span>
-</code></pre></div>
-<h3 id="no-gpu-detected-in-container">"No GPU detected in container"</h3>
-<p>Check container has GPU access:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>stash-sense<span class="w"> </span>nvidia-smi
-</code></pre></div>
-<p>If this fails, verify:</p>
+<p>Additional sources include Babepedia, Freeones, IAFD, and other public performer databases via hybrid scraping.</p>
+<p><strong>Current stats (v2026.02.18):</strong> 108,001 performers, 366,794 face embeddings.</p>
+<p>The database is built using a private training pipeline that:</p>
 <ol>
-<li>Extra Parameters includes <code>--runtime=nvidia</code></li>
-<li>Container was recreated after driver install (not just restarted)</li>
+<li>Downloads performer images from each source</li>
+<li>Detects and aligns faces using RetinaFace with 5-point similarity transform</li>
+<li>Generates embeddings using FaceNet512 and ArcFace models with flip-averaging</li>
+<li>Builds Voyager vector indices for fast cosine-distance search</li>
 </ol>
-<h3 id="cuda-out-of-memory">"CUDA out of memory"</h3>
-<p>Another process is using the GPU. Check what's using it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nvidia-smi
+<p>Database releases are published as zip files on the <a href="https://github.com/carrotwaxr/stash-sense-data/releases">stash-sense-data releases page</a>.</p>
+<hr />
+<h2 id="database-files">Database Files</h2>
+<p>The data directory contains:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Size</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>performers.db</code></td>
+<td>~210 MB</td>
+<td>SQLite database with performer metadata and stash-box IDs</td>
+</tr>
+<tr>
+<td><code>face_facenet.voy</code></td>
+<td>~550 MB</td>
+<td>FaceNet512 embedding Voyager index</td>
+</tr>
+<tr>
+<td><code>face_arcface.voy</code></td>
+<td>~550 MB</td>
+<td>ArcFace embedding Voyager index</td>
+</tr>
+<tr>
+<td><code>faces.json</code></td>
+<td>~15 MB</td>
+<td>Face-to-performer mapping</td>
+</tr>
+<tr>
+<td><code>performers.json</code></td>
+<td>~10 MB</td>
+<td>Performer lookup data</td>
+</tr>
+<tr>
+<td><code>manifest.json</code></td>
+<td>&lt;1 KB</td>
+<td>Version, checksums, and build metadata</td>
+</tr>
+</tbody>
+</table>
+<p>Total: ~1.3 GB extracted.</p>
+<hr />
+<h2 id="two-database-design">Two-Database Design</h2>
+<p>Stash Sense uses two separate databases:</p>
+<ul>
+<li><strong><code>performers.db</code></strong> + Voyager indices (read-only) — The distributable face recognition data. Updated via stash-sense-data releases. Contains no user-specific information.</li>
+<li><strong><code>stash_sense.db</code></strong> (read-write, user-local) — Your recommendation history, dismissed items, analysis watermarks, upstream snapshots, scene fingerprints, and settings overrides.</li>
+</ul>
+<p>This separation means database updates never touch your personal data, and the distributable database contains nothing specific to your library.</p>
+<hr />
+<h2 id="checking-for-updates">Checking for Updates</h2>
+<h3 id="via-the-plugin-ui">Via the Plugin UI</h3>
+<ol>
+<li>Open the <strong>Settings</strong> tab in the Stash Sense plugin</li>
+<li>The <strong>Database</strong> section shows your current version and checks for updates automatically</li>
+<li>If an update is available, click <strong>Update</strong></li>
+<li>Progress is shown in real-time (download, extract, verify, swap, reload)</li>
+</ol>
+<h3 id="via-the-api">Via the API</h3>
+<p><strong>Check for updates:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>http://localhost:6960/database/check-update
 </code></pre></div>
-<p>Look at "Processes" section. Common culprits:
-- Plex hardware transcoding
-- Tdarr
-- Frigate
-- Other ML containers</p>
-<h3 id="failed-to-initialize-nvml">"Failed to initialize NVML"</h3>
-<p>The Nvidia container toolkit isn't configured. Re-install the driver plugin and reboot.</p>
-<h3 id="selecting-a-specific-gpu-multi-gpu-systems">Selecting a Specific GPU (Multi-GPU Systems)</h3>
-<p>If you have multiple GPUs, specify which one to use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># List GPU UUIDs</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>nvidia-smi<span class="w"> </span>-L
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Use specific GPU</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nv">NVIDIA_VISIBLE_DEVICES</span><span class="o">=</span>GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;current_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026.02.12&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;latest_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026.02.18&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;update_available&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;release_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Database Release v2026.02.18&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;download_size_mb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1478</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;published_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-18T01:09:34Z&quot;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
 </code></pre></div>
-<p>Or by index:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">NVIDIA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w">  </span><span class="c1"># First GPU</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">NVIDIA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">1</span><span class="w">  </span><span class="c1"># Second GPU</span>
-</code></pre></div></p>
+<p><strong>Start an update:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:6960/database/update
+</code></pre></div>
+<p><strong>Check update progress:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>curl<span class="w"> </span>http://localhost:6960/database/update/status
+</code></pre></div>
+<hr />
+<h2 id="manual-database-update">Manual Database Update</h2>
+<p>If you prefer to update manually (e.g., on a system without internet access):</p>
+<ol>
+<li>Download the latest release zip from <a href="https://github.com/carrotwaxr/stash-sense-data/releases/latest">stash-sense-data releases</a></li>
+<li>Stop the container: <code>docker stop stash-sense</code></li>
+<li>Extract the zip into your data directory, replacing existing files</li>
+<li>Start the container: <code>docker start stash-sense</code></li>
+</ol>
+<p>The <code>stash_sense.db</code> file in your data directory is your personal data — do not delete it during a manual update.</p>
+<hr />
+<h2 id="update-safety">Update Safety</h2>
+<ul>
+<li>A timestamped backup is created before every update</li>
+<li>SHA-256 checksums are verified against <code>manifest.json</code></li>
+<li>On failure, the sidecar automatically rolls back to the backup</li>
+<li>Face identification endpoints return 503 briefly during the swap (~5-10 seconds)</li>
+<li>All other API endpoints remain available during updates</li>
+<li><code>stash_sense.db</code> (your recommendations, settings, history) is never touched</li>
+</ul>
 
 
 
@@ -1292,10 +1312,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

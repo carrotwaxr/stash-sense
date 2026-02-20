@@ -374,6 +374,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -442,14 +470,42 @@
   
   
     <li class="md-nav__item">
-      <a href="../plugin/" class="md-nav__link">
+      <a href="../features/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Plugin
+    Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database & Updates
   
 
     
@@ -630,10 +686,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-builds" class="md-nav__link">
+  <a href="#database-building" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Builds
+        Database Building
       
     </span>
   </a>
@@ -1050,10 +1106,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-builds" class="md-nav__link">
+  <a href="#database-building" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Builds
+        Database Building
       
     </span>
   </a>
@@ -1235,25 +1291,8 @@ This document is preserved for reference but the build commands below apply to t
 <li><strong>Limited to ~1 image per performer</strong> (see below)</li>
 <li>Square images (705x705)</li>
 </ul>
-<h2 id="running-builds">Running Builds</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># These commands apply to the stash-sense-trainer repo</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>/home/carrot/code/stash-sense-trainer/api
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">source</span><span class="w"> </span>../.venv/bin/activate
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># StashDB (default)</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>python<span class="w"> </span>database_builder.py<span class="w"> </span>--output<span class="w"> </span>./data<span class="w"> </span>--resume
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># PMVStash</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nv">STASHDB_URL</span><span class="o">=</span><span class="nv">$PMVSTASH_URL</span><span class="w"> </span><span class="nv">STASHDB_API_KEY</span><span class="o">=</span><span class="nv">$PMVSTASH_API_KEY</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span>python<span class="w"> </span>database_builder.py<span class="w"> </span>--output<span class="w"> </span>./data-pmvstash<span class="w"> </span>--resume
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># JAVStash</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="nv">STASHDB_URL</span><span class="o">=</span><span class="nv">$JAVSTASH_URL</span><span class="w"> </span><span class="nv">STASHDB_API_KEY</span><span class="o">=</span><span class="nv">$JAVSTASH_API_KEY</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span>python<span class="w"> </span>database_builder.py<span class="w"> </span>--output<span class="w"> </span>./data-javstash<span class="w"> </span>--resume
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1"># ThePornDB (different script)</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>python<span class="w"> </span>build_theporndb.py<span class="w"> </span>--output<span class="w"> </span>./data-theporndb
-</code></pre></div>
+<h2 id="database-building">Database Building</h2>
+<p>Database building is handled by a separate private training pipeline. Pre-built databases are published as releases on the <a href="https://github.com/carrotwaxr/stash-sense-data/releases">stash-sense-data</a> repository.</p>
 <hr />
 <h2 id="javstash-single-image-limitation">JAVStash: Single Image Limitation</h2>
 <p><strong>Problem</strong>: JAVStash performers typically have only 1 image, which limits face recognition accuracy. Our standard approach of building multiple embeddings per performer (target: 5) doesn't work here.</p>

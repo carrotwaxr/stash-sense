@@ -374,6 +374,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -442,14 +470,42 @@
   
   
     <li class="md-nav__item">
-      <a href="../plugin/" class="md-nav__link">
+      <a href="../features/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Plugin
+    Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database & Updates
   
 
     
@@ -1034,7 +1090,7 @@
 <hr />
 <h2 id="system-overview">System Overview</h2>
 <p>Stash Sense is a two-component system: a <strong>sidecar API</strong> (Python/FastAPI) that runs face recognition and analysis, and a <strong>plugin</strong> (JS/CSS/Python) injected into the Stash web UI.</p>
-<p><strong>Deployment model:</strong> The sidecar runs as a Docker container on unRAID (port 6960) alongside Stash. The plugin backend proxies all requests from Stash to the sidecar, bypassing browser CSP restrictions. The sidecar URL is configurable in Stash plugin settings.</p>
+<p><strong>Deployment model:</strong> The sidecar runs as a Docker container alongside Stash (default port 6960). The plugin backend proxies all requests from Stash to the sidecar, bypassing browser CSP restrictions. The sidecar URL is configurable in Stash plugin settings.</p>
 <p><strong>Two-database design:</strong>
 - <code>performers.db</code> — Read-only, distributable. Contains performer metadata, face references, and stash-box IDs sourced from the private trainer repo. Updated via GitHub Releases.
 - <code>stash_sense.db</code> — Read-write, user-local. Contains recommendations, dismissed items, analysis watermarks, upstream snapshots, and scene fingerprints. Persists across face DB updates.</p>

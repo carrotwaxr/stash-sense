@@ -324,10 +324,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#get-started" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        Get Started
       
     </span>
   </a>
@@ -339,17 +339,6 @@
     <span class="md-ellipsis">
       
         Requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-status" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current Status
       
     </span>
   </a>
@@ -474,6 +463,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -542,14 +559,42 @@
   
   
     <li class="md-nav__item">
-      <a href="plugin/" class="md-nav__link">
+      <a href="features/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Plugin
+    Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database & Updates
   
 
     
@@ -909,10 +954,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#get-started" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        Get Started
       
     </span>
   </a>
@@ -924,17 +969,6 @@
     <span class="md-ellipsis">
       
         Requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-status" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current Status
       
     </span>
   </a>
@@ -962,25 +996,29 @@
 
 
 <h1 id="stash-sense">Stash Sense</h1>
-<p>AI-powered performer identification for Stash.</p>
+<p>AI-powered performer identification and library curation for <a href="https://github.com/stashapp/stash">Stash</a>.</p>
 <h2 id="what-it-does">What it does</h2>
 <ul>
-<li><strong>Identifies performers</strong> in scenes using face recognition against StashDB</li>
-<li><strong>Works with sprite sheets</strong> - no video processing needed, uses your existing Stash-generated sprites</li>
-<li><strong>Runs locally</strong> on your GPU - no cloud dependencies, no data leaves your network</li>
+<li><strong>Identifies performers</strong> in scenes using face recognition against a database of 108,000+ performers from StashDB, FansDB, ThePornDB, PMVStash, and JAVStash</li>
+<li><strong>Detects duplicate scenes</strong> using face fingerprints, stash-box IDs, and metadata overlap — catches duplicates that phash matching misses</li>
+<li><strong>Syncs upstream changes</strong> from stash-box endpoints with per-field merge controls</li>
+<li><strong>Runs locally</strong> on your GPU — no cloud dependencies, no data leaves your network</li>
 </ul>
 <h2 id="how-it-works">How it works</h2>
 <ol>
-<li>You click "Identify Performers" on a scene in Stash</li>
-<li>Stash Sense fetches the scene's sprite sheet</li>
-<li>Faces are detected and matched against the StashDB performer database</li>
-<li>Results show matched performers with confidence scores</li>
+<li>You click <strong>Identify Performers</strong> on a scene in Stash</li>
+<li>Stash Sense extracts frames from the scene's sprite sheet</li>
+<li>Faces are detected, aligned, and matched against the performer database</li>
+<li>Results show matched performers with confidence scores, grouped by person</li>
 <li>One click to add identified performers to the scene</li>
 </ol>
-<h2 id="quick-start">Quick Start</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
-</code></pre></div>
-<p>Then <a href="plugin/">install the plugin</a> in Stash and point it at <code>http://&lt;host&gt;:5000</code>.</p>
+<h2 id="get-started">Get Started</h2>
+<ul>
+<li><a href="installation/">Installation</a> — Docker setup, database download, plugin install</li>
+<li><a href="plugin/">Plugin Usage</a> — identifying performers, understanding results</li>
+<li><a href="features/">Features</a> — full feature overview</li>
+<li><a href="database/">Database &amp; Updates</a> — where the data comes from, how to update</li>
+</ul>
 <h2 id="requirements">Requirements</h2>
 <table>
 <thead>
@@ -991,21 +1029,23 @@
 </thead>
 <tbody>
 <tr>
-<td>GPU</td>
-<td>NVIDIA with 4GB+ VRAM (CPU fallback available)</td>
+<td>Stash</td>
+<td>v0.25+ with sprite sheets generated</td>
 </tr>
 <tr>
 <td>Docker</td>
-<td>With nvidia-container-toolkit</td>
+<td>With <code>nvidia-container-toolkit</code> (for GPU)</td>
 </tr>
 <tr>
-<td>Stash</td>
-<td>Scene sprite sheets generated</td>
+<td>GPU</td>
+<td>NVIDIA with 4GB+ VRAM (optional — CPU fallback available)</td>
+</tr>
+<tr>
+<td>Disk</td>
+<td>~1.5 GB for the face recognition database</td>
 </tr>
 </tbody>
 </table>
-<h2 id="current-status">Current Status</h2>
-<p>Database build in progress (~100k performers from StashDB). Pre-built database release coming soon.</p>
 
 
 
