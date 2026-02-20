@@ -346,6 +346,8 @@ class TestJobRegistry:
             "duplicate_scene_files",
             "duplicate_scenes",
             "upstream_performer_changes",
+            "upstream_tag_changes",
+            "upstream_studio_changes",
             "fingerprint_generation",
             "database_update",
         }

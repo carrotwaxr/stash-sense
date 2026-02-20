@@ -553,6 +553,19 @@ def handle_recommendations(mode, args, sidecar_url):
             timeout=60,
         )
 
+    elif mode == "rec_update_studio":
+        studio_id = args.get("studio_id")
+        fields = args.get("fields", {})
+        endpoint = args.get("endpoint", "")
+        if not studio_id:
+            return {"error": "studio_id required"}
+        return sidecar_post(
+            sidecar_url,
+            "/recommendations/actions/update-studio",
+            {"studio_id": studio_id, "fields": fields, "endpoint": endpoint},
+            timeout=30,
+        )
+
     elif mode == "rec_dismiss_upstream":
         rec_id = args.get("rec_id")
         if not rec_id:

@@ -576,6 +576,77 @@ class StashClientUnified:
         data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
         return data["tagUpdate"]
 
+    # ==================== Studios ====================
+
+    async def get_studios_for_endpoint(self, endpoint: str) -> list[dict]:
+        """Query local Stash for all studios linked to a specific stash-box endpoint."""
+        query = """
+        query StudiosForEndpoint($studio_filter: StudioFilterType) {
+          findStudios(studio_filter: $studio_filter, filter: { per_page: -1 }) {
+            studios {
+              id
+              name
+              url
+              parent_studio {
+                id
+                name
+              }
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            "studio_filter": {
+                "stash_id_endpoint": {
+                    "endpoint": endpoint,
+                    "modifier": "NOT_NULL",
+                }
+            }
+        }
+        data = await self._execute(query, variables)
+        return data["findStudios"]["studios"]
+
+    async def update_studio(self, studio_id: str, **fields) -> dict:
+        """Generic studio update via StudioUpdateInput mutation."""
+        query = """
+        mutation StudioUpdate($input: StudioUpdateInput!) {
+          studioUpdate(input: $input) {
+            id
+          }
+        }
+        """
+        input_dict = {"id": studio_id, **fields}
+        data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
+        return data["studioUpdate"]
+
+    async def create_studio(
+        self,
+        name: str,
+        stash_ids: list[dict],
+        url: str | None = None,
+        parent_id: str | None = None,
+    ) -> dict:
+        """Create a new studio in Stash."""
+        query = """
+        mutation StudioCreate($input: StudioCreateInput!) {
+          studioCreate(input: $input) {
+            id
+            name
+          }
+        }
+        """
+        input_dict: dict = {"name": name, "stash_ids": stash_ids}
+        if url:
+            input_dict["url"] = url
+        if parent_id:
+            input_dict["parent_id"] = parent_id
+        data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
+        return data["studioCreate"]
+
     # ==================== Configuration ====================
 
     async def get_stashbox_connections(self) -> list[dict]:

@@ -65,6 +65,17 @@ TAG_FIELDS = """
     updated
 """
 
+# Fragment with all studio fields used by get_studio
+STUDIO_FIELDS = """
+    id
+    name
+    urls { url }
+    parent { id name }
+    deleted
+    created
+    updated
+"""
+
 
 class StashBoxClient:
     """
@@ -197,6 +208,27 @@ class StashBoxClient:
 
         data = await self._execute(query, variables={"id": tag_id})
         return data.get("findTag")
+
+    async def get_studio(self, studio_id: str) -> Optional[dict]:
+        """
+        Get a single studio by ID from the stash-box endpoint.
+
+        Args:
+            studio_id: The stash-box studio UUID
+
+        Returns:
+            Studio dict if found, None otherwise
+        """
+        query = f"""
+        query FindStudio($id: ID!) {{
+            findStudio(id: $id) {{
+                {STUDIO_FIELDS}
+            }}
+        }}
+        """
+
+        data = await self._execute(query, variables={"id": studio_id})
+        return data.get("findStudio")
 
     async def get_performer(self, performer_id: str) -> Optional[dict]:
         """

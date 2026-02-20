@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 import face_config
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
-from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer
+from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -405,6 +405,7 @@ ANALYZERS = {
     "duplicate_scenes": DuplicateScenesAnalyzer,
     "upstream_performer_changes": UpstreamPerformerAnalyzer,
     "upstream_tag_changes": UpstreamTagAnalyzer,
+    "upstream_studio_changes": UpstreamStudioAnalyzer,
 }
 
 
@@ -921,6 +922,104 @@ async def update_tag_fields(request: UpdateTagRequest):
         return {"success": True, "tag": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpdateStudioRequest(BaseModel):
+    """Request to apply upstream changes to a studio."""
+    studio_id: str
+    fields: dict
+    endpoint: str = ""  # Needed for parent studio resolution
+
+
+@router.post("/actions/update-studio")
+async def update_studio_fields(request: UpdateStudioRequest):
+    """Apply selected upstream changes to a studio.
+
+    Studios have simple field mapping — no compound fields like performers.
+    Special handling for parent_studio: resolves StashBox parent UUID to
+    local studio ID, auto-importing the parent if not found locally.
+    """
+    stash = get_stash_client()
+    fields = dict(request.fields)
+    studio_id = request.studio_id
+
+    # --- Parent studio resolution ---
+    parent_stashbox_id = fields.pop("parent_studio", None)
+    if parent_stashbox_id:
+        local_parent_id = await _resolve_stashbox_studio_to_local(
+            stash, parent_stashbox_id, request.endpoint
+        )
+        fields["parent_id"] = local_parent_id
+
+    try:
+        result = await stash.update_studio(studio_id, **fields)
+        return {"success": True, "studio": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _resolve_stashbox_studio_to_local(
+    stash: StashClientUnified,
+    stashbox_id: str,
+    endpoint: str,
+) -> str:
+    """Resolve a StashBox studio UUID to a local Stash studio ID.
+
+    If the studio doesn't exist locally, import it from StashBox
+    (name + first URL + stash_ids link) and return the new local ID.
+    """
+    # Try to find locally by stash_box_id
+    query = """
+    query FindStudioByStashBoxID($studio_filter: StudioFilterType) {
+      findStudios(studio_filter: $studio_filter, filter: { per_page: 1 }) {
+        studios { id name }
+      }
+    }
+    """
+    data = await stash._execute(query, {
+        "studio_filter": {
+            "stash_id_endpoint": {
+                "endpoint": endpoint,
+                "stash_id": stashbox_id,
+                "modifier": "EQUALS",
+            }
+        }
+    })
+    studios = data["findStudios"]["studios"]
+    if studios:
+        return studios[0]["id"]
+
+    # Not found locally — import from StashBox
+    from stashbox_connection_manager import get_connection_manager
+    mgr = get_connection_manager()
+    sbc = mgr.get_client(endpoint)
+    if not sbc:
+        from stashbox_client import StashBoxClient
+        sbc = StashBoxClient(endpoint)
+
+    upstream = await sbc.get_studio(stashbox_id)
+    if not upstream:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Parent studio {stashbox_id} not found on StashBox"
+        )
+
+    # Extract first URL
+    url = None
+    if upstream.get("urls") and len(upstream["urls"]) > 0:
+        url = upstream["urls"][0].get("url") if isinstance(upstream["urls"][0], dict) else upstream["urls"][0]
+
+    # Create locally
+    new_studio = await stash.create_studio(
+        name=upstream["name"],
+        url=url,
+        stash_ids=[{"endpoint": endpoint, "stash_id": stashbox_id}],
+    )
+    logger.warning(
+        f"Auto-imported parent studio '{upstream['name']}' (local ID: {new_studio['id']}) "
+        f"from StashBox {stashbox_id}"
+    )
+    return new_studio["id"]
 
 
 class UpstreamDismissRequest(BaseModel):
