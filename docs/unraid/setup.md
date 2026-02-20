@@ -51,12 +51,12 @@ version: "3.8"
 
 services:
   stash-sense:
-    image: ghcr.io/carrotwaxr/stash-sense:latest
+    image: carrotwaxr/stash-sense:latest
     container_name: stash-sense
     runtime: nvidia
     restart: unless-stopped
     ports:
-      - "5787:5000"
+      - "6960:5000"
     environment:
       - STASH_URL=http://stash:9999
       - STASH_API_KEY=your-api-key

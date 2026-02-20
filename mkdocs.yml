@@ -19,8 +19,10 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Configuration: configuration.md
+    - Plugin Setup: plugin.md
   - User Guide:
-    - Plugin: plugin.md
+    - Features: features.md
+    - Database & Updates: database.md
     - Settings: settings-system.md
     - StashBox Endpoints: stash-box-endpoints.md
   - Unraid:

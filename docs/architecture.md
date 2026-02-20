@@ -8,7 +8,7 @@ Reference for how the system works and why key decisions were made.
 
 Stash Sense is a two-component system: a **sidecar API** (Python/FastAPI) that runs face recognition and analysis, and a **plugin** (JS/CSS/Python) injected into the Stash web UI.
 
-**Deployment model:** The sidecar runs as a Docker container on unRAID (port 6960) alongside Stash. The plugin backend proxies all requests from Stash to the sidecar, bypassing browser CSP restrictions. The sidecar URL is configurable in Stash plugin settings.
+**Deployment model:** The sidecar runs as a Docker container alongside Stash (default port 6960). The plugin backend proxies all requests from Stash to the sidecar, bypassing browser CSP restrictions. The sidecar URL is configurable in Stash plugin settings.
 
 **Two-database design:**
 - `performers.db` — Read-only, distributable. Contains performer metadata, face references, and stash-box IDs sourced from the private trainer repo. Updated via GitHub Releases.
