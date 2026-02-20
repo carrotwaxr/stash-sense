@@ -490,6 +490,186 @@
     }
   }
 
+  // ==================== Batch Accept All ====================
+
+  function computeBatchChanges(recommendations) {
+    function smartDefault(localVal, upstreamVal) {
+      const upstreamEmpty = upstreamVal === null || upstreamVal === undefined || upstreamVal === '';
+      if (!upstreamEmpty) return 'upstream';
+      return 'local';
+    }
+
+    const results = [];
+
+    for (const rec of recommendations) {
+      const details = rec.details;
+      const rawChanges = details.changes || [];
+      const changes = filterRealChanges(rawChanges);
+      if (changes.length === 0) continue;
+
+      const isTag = rec.type === 'upstream_tag_changes';
+      const entityName = isTag ? details.tag_name : details.performer_name;
+      const entityType = isTag ? 'Tag' : 'Performer';
+      const entityId = isTag ? details.tag_id : details.performer_id;
+
+      const fields = {};
+      const fieldSummaries = [];
+
+      for (const change of changes) {
+        const mergeType = change.merge_type || 'simple';
+        const fieldKey = change.field;
+
+        if (mergeType === 'alias_list') {
+          const allAliases = new Set();
+          if (Array.isArray(change.local_value)) change.local_value.forEach(a => allAliases.add(a));
+          if (Array.isArray(change.upstream_value)) change.upstream_value.forEach(a => allAliases.add(a));
+          const merged = [...allAliases];
+          fields[fieldKey] = merged;
+          const localCount = (change.local_value || []).length;
+          const newCount = merged.length - localCount;
+          if (newCount > 0) {
+            fieldSummaries.push({ field: change.field_label || fieldKey, desc: `+${newCount} aliases merged` });
+          }
+        } else {
+          const choice = smartDefault(change.local_value, change.upstream_value);
+          const resultVal = choice === 'upstream' ? change.upstream_value : change.local_value;
+          const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+          const resultStr = formatFieldValue(resultVal) === '(empty)' ? '' : String(resultVal || '');
+
+          if (resultStr === localStr) {
+            if (mergeType === 'name' && choice !== 'upstream') {
+              if (change.upstream_value) {
+                fields['_alias_add'] = fields['_alias_add'] || [];
+                fields['_alias_add'].push(String(change.upstream_value));
+                fieldSummaries.push({ field: 'Alias', desc: `+ "${change.upstream_value}"` });
+              }
+            }
+            continue;
+          }
+
+          fields[fieldKey] = resultStr;
+
+          if (mergeType === 'name' && choice === 'upstream') {
+            if (change.local_value) {
+              fields['_alias_add'] = fields['_alias_add'] || [];
+              fields['_alias_add'].push(String(change.local_value));
+            }
+          }
+
+          const fromDisplay = formatFieldValue(change.local_value);
+          const toDisplay = formatFieldValue(resultVal);
+          fieldSummaries.push({
+            field: change.field_label || fieldKey,
+            desc: `${fromDisplay} \u2192 ${toDisplay}`,
+          });
+        }
+      }
+
+      if (fieldSummaries.length > 0) {
+        results.push({ rec, entityName, entityType, entityId, fields, changes: fieldSummaries });
+      }
+    }
+
+    return results;
+  }
+
+  function showAcceptAllModal(batchChanges) {
+    return new Promise((resolve) => {
+      const totalChanges = batchChanges.reduce((sum, item) => sum + item.changes.length, 0);
+
+      const overlay = document.createElement('div');
+      overlay.className = 'ss-modal-overlay';
+      overlay.innerHTML = `
+        <div class="ss-accept-all-modal">
+          <div class="ss-modal-header">
+            <h3>Accept All Changes</h3>
+            <button class="ss-modal-close">&times;</button>
+          </div>
+          <div class="ss-modal-body">
+            <p>This will apply smart defaults to <strong>${batchChanges.length}</strong> ${batchChanges.length === 1 ? 'entity' : 'entities'} (${totalChanges} field ${totalChanges === 1 ? 'change' : 'changes'}). Upstream values are preferred when available; alias lists are merged.</p>
+            ${batchChanges.map(item => `
+              <div class="ss-batch-entity-group">
+                <span class="ss-batch-entity-name">${escapeHtml(item.entityName)}</span>
+                <span class="ss-batch-entity-type">${escapeHtml(item.entityType)}</span>
+                <ul class="ss-batch-changes-list">
+                  ${item.changes.map(c => `<li><span class="ss-batch-field-name">${escapeHtml(c.field)}:</span> ${escapeHtml(c.desc)}</li>`).join('')}
+                </ul>
+              </div>
+            `).join('')}
+          </div>
+          <div class="ss-modal-footer">
+            <button class="ss-btn ss-btn-secondary" id="ss-modal-cancel">Cancel</button>
+            <button class="ss-accept-all-btn" id="ss-modal-confirm">Accept ${batchChanges.length} ${batchChanges.length === 1 ? 'Change' : 'Changes'}</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      function close(result) {
+        if (!result) overlay.remove();
+        resolve(result);
+      }
+
+      overlay.querySelector('.ss-modal-close').addEventListener('click', () => close(false));
+      overlay.querySelector('#ss-modal-cancel').addEventListener('click', () => close(false));
+      overlay.querySelector('#ss-modal-confirm').addEventListener('click', () => close(true));
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(false);
+      });
+    });
+  }
+
+  async function processBatchChanges(batchChanges, modalOverlay) {
+    const modal = modalOverlay.querySelector('.ss-accept-all-modal');
+    const body = modal.querySelector('.ss-modal-body');
+    const footer = modal.querySelector('.ss-modal-footer');
+
+    footer.innerHTML = '';
+    body.innerHTML = `
+      <div class="ss-batch-progress">
+        <div class="ss-batch-progress-bar">
+          <div class="ss-batch-progress-fill" style="width: 0%"></div>
+        </div>
+        <div class="ss-batch-progress-text">Processing 0 / ${batchChanges.length}...</div>
+      </div>
+    `;
+
+    const progressFill = body.querySelector('.ss-batch-progress-fill');
+    const progressText = body.querySelector('.ss-batch-progress-text');
+
+    let succeeded = 0;
+    const failed = [];
+
+    for (let i = 0; i < batchChanges.length; i++) {
+      const item = batchChanges[i];
+      const pct = Math.round(((i + 1) / batchChanges.length) * 100);
+      progressText.textContent = `Processing ${i + 1} / ${batchChanges.length} — ${item.entityName}...`;
+      progressFill.style.width = `${pct}%`;
+
+      try {
+        if (item.entityType === 'Tag') {
+          await RecommendationsAPI.updateTag(item.entityId, item.fields);
+        } else {
+          await RecommendationsAPI.updatePerformer(item.entityId, item.fields);
+        }
+        await RecommendationsAPI.resolve(item.rec.id, 'accepted', { batch: true });
+        succeeded++;
+      } catch (e) {
+        failed.push({ entityName: item.entityName, error: e.message });
+      }
+    }
+
+    progressFill.style.width = '100%';
+    if (failed.length === 0) {
+      progressText.textContent = `Done! ${succeeded} ${succeeded === 1 ? 'change' : 'changes'} applied successfully.`;
+    } else {
+      progressText.textContent = `${succeeded} applied, ${failed.length} failed.`;
+    }
+
+    return { succeeded, failed };
+  }
+
   // ==================== List View ====================
 
   async function renderList(container) {
@@ -524,6 +704,10 @@
             Dismissed
           </button>
         </div>
+        ${currentState.status === 'pending' && (currentState.type === 'upstream_performer_changes' || currentState.type === 'upstream_tag_changes')
+          ? '<button class="ss-accept-all-btn" id="ss-accept-all-btn">Accept All Changes</button>'
+          : ''
+        }
       </div>
 
       <div class="ss-list-content">
@@ -549,14 +733,80 @@
       });
     });
 
-    // Load recommendations
+    // Accept All Changes button
+    const acceptAllBtn = container.querySelector('#ss-accept-all-btn');
+    if (acceptAllBtn) {
+      acceptAllBtn.addEventListener('click', async () => {
+        acceptAllBtn.disabled = true;
+        acceptAllBtn.textContent = 'Loading...';
+
+        try {
+          // Fetch ALL pending (high limit to get everything)
+          const allPending = await RecommendationsAPI.getList({
+            type: currentState.type,
+            status: 'pending',
+            limit: 10000,
+            offset: 0,
+          });
+
+          const batchChanges = computeBatchChanges(allPending.recommendations);
+
+          if (batchChanges.length === 0) {
+            acceptAllBtn.textContent = 'No changes to apply';
+            setTimeout(() => { acceptAllBtn.textContent = 'Accept All Changes'; acceptAllBtn.disabled = false; }, 2000);
+            return;
+          }
+
+          const confirmed = await showAcceptAllModal(batchChanges);
+          if (!confirmed) {
+            acceptAllBtn.textContent = 'Accept All Changes';
+            acceptAllBtn.disabled = false;
+            return;
+          }
+
+          const overlay = document.querySelector('.ss-modal-overlay');
+          const result = await processBatchChanges(batchChanges, overlay);
+
+          overlay.remove();
+
+          if (result.failed.length === 0) {
+            acceptAllBtn.textContent = `Done! ${result.succeeded} applied`;
+            acceptAllBtn.classList.add('ss-btn-success');
+          } else {
+            acceptAllBtn.textContent = `${result.succeeded} applied, ${result.failed.length} failed`;
+            acceptAllBtn.classList.add('ss-btn-error');
+          }
+
+          setTimeout(() => {
+            renderCurrentView(document.getElementById('ss-recommendations'));
+          }, 2000);
+        } catch (e) {
+          acceptAllBtn.textContent = `Error: ${e.message}`;
+          acceptAllBtn.disabled = false;
+        }
+      });
+    }
+
+    // Load recommendations and counts in parallel
     try {
       const PAGE_SIZE = 25;
-      const result = await RecommendationsAPI.getList({
-        type: currentState.type,
-        status: currentState.status,
-        limit: PAGE_SIZE,
-        offset: currentState.page * PAGE_SIZE,
+      const [result, countsResult] = await Promise.all([
+        RecommendationsAPI.getList({
+          type: currentState.type,
+          status: currentState.status,
+          limit: PAGE_SIZE,
+          offset: currentState.page * PAGE_SIZE,
+        }),
+        RecommendationsAPI.getCounts(),
+      ]);
+
+      // Update tab labels with counts
+      const typeCounts = countsResult.counts?.[currentState.type] || {};
+      container.querySelectorAll('.ss-filter-tab').forEach(tab => {
+        const status = tab.dataset.status;
+        const count = typeCounts[status] || 0;
+        const label = status.charAt(0).toUpperCase() + status.slice(1);
+        tab.textContent = `${label} (${count})`;
       });
 
       const listContent = container.querySelector('.ss-list-content');
@@ -2055,7 +2305,7 @@
       const aliasCb = document.createElement('input');
       aliasCb.type = 'checkbox';
       aliasCb.className = 'ss-upstream-name-alias-cb';
-      aliasCb.checked = false;
+      aliasCb.checked = true;
       aliasLabel.appendChild(aliasCb);
       aliasLabel.appendChild(document.createTextNode(' Add old name as alias when switching'));
       aliasOption.appendChild(aliasLabel);

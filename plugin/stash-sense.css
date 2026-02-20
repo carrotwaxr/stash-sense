@@ -984,6 +984,9 @@
 
 /* Filter Tabs */
 .ss-list-filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 20px;
 }
 
@@ -1014,6 +1017,180 @@
 .ss-filter-tab.active {
   background: var(--bs-primary, #0d6efd);
   color: white;
+}
+
+/* Accept All button + modal styles */
+.ss-accept-all-btn {
+  padding: 8px 20px;
+  background: #198754;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.ss-accept-all-btn:hover:not(:disabled) {
+  background: #157347;
+}
+
+.ss-accept-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Modal overlay */
+.ss-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+/* Accept All modal (scoped to avoid conflicts with existing .ss-modal) */
+.ss-accept-all-modal {
+  background: var(--bs-body-bg, #1a1a2e);
+  border: 1px solid var(--bs-border-color, #333);
+  border-radius: 12px;
+  max-width: 700px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.ss-accept-all-modal .ss-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--bs-border-color, #333);
+}
+
+.ss-accept-all-modal .ss-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-accept-all-modal .ss-modal-close {
+  background: none;
+  border: none;
+  color: var(--bs-secondary-color, #888);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.ss-accept-all-modal .ss-modal-close:hover {
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-accept-all-modal .ss-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ss-accept-all-modal .ss-modal-body p {
+  margin: 0 0 16px 0;
+  color: var(--bs-secondary-color, #aaa);
+  font-size: 14px;
+}
+
+.ss-accept-all-modal .ss-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--bs-border-color, #333);
+}
+
+/* Batch entity group */
+.ss-batch-entity-group {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bs-border-color, #2a2a2a);
+}
+
+.ss-batch-entity-group:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.ss-batch-entity-name {
+  font-weight: 600;
+  color: var(--bs-body-color, #fff);
+  font-size: 14px;
+  margin-right: 8px;
+}
+
+.ss-batch-entity-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  color: var(--bs-secondary-color, #aaa);
+}
+
+.ss-batch-changes-list {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--bs-border-color, #333);
+}
+
+.ss-batch-changes-list li {
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--bs-secondary-color, #aaa);
+}
+
+.ss-batch-field-name {
+  font-weight: 600;
+  color: var(--bs-body-color, #ddd);
+}
+
+/* Batch progress */
+.ss-batch-progress {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.ss-batch-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bs-tertiary-bg, #2a2a2a);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.ss-batch-progress-fill {
+  height: 100%;
+  background: #198754;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.ss-batch-progress-text {
+  font-size: 14px;
+  color: var(--bs-secondary-color, #aaa);
 }
 
 /* List Content */
@@ -1728,8 +1905,8 @@
 }
 
 .ss-upstream-value-cell.local {
-  background: rgba(239, 68, 68, 0.1);
-  border-left: 3px solid #ef4444;
+  background: rgba(99, 102, 241, 0.1);
+  border-left: 3px solid #6366f1;
 }
 
 .ss-upstream-value-cell.upstream {
@@ -1837,7 +2014,7 @@
 }
 
 .ss-upstream-alias-item.local-only {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(99, 102, 241, 0.15);
 }
 
 .ss-upstream-alias-item.upstream-only {

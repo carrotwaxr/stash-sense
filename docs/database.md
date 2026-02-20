@@ -36,11 +36,12 @@ The data directory contains:
 | `performers.db` | ~210 MB | SQLite database with performer metadata and stash-box IDs |
 | `face_facenet.voy` | ~550 MB | FaceNet512 embedding Voyager index |
 | `face_arcface.voy` | ~550 MB | ArcFace embedding Voyager index |
+| `face_adaface.voy` | ~550 MB | AdaFace IR-101 embedding Voyager index |
+| `tattoo_embeddings.voy` | varies | Tattoo embedding Voyager index |
 | `faces.json` | ~15 MB | Face-to-performer mapping |
 | `performers.json` | ~10 MB | Performer lookup data |
+| `tattoo_embeddings.json` | varies | Tattoo-to-performer mapping |
 | `manifest.json` | <1 KB | Version, checksums, and build metadata |
-
-Total: ~1.3 GB extracted.
 
 ---
 
