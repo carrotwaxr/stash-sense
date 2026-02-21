@@ -349,6 +349,7 @@ class TestJobRegistry:
             "upstream_scene_changes",
             "upstream_tag_changes",
             "upstream_studio_changes",
+            "scene_fingerprint_match",
             "fingerprint_generation",
             "database_update",
         }
