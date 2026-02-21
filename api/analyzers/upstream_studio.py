@@ -58,6 +58,7 @@ class UpstreamStudioAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_studio_changes"
+    logic_version = 2  # v2: parent studio uses stashbox ID instead of local numeric ID
 
     @property
     def entity_type(self) -> str:

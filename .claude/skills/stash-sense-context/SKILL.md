@@ -29,7 +29,7 @@ Quick-reference for architecture, conventions, and operational knowledge. See `d
 | Face Recognition | `embeddings.py`, `recognizer.py`, `face_config.py` | 3-phase batch: extract -> detect -> embed+match |
 | Recommendations | `recommendations_router.py`, `recommendations_db.py`, `analyzers/` | BaseAnalyzer + incremental watermarking |
 | Duplicate Detection | `analyzers/duplicate_scenes.py` | Candidate generation (SQL joins) -> sequential scoring |
-| Upstream Sync | `upstream_field_mapper.py`, `stashbox_client.py` | 3-way diff (upstream vs local vs snapshot) |
+| Upstream Sync | `upstream_field_mapper.py`, `stashbox_client.py`, `analyzers/base_upstream.py` | 3-way diff (upstream vs local vs snapshot), logic versioned |
 | Multi-Signal | `multi_signal_matcher.py`, `body_proportions.py` | Face primary, body/tattoo multiplicative adjustment |
 | Gallery ID | `recognizer.py` (`/identify/image`, `/identify/gallery`) | Independent images, aggregate by performer |
 | DB Self-Update | `database_updater.py` | download -> verify -> swap -> reload, 503 gating |
@@ -61,6 +61,9 @@ docker build -t carrotwaxr/stash-sense:latest . && docker push carrotwaxr/stash-
 - **Plugin defaults:** Plugin sends NO face recognition defaults; relies on sidecar `face_config.py`.
 - **Background tasks:** Don't inherit shell activation. Use explicit venv python path for background processes.
 - **Hot reload caveat:** Background analysis tasks block uvicorn `--reload` on file changes; must kill and restart.
+- **Plugin logging:** Use Stash's log protocol with level prefix bytes (`\x01` + level_char + `\x02`), not plain JSON to stderr. See `stash_sense_backend.py:_log_prefix()`.
+- **Upstream logic versioning:** Each upstream analyzer has a `logic_version` class attribute. When bumped, the next analysis run auto-clears stale snapshots and watermarks, forcing full re-analysis. Bump when comparison logic changes (field sets, normalization, ID resolution).
+- **Local-only fields:** `favorite`, `rating`, `o_count` are local Stash metadata — never compare against upstream StashBox values.
 
 ## Field Mapping (Stash vs StashBox)
 

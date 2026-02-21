@@ -92,9 +92,14 @@ def main():
     print(json.dumps(output))
 
 
+def _log_prefix(level_char):
+    """Build Stash log level prefix."""
+    return (b'\x01' + level_char + b'\x02').decode()
+
+
 def log(message):
-    """Log a message to Stash."""
-    print(json.dumps({"log": f"[Stash Sense] {message}"}), file=sys.stderr)
+    """Log an info message to Stash."""
+    print(_log_prefix(b'i') + f"[Stash Sense] {message}\n", file=sys.stderr, flush=True)
 
 
 def health_check(sidecar_url):
