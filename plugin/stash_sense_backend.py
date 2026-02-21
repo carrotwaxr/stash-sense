@@ -633,6 +633,29 @@ def handle_recommendations(mode, args, sidecar_url):
             args.get("field_configs", {}),
         )
 
+    elif mode == "rec_accept_fingerprint_match":
+        return sidecar_post(
+            sidecar_url,
+            "/recommendations/actions/accept-fingerprint-match",
+            {
+                "recommendation_id": args.get("recommendation_id"),
+                "scene_id": args.get("scene_id"),
+                "endpoint": args.get("endpoint"),
+                "stash_id": args.get("stash_id"),
+            },
+        )
+
+    elif mode == "rec_accept_all_fingerprint_matches":
+        payload = {}
+        endpoint = args.get("endpoint")
+        if endpoint:
+            payload["endpoint"] = endpoint
+        return sidecar_post(
+            sidecar_url,
+            "/recommendations/actions/accept-all-fingerprint-matches",
+            payload,
+        )
+
     elif mode == "user_get_all_settings":
         return sidecar_get(sidecar_url, "/recommendations/settings")
 
