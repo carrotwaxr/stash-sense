@@ -40,10 +40,53 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
 
     type = "upstream_scene_changes"
     _current_endpoint: str = ""
+    _performer_name_lookup: dict[str, str] | None = None
+    _tag_name_lookup: dict[str, str] | None = None
+    _studio_name_lookup: dict[str, str] | None = None
 
     @property
     def entity_type(self) -> str:
         return "scene"
+
+    async def _build_name_lookups(self):
+        """Build name→local_id lookup dicts for auto-matching added entities."""
+        if self._performer_name_lookup is not None:
+            return  # Already built for this run
+
+        # Performers: name + aliases
+        self._performer_name_lookup = {}
+        all_performers = await self.stash.get_all_performers()
+        for p in all_performers:
+            pid = str(p["id"])
+            name = (p.get("name") or "").strip().lower()
+            if name:
+                self._performer_name_lookup[name] = pid
+            for alias in (p.get("alias_list") or []):
+                alias_lower = alias.strip().lower()
+                if alias_lower:
+                    # Don't overwrite a primary name match
+                    self._performer_name_lookup.setdefault(alias_lower, pid)
+
+        # Tags: name only (allTags doesn't include aliases)
+        self._tag_name_lookup = {}
+        all_tags = await self.stash.get_all_tags()
+        for t in all_tags:
+            name = (t.get("name") or "").strip().lower()
+            if name:
+                self._tag_name_lookup[name] = str(t["id"])
+
+        # Studios: name only
+        self._studio_name_lookup = {}
+        all_studios = await self.stash.get_all_studios()
+        for s in all_studios:
+            name = (s.get("name") or "").strip().lower()
+            if name:
+                self._studio_name_lookup[name] = str(s["id"])
+
+        logger.info(
+            f"Name lookups built: {len(self._performer_name_lookup)} performer names, "
+            f"{len(self._tag_name_lookup)} tags, {len(self._studio_name_lookup)} studios"
+        )
 
     async def _process_endpoint(
         self, endpoint: str, api_key: str, incremental: bool,
@@ -51,6 +94,7 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
     ) -> tuple[int, int]:
         """Store the current endpoint before processing for stash_id filtering."""
         self._current_endpoint = endpoint
+        await self._build_name_lookups()
         return await super()._process_endpoint(endpoint, api_key, incremental, skip_local_ids)
 
     async def _get_local_entities(self, endpoint: str) -> list[dict]:
@@ -175,4 +219,29 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
         details["studio_change"] = changes.get("studio_change")
         details["performer_changes"] = changes.get("performer_changes")
         details["tag_changes"] = changes.get("tag_changes")
+
+        # Enrich added entities with local matches for auto-linking
+        pc = details.get("performer_changes") or {}
+        if pc.get("added") and self._performer_name_lookup:
+            for perf in pc["added"]:
+                name = (perf.get("name") or "").strip().lower()
+                match_id = self._performer_name_lookup.get(name)
+                if match_id:
+                    perf["local_match"] = {"id": match_id}
+
+        tc = details.get("tag_changes") or {}
+        if tc.get("added") and self._tag_name_lookup:
+            for tag in tc["added"]:
+                name = (tag.get("name") or "").strip().lower()
+                match_id = self._tag_name_lookup.get(name)
+                if match_id:
+                    tag["local_match"] = {"id": match_id}
+
+        sc = details.get("studio_change")
+        if sc and sc.get("upstream") and self._studio_name_lookup:
+            name = (sc["upstream"].get("name") or "").strip().lower()
+            match_id = self._studio_name_lookup.get(name)
+            if match_id:
+                sc["upstream"]["local_match"] = {"id": match_id}
+
         return details

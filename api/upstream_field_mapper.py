@@ -36,7 +36,6 @@ DEFAULT_PERFORMER_FIELDS: set[str] = {
     "career_end_year",
     "urls",
     "details",
-    "favorite",
 }
 
 # Merge type for each field, controls how diffs and merges are handled
@@ -63,7 +62,6 @@ FIELD_MERGE_TYPES: dict[str, str] = {
     "career_end_year": "simple",
     "urls": "alias_list",
     "details": "text",
-    "favorite": "simple",
 }
 
 # Human-readable labels for each field
@@ -90,7 +88,6 @@ FIELD_LABELS: dict[str, str] = {
     "career_end_year": "Career End Year",
     "urls": "URLs",
     "details": "Details",
-    "favorite": "Favorite",
 }
 
 # ==================== Entity Field Config Registry ====================
@@ -316,7 +313,6 @@ _DIRECT_FIELDS = [
 # Fields that have different names upstream vs local: upstream_name -> local_name
 _RENAMED_FIELDS = {
     "birth_date": "birthdate",
-    "is_favorite": "favorite",
 }
 
 

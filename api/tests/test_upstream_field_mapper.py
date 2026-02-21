@@ -69,10 +69,11 @@ class TestNormalizeUpstreamPerformer:
             "https://instagram.com/jane",
         ]
 
-    def test_maps_is_favorite_to_favorite(self):
+    def test_ignores_is_favorite(self):
+        """favorite is local-only metadata, not synced from upstream."""
         upstream = {"is_favorite": True}
         result = normalize_upstream_performer(upstream)
-        assert result["favorite"] is True
+        assert "favorite" not in result
         assert "is_favorite" not in result
 
     def test_handles_none_values(self):

@@ -92,9 +92,14 @@ def main():
     print(json.dumps(output))
 
 
+def _log_prefix(level_char):
+    """Build Stash log level prefix."""
+    return (b'\x01' + level_char + b'\x02').decode()
+
+
 def log(message):
-    """Log a message to Stash."""
-    print(json.dumps({"log": f"[Stash Sense] {message}"}), file=sys.stderr)
+    """Log an info message to Stash."""
+    print(_log_prefix(b'i') + f"[Stash Sense] {message}\n", file=sys.stderr, flush=True)
 
 
 def health_check(sidecar_url):
@@ -576,6 +581,25 @@ def handle_recommendations(mode, args, sidecar_url):
             {"studio_id": studio_id, "fields": fields, "endpoint": endpoint},
             timeout=30,
         )
+
+    elif mode == "rec_search_entities":
+        return sidecar_post(sidecar_url, "/recommendations/actions/search-entities", {
+            "entity_type": args.get("entity_type", ""),
+            "query": args.get("query", ""),
+            "endpoint": args.get("endpoint", ""),
+        })
+
+    elif mode == "rec_link_entity":
+        entity_type = args.get("entity_type", "")
+        entity_id = args.get("entity_id", "")
+        if not entity_type or not entity_id:
+            return {"error": "entity_type and entity_id required"}
+        return sidecar_post(sidecar_url, "/recommendations/actions/link-entity", {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "endpoint": args.get("endpoint", ""),
+            "stashbox_id": args.get("stashbox_id", ""),
+        })
 
     elif mode == "rec_create_performer":
         return sidecar_post(sidecar_url, "/recommendations/actions/create-performer", {

@@ -50,9 +50,23 @@ The data directory contains:
 Stash Sense uses two separate databases:
 
 - **`performers.db`** + Voyager indices (read-only) — The distributable face recognition data. Updated via stash-sense-data releases. Contains no user-specific information.
-- **`stash_sense.db`** (read-write, user-local) — Your recommendation history, dismissed items, analysis watermarks, upstream snapshots, scene fingerprints, and settings overrides.
+- **`stash_sense.db`** (read-write, user-local, schema version 9) — Your recommendation history, dismissed items, analysis watermarks, upstream snapshots, scene fingerprints, operation queue, and settings overrides.
 
 This separation means database updates never touch your personal data, and the distributable database contains nothing specific to your library.
+
+### stash_sense.db Tables
+
+| Table | Purpose |
+|-------|---------|
+| `recommendations` | Core recommendations (face matches, upstream changes, duplicates) |
+| `dismissed_recommendations` | Permanently or temporarily dismissed items |
+| `analysis_watermarks` | Tracks last-completed timestamps and cursors for incremental analysis runs. Includes a `logic_version` column to detect when comparison logic changes and a full re-analysis is needed. |
+| `upstream_snapshots` | Cached upstream performer data for 3-way diff engine |
+| `scene_fingerprints` | Per-scene face fingerprints for duplicate detection |
+| `duplicate_candidates` | Candidate duplicate scene pairs from fingerprint matching |
+| `job_queue` | Persistent operation queue with priority, status (`queued`/`running`/`completed`/`failed`/`cancelled`), cursor-based resumption, and progress tracking (`items_processed`/`items_total`) |
+| `job_schedules` | Configurable recurring job schedules with enable/disable toggle, interval (hours), priority, and next-run tracking |
+| `user_settings` | User setting overrides (key-value with JSON-encoded values) |
 
 ---
 

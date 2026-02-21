@@ -53,11 +53,18 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 ## Key Files
 
 - `api/recommendations_router.py` - All recommendation API endpoints
-- `api/recommendations_db.py` - SQLite database layer (schema version 5)
+- `api/recommendations_db.py` - SQLite database layer (schema version 9)
+- `api/queue_router.py` - Operation queue API endpoints
+- `api/queue_manager.py` - Queue execution engine with resource-aware scheduling
+- `api/settings_router.py` - Settings and system info API endpoints
 - `api/upstream_field_mapper.py` - Field mapping, parsing, and 3-way diff engine
 - `api/analyzers/upstream_performer.py` - Upstream change detection analyzer
+- `api/analyzers/upstream_scene.py` - Upstream scene change detection analyzer
+- `api/analyzers/base_upstream.py` - Base class for upstream analyzers with logic versioning
 - `api/stash_client_unified.py` - Stash GraphQL client
 - `api/stashbox_client.py` - StashBox GraphQL client
 - `plugin/stash-sense-recommendations.js` - Recommendations dashboard UI
+- `plugin/stash-sense-settings.js` - Settings and model management UI
+- `plugin/stash-sense-operations.js` - Operation queue UI
 - `plugin/stash-sense.css` - All styles
 - `plugin/stash_sense_backend.py` - Plugin backend proxy

@@ -13,7 +13,7 @@ docker logs stash-sense
 
 - Missing database files - ensure `/data` contains the `.voy` files
 - GPU driver issues - try without GPU first to isolate
-- Port conflict - change from 5000 to another port
+- Port conflict - change from 6960 to another port
 
 ### "Database not loaded"
 
@@ -38,7 +38,7 @@ If empty, the volume mount is misconfigured or database wasn't extracted.
 
 ```bash
 # Test manually
-curl http://localhost:5000/health
+curl http://localhost:6960/health
 
 # Check container status
 docker ps -a | grep stash-sense
@@ -100,7 +100,7 @@ docker exec stash curl http://stash-sense:5000/health
 
 - Use container name if on same Docker network
 - Use host IP if on different networks
-- Check firewall isn't blocking port 5000
+- Check firewall isn't blocking port 6960
 
 ### Sidecar can't reach Stash
 
@@ -158,7 +158,7 @@ tar -xzf stash-sense-db.tar.gz -C /path/to/data/
 
 Check current version:
 ```bash
-curl http://localhost:5000/database/info
+curl http://localhost:6960/database/info
 ```
 
 Compare with latest release on GitHub. New databases include more performers and improved embeddings.
@@ -170,7 +170,7 @@ Compare with latest release on GitHub. New databases include more performers and
 If you're stuck:
 
 1. Check container logs: `docker logs stash-sense`
-2. Test health endpoint: `curl http://localhost:5000/health`
+2. Test health endpoint: `curl http://localhost:6960/health`
 3. Verify database files exist and have correct permissions
 4. Open an issue on GitHub with:
    - Container logs

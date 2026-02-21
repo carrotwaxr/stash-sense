@@ -607,6 +607,69 @@ class StashClientUnified:
         data = await self._execute(query)
         return data["allTags"]
 
+    async def search_performers(self, query: str, limit: int = 10) -> list[dict]:
+        """Search performers by name/alias using text search."""
+        gql = """
+        query SearchPerformers($filter: FindFilterType!) {
+          findPerformers(filter: $filter) {
+            performers {
+              id
+              name
+              disambiguation
+              alias_list
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {"filter": {"q": query, "per_page": limit}}
+        data = await self._execute(gql, variables)
+        return data["findPerformers"]["performers"]
+
+    async def search_tags(self, query: str, limit: int = 10) -> list[dict]:
+        """Search tags by name using text search."""
+        gql = """
+        query SearchTags($filter: FindFilterType!) {
+          findTags(filter: $filter) {
+            tags {
+              id
+              name
+              aliases
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {"filter": {"q": query, "per_page": limit}}
+        data = await self._execute(gql, variables)
+        return data["findTags"]["tags"]
+
+    async def search_studios(self, query: str, limit: int = 10) -> list[dict]:
+        """Search studios by name using text search."""
+        gql = """
+        query SearchStudios($filter: FindFilterType!) {
+          findStudios(filter: $filter) {
+            studios {
+              id
+              name
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        variables = {"filter": {"q": query, "per_page": limit}}
+        data = await self._execute(gql, variables)
+        return data["findStudios"]["studios"]
+
     async def get_tags_for_endpoint(self, endpoint: str) -> list[dict]:
         """Query local Stash for all tags linked to a specific stash-box endpoint."""
         query = """
@@ -672,6 +735,21 @@ class StashClientUnified:
         return data["tagCreate"]
 
     # ==================== Studios ====================
+
+    async def get_all_studios(self) -> list[dict]:
+        """Fetch all studios."""
+        query = """
+        query AllStudios {
+          findStudios(filter: { per_page: -1 }) {
+            studios {
+              id
+              name
+            }
+          }
+        }
+        """
+        data = await self._execute(query)
+        return data["findStudios"]["studios"]
 
     async def get_studios_for_endpoint(self, endpoint: str) -> list[dict]:
         """Query local Stash for all studios linked to a specific stash-box endpoint."""

@@ -155,6 +155,14 @@
       return apiCall('rec_dismiss_upstream', { rec_id: recId, reason, permanent: !!permanent });
     },
 
+    async searchEntities(entityType, query, endpoint) {
+      return apiCall('rec_search_entities', { entity_type: entityType, query, endpoint });
+    },
+
+    async linkEntity(entityType, entityId, endpoint, stashboxId) {
+      return apiCall('rec_link_entity', { entity_type: entityType, entity_id: entityId, endpoint, stashbox_id: stashboxId });
+    },
+
     async createPerformer(stashboxData, endpoint, stashboxId) {
       return apiCall('rec_create_performer', { stashbox_data: stashboxData, endpoint, stashbox_id: stashboxId });
     },
@@ -1791,7 +1799,7 @@
         <h2 style="margin: 0 0 4px 0;">
           <a href="/performers/${performerId}" target="_blank">${details.performer_name || 'Unknown'}</a>
         </h2>
-        <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
+        <a href="${details.endpoint.replace(/\/graphql$/, '')}/performers/${details.stash_box_id}" target="_blank" class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</a>
       </div>
     `;
     headerDiv.appendChild(createInfoIcon(() => showHelpModal('Upstream Performer Changes', HELP_UPSTREAM_DETAIL)));
@@ -2136,7 +2144,7 @@
         <h2 style="margin: 0 0 4px 0;">
           <a href="/tags/${tagId}" target="_blank">${details.tag_name || 'Unknown'}</a>
         </h2>
-        <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
+        <a href="${details.endpoint.replace(/\/graphql$/, '')}/tags/${details.stash_box_id}" target="_blank" class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</a>
       </div>
     `;
     wrapper.appendChild(headerDiv);
@@ -2444,7 +2452,7 @@
         <h2 style="margin: 0 0 4px 0;">
           <a href="/studios/${studioId}" target="_blank">${details.studio_name || 'Unknown'}</a>
         </h2>
-        <span class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</span>
+        <a href="${details.endpoint.replace(/\/graphql$/, '')}/studios/${details.stash_box_id}" target="_blank" class="ss-upstream-endpoint-badge">${details.endpoint_name || 'Upstream'}</a>
       </div>
     `;
     wrapper.appendChild(headerDiv);
@@ -2689,7 +2697,7 @@
         <h2 style="margin: 0 0 4px 0;">
           <a href="/scenes/${sceneId}" target="_blank">${escapeHtml(details.scene_name || 'Unknown Scene')}</a>
         </h2>
-        <span class="ss-upstream-endpoint-badge">${escapeHtml(details.endpoint_name || 'Upstream')}</span>
+        <a href="${details.endpoint.replace(/\/graphql$/, '')}/scenes/${details.stash_box_id}" target="_blank" class="ss-upstream-endpoint-badge">${escapeHtml(details.endpoint_name || 'Upstream')}</a>
       </div>
     `;
     wrapper.appendChild(headerDiv);
@@ -2821,16 +2829,34 @@
       studioLabel.appendChild(document.createTextNode('Apply studio change'));
       studioRow.appendChild(studioLabel);
 
-      // Create studio button (shown when studio doesn't exist locally)
+      // Link/Create studio (shown when studio doesn't exist locally)
       if (upstreamStudio) {
         const cacheKey = `${endpoint}|${upstreamStudio.id}`;
         const cachedId = entityCache.get(cacheKey);
-        if (cachedId) {
+
+        if (upstreamStudio.local_match) {
+          entityCache.set(cacheKey, upstreamStudio.local_match.id);
+          const note = document.createElement('span');
+          note.className = 'ss-scene-entity-linked';
+          note.textContent = 'Linked';
+          studioRow.appendChild(note);
+        } else if (cachedId) {
           const note = document.createElement('span');
           note.className = 'ss-scene-entity-created';
           note.textContent = `Created (ID: ${cachedId})`;
           studioRow.appendChild(note);
         } else {
+          const dropdown = createEntitySearchDropdown('studio', endpoint, upstreamStudio.id, (localId, localName) => {
+            entityCache.set(cacheKey, localId);
+            const linked = document.createElement('span');
+            linked.className = 'ss-scene-entity-linked';
+            linked.textContent = `Linked: ${localName}`;
+            dropdown.replaceWith(linked);
+            const btn = studioRow.querySelector('.ss-scene-create-btn');
+            if (btn) btn.remove();
+          });
+          studioRow.appendChild(dropdown);
+
           const createBtn = document.createElement('button');
           createBtn.className = 'ss-btn ss-btn-sm ss-scene-create-btn';
           createBtn.textContent = 'Create Studio';
@@ -2848,6 +2874,8 @@
               entityCache.set(cacheKey, result.studio.id);
               createBtn.textContent = `Created (ID: ${result.studio.id})`;
               createBtn.classList.add('ss-btn-success');
+              const dd = studioRow.querySelector('.ss-entity-search-dropdown');
+              if (dd) dd.remove();
             } catch (e) {
               createBtn.textContent = `Failed: ${e.message}`;
               createBtn.disabled = false;
@@ -2887,7 +2915,6 @@
 
           const cb = document.createElement('input');
           cb.type = 'checkbox';
-          cb.checked = true;
           cb.className = 'ss-scene-perf-add-cb';
           cb.dataset.stashboxId = perf.id;
           cb.dataset.name = perf.name || perf.id;
@@ -2902,15 +2929,39 @@
           row.appendChild(cb);
           row.appendChild(nameSpan);
 
-          // Create button or cached status
           const cacheKey = `${endpoint}|${perf.id}`;
           const cachedId = entityCache.get(cacheKey);
-          if (cachedId) {
+
+          // Auto-match: local entity found by name during analysis
+          if (perf.local_match) {
+            entityCache.set(cacheKey, perf.local_match.id);
+            cb.checked = true;
+            const note = document.createElement('span');
+            note.className = 'ss-scene-entity-linked';
+            note.textContent = 'Linked';
+            row.appendChild(note);
+          } else if (cachedId) {
+            cb.checked = true;
             const note = document.createElement('span');
             note.className = 'ss-scene-entity-created';
             note.textContent = `Created (ID: ${cachedId})`;
             row.appendChild(note);
           } else {
+            cb.checked = false;
+            // Search dropdown for manual linking
+            const dropdown = createEntitySearchDropdown('performer', endpoint, perf.id, (localId, localName) => {
+              entityCache.set(cacheKey, localId);
+              cb.checked = true;
+              // Replace dropdown and create button with linked indicator
+              const linked = document.createElement('span');
+              linked.className = 'ss-scene-entity-linked';
+              linked.textContent = `Linked: ${localName}`;
+              dropdown.replaceWith(linked);
+              const btn = row.querySelector('.ss-scene-create-btn');
+              if (btn) btn.remove();
+            });
+            row.appendChild(dropdown);
+
             const createBtn = document.createElement('button');
             createBtn.className = 'ss-btn ss-btn-sm ss-scene-create-btn';
             createBtn.textContent = 'Create';
@@ -2924,8 +2975,12 @@
                   perf.id
                 );
                 entityCache.set(cacheKey, result.performer.id);
+                cb.checked = true;
                 createBtn.textContent = `Created (ID: ${result.performer.id})`;
                 createBtn.classList.add('ss-btn-success');
+                // Remove the search dropdown
+                const dd = row.querySelector('.ss-entity-search-dropdown');
+                if (dd) dd.remove();
               } catch (e) {
                 createBtn.textContent = `Failed`;
                 createBtn.disabled = false;
@@ -3007,9 +3062,11 @@
           chip.className = 'ss-scene-tag-chip';
           chip.dataset.stashboxId = tag.id;
 
+          const cacheKey = `${endpoint}|${tag.id}`;
+          const cachedId = entityCache.get(cacheKey);
+
           const cb = document.createElement('input');
           cb.type = 'checkbox';
-          cb.checked = true;
           cb.className = 'ss-scene-tag-add-cb';
           cb.dataset.stashboxId = tag.id;
           cb.dataset.name = tag.name;
@@ -3020,15 +3077,33 @@
           chip.appendChild(cb);
           chip.appendChild(nameSpan);
 
-          // Create button or cached status
-          const cacheKey = `${endpoint}|${tag.id}`;
-          const cachedId = entityCache.get(cacheKey);
-          if (cachedId) {
+          if (tag.local_match) {
+            entityCache.set(cacheKey, tag.local_match.id);
+            cb.checked = true;
+            const note = document.createElement('span');
+            note.className = 'ss-scene-entity-linked';
+            note.textContent = 'Linked';
+            chip.appendChild(note);
+          } else if (cachedId) {
+            cb.checked = true;
             const note = document.createElement('span');
             note.className = 'ss-scene-entity-created';
             note.textContent = '(created)';
             chip.appendChild(note);
           } else {
+            cb.checked = false;
+            const dropdown = createEntitySearchDropdown('tag', endpoint, tag.id, (localId, localName) => {
+              entityCache.set(cacheKey, localId);
+              cb.checked = true;
+              const linked = document.createElement('span');
+              linked.className = 'ss-scene-entity-linked';
+              linked.textContent = 'Linked';
+              dropdown.replaceWith(linked);
+              const btn = chip.querySelector('.ss-scene-create-btn');
+              if (btn) btn.remove();
+            });
+            chip.appendChild(dropdown);
+
             const createBtn = document.createElement('button');
             createBtn.className = 'ss-btn ss-btn-sm ss-scene-create-btn';
             createBtn.textContent = 'Create';
@@ -3042,8 +3117,11 @@
                   tag.id
                 );
                 entityCache.set(cacheKey, result.tag.id);
+                cb.checked = true;
                 createBtn.textContent = 'Created';
                 createBtn.classList.add('ss-btn-success');
+                const dd = chip.querySelector('.ss-entity-search-dropdown');
+                if (dd) dd.remove();
               } catch (e) {
                 createBtn.textContent = 'Fail';
                 createBtn.disabled = false;
@@ -3236,9 +3314,9 @@
         }
       }
 
-      // Block apply if checked entities haven't been created yet
+      // Block apply if checked entities haven't been linked or created yet
       if (uncreated.length > 0) {
-        errorDiv.innerHTML = `<strong>Please create these entities first:</strong><br>${uncreated.map(e => escapeHtml(e)).join('<br>')}`;
+        errorDiv.innerHTML = `<strong>Please link or create these entities first:</strong><br>${uncreated.map(e => escapeHtml(e)).join('<br>')}`;
         errorDiv.style.display = 'block';
         return;
       }
@@ -3642,6 +3720,105 @@
         dismissBtn.disabled = false;
       }
     });
+  }
+
+  /**
+   * Create a search dropdown for linking a local entity to a stash-box ID.
+   * @param {string} entityType - "performer", "tag", or "studio"
+   * @param {string} endpoint - stash-box endpoint URL
+   * @param {string} stashboxId - stash-box entity UUID
+   * @param {function} onMatch - callback(localId, localName) when linked
+   * @returns {HTMLElement} the dropdown container element
+   */
+  function createEntitySearchDropdown(entityType, endpoint, stashboxId, onMatch) {
+    const container = document.createElement('div');
+    container.className = 'ss-entity-search-dropdown';
+
+    const trigger = document.createElement('button');
+    trigger.className = 'ss-btn ss-btn-sm ss-entity-link-btn';
+    trigger.textContent = 'Link';
+    container.appendChild(trigger);
+
+    const panel = document.createElement('div');
+    panel.className = 'ss-entity-search-panel';
+    panel.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'ss-entity-search-input';
+    input.placeholder = `Search ${entityType}s...`;
+    panel.appendChild(input);
+
+    const resultsList = document.createElement('div');
+    resultsList.className = 'ss-entity-search-results';
+    panel.appendChild(resultsList);
+
+    container.appendChild(panel);
+
+    let debounceTimer = null;
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = panel.style.display !== 'none';
+      panel.style.display = isOpen ? 'none' : '';
+      if (!isOpen) {
+        input.focus();
+      }
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!container.contains(e.target)) {
+        panel.style.display = 'none';
+      }
+    });
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      const q = input.value.trim();
+      if (q.length < 2) {
+        resultsList.innerHTML = '';
+        return;
+      }
+      debounceTimer = setTimeout(async () => {
+        resultsList.innerHTML = '<div class="ss-entity-search-loading">Searching...</div>';
+        try {
+          const resp = await RecommendationsAPI.searchEntities(entityType, q, endpoint);
+          const results = resp.results || [];
+          if (results.length === 0) {
+            resultsList.innerHTML = '<div class="ss-entity-search-empty">No results</div>';
+            return;
+          }
+          resultsList.innerHTML = '';
+          results.forEach(r => {
+            const item = document.createElement('div');
+            item.className = 'ss-entity-search-result-item';
+            if (r.linked) item.classList.add('ss-entity-already-linked');
+
+            let label = escapeHtml(r.name);
+            if (r.disambiguation) label += ` <span class="ss-entity-search-disambig">(${escapeHtml(r.disambiguation)})</span>`;
+            if (r.linked) label += ' <span class="ss-entity-search-linked-badge">linked</span>';
+
+            item.innerHTML = label;
+            item.addEventListener('click', async () => {
+              item.textContent = 'Linking...';
+              try {
+                await RecommendationsAPI.linkEntity(entityType, r.id, endpoint, stashboxId);
+                panel.style.display = 'none';
+                onMatch(r.id, r.name);
+              } catch (err) {
+                item.textContent = `Failed: ${err.message}`;
+              }
+            });
+            resultsList.appendChild(item);
+          });
+        } catch (err) {
+          resultsList.innerHTML = `<div class="ss-entity-search-empty">Error: ${escapeHtml(err.message)}</div>`;
+        }
+      }, 300);
+    });
+
+    return container;
   }
 
   function escapeHtml(str) {

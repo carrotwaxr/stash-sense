@@ -177,20 +177,28 @@ def _load_face_recognition(data_dir: Path) -> dict:
     return resources
 
 
-def _unload_face_recognition() -> None:
+def _unload_face_recognition(data_dir: Path) -> None:
     """Unloader for face recognition resource group.
 
-    Clears router globals so endpoints know the database is not loaded.
+    Clears recognizer/matcher globals but preserves manifest so the
+    database stats endpoint can still report version and counts while
+    the heavy resources are unloaded.
     """
+    db_config = DatabaseConfig(data_dir=data_dir)
+    manifest = {}
+    if db_config.manifest_json_path.exists():
+        with open(db_config.manifest_json_path) as f:
+            manifest = json.load(f)
+
     update_identification_globals(
         recognizer=None,
         multi_signal_matcher=None,
-        db_manifest={},
+        db_manifest=manifest,
     )
     update_database_health_globals(
         recognizer=None,
         multi_signal_matcher=None,
-        db_manifest={},
+        db_manifest=manifest,
     )
 
 
@@ -250,12 +258,22 @@ async def lifespan(app: FastAPI):
     model_mgr = init_model_manager(manifest_path, models_dir)
     init_model_router(model_mgr)
 
+    # Load manifest early so database stats are available before lazy load
+    db_config = DatabaseConfig(data_dir=data_dir)
+    startup_manifest = {}
+    if db_config.manifest_json_path.exists():
+        with open(db_config.manifest_json_path) as f:
+            startup_manifest = json.load(f)
+        print(f"Database manifest loaded: v{startup_manifest.get('version')}, "
+              f"{startup_manifest.get('performer_count', 0):,} performers, "
+              f"{startup_manifest.get('face_count', 0):,} faces")
+
     # Initialize resource manager for lazy loading of heavy resources
     resource_mgr = init_resource_manager(idle_timeout_seconds=1800.0)
     resource_mgr.register(
         FACE_RECOGNITION_RESOURCE,
         loader=lambda: _load_face_recognition(data_dir),
-        unloader=_unload_face_recognition,
+        unloader=lambda: _unload_face_recognition(data_dir),
     )
     # Face recognition is NOT loaded eagerly — it loads on first /identify request
     print("Face recognition registered for lazy loading (loads on first use)")
@@ -271,7 +289,7 @@ async def lifespan(app: FastAPI):
     init_identification_router(
         recognizer=None,
         multi_signal_matcher=None,
-        db_manifest={},
+        db_manifest=startup_manifest,
         db_updater=db_updater,
         stash_url=STASH_URL,
         stash_api_key=STASH_API_KEY,
@@ -287,7 +305,7 @@ async def lifespan(app: FastAPI):
     init_database_health_router(
         recognizer=None,
         multi_signal_matcher=None,
-        db_manifest={},
+        db_manifest=startup_manifest,
         db_updater=db_updater,
     )
 
@@ -300,6 +318,10 @@ async def lifespan(app: FastAPI):
         stash_api_key=STASH_API_KEY,
     )
     print("Recommendations database initialized!")
+
+    # Set DB version from manifest so fingerprint stats are accurate before lazy load
+    if startup_manifest.get("version"):
+        set_db_version(startup_manifest["version"])
 
     # Initialize settings system (needs rec_db for persistence)
     from recommendations_router import get_rec_db
@@ -373,7 +395,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stash Sense API",
     description="Face recognition and recommendations engine for Stash",
-    version="0.1.0-beta.4",
+    version="0.1.0",
     lifespan=lifespan,
 )
 
