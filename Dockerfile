@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Stage 1: Build dependencies
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS build
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.docker.txt
 
 # Stage 2: Runtime
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
