@@ -104,3 +104,38 @@ The face matched a StashDB performer who isn't in your Stash library. Options:
 1. Check plugin files are in correct location
 2. Reload plugins in Stash settings
 3. Check Stash logs for errors
+
+---
+
+## UI Components
+
+### Recommendations Dashboard
+
+The main dashboard (accessible from the Stash navigation) shows all recommendation types:
+
+- **Upstream Changes** — Performer field updates detected from stash-box endpoints, with a 3-way diff view showing local, upstream, and original values
+- **Duplicates** — Candidate duplicate scenes identified by face fingerprint matching
+- **All Recommendations** — Combined view of face match suggestions, upstream sync proposals, and duplicate candidates with filtering and bulk actions
+
+### Settings Tab
+
+Found under **Settings > Plugins > Stash Sense**, this tab provides:
+
+- **Sidecar URL** configuration
+- **Model Management** — Download or remove optional ONNX models (e.g., AdaFace) directly from the UI
+- **Hardware tier** and current setting overrides display
+
+### Operation Queue
+
+The operations panel shows:
+
+- **Job Status** — Real-time status of running, queued, completed, and failed jobs with progress indicators
+- **Scheduling** — Configure recurring analysis jobs (interval, enable/disable) that automatically re-queue on a timer
+
+### Scene Upstream Sync Detail
+
+When viewing a scene, the upstream sync detail view shows:
+
+- Side-by-side comparison of local performer data vs. upstream stash-box data
+- Field-level diffs with accept/reject controls for individual changes
+- Links to the performer's stash-box page for manual review

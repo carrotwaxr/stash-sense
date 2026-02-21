@@ -138,7 +138,7 @@ Returns hardware profile, version, and uptime:
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.1.0-beta.4",
   "uptime_seconds": 3600,
   "hardware": {
     "gpu_available": true,

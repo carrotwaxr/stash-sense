@@ -74,6 +74,41 @@ This distinguishes intentional local differences from actual upstream changes. I
 
 ---
 
+## Upstream Studio Sync
+
+Same pattern as performer sync, applied to studios. Detects changes on stash-box endpoints and presents merge controls to keep your local studio metadata current.
+
+**Tracked fields:**
+
+- **Name** — studio display name
+- **URL** — studio website
+- **Parent studio** — hierarchical studio relationships
+
+**Parent studio comparison** uses stash-box IDs rather than name matching, so renamed parent studios are still correctly identified. The 3-way diff engine (upstream / local / snapshot) works identically to performer sync — intentional local differences are preserved across syncs.
+
+**Merge controls** mirror the performer sync UI: keep local, accept upstream, or dismiss (soft or permanent).
+
+---
+
+## Upstream Scene Sync
+
+Detects metadata changes for scenes linked to stash-box endpoints and provides per-field merge controls for updating your local library.
+
+**Tracked field categories:**
+
+| Category | Fields |
+|----------|--------|
+| Core metadata | Title, details, date, director, code, URLs |
+| Studio assignment | Studio linked to the scene |
+| Performer lineup | Added/removed performers, alias changes |
+| Tags | Tag set additions and removals |
+
+**3-way diff with snapshots:** Like performer and studio sync, scene sync stores a snapshot of the last-seen upstream state. This distinguishes genuine upstream edits from intentional local differences — if you have customized a scene title locally, it will not be flagged on every sync cycle.
+
+**Per-field merge controls** allow you to accept, reject, or customize each change independently. Performer lineup changes show which performers were added or removed upstream, and alias changes are surfaced when an upstream performer's credited name differs from the local alias.
+
+---
+
 ## Recommendations Dashboard
 
 A unified plugin page showing all actionable suggestions:
@@ -84,6 +119,62 @@ A unified plugin page showing all actionable suggestions:
 - **Upstream updates** — per-field changes from stash-box endpoints
 
 Each recommendation type runs as a background analyzer with incremental watermarking — only items modified since the last run are re-processed, keeping subsequent runs fast.
+
+---
+
+## Operation Queue
+
+An async job queue with resource-aware scheduling that coordinates all background work — analysis runs, sync operations, and database updates.
+
+**Priority levels:**
+
+| Priority | Use case |
+|----------|----------|
+| Critical | Database updates, rollback operations |
+| High | User-initiated analysis (e.g., "Identify Performers" click) |
+| Normal | Scheduled analysis runs |
+| Low | Background housekeeping |
+
+**Resource slots** prevent contention by ensuring only compatible jobs run concurrently:
+
+| Slot | What uses it | Why limited |
+|------|-------------|-------------|
+| `GPU` | Face detection, embedding inference | VRAM is finite |
+| `CPU_HEAVY` | Clustering, fingerprint computation | Avoid saturating cores |
+| `NETWORK` | Stash-box API calls, database downloads | Rate limits, bandwidth |
+| `LIGHT` | Metadata reads, cache checks | Runs alongside anything |
+
+Jobs declare which resource slot they need. The scheduler runs all compatible jobs in parallel but serializes jobs that compete for the same resource.
+
+**Persistence:** The queue survives sidecar restarts. In-progress jobs are re-queued on startup.
+
+**Configurable schedules:** Recurring analysis jobs (upstream sync, duplicate detection) can be scheduled via the plugin UI with cron-style intervals. Manual triggers are always available.
+
+**Monitoring:** The plugin UI shows active, queued, and completed jobs with status, duration, and error details.
+
+---
+
+## Model Management
+
+On-demand download and lifecycle management for optional ONNX models that are not bundled in the Docker image.
+
+**Supported optional models:**
+
+| Model | Purpose | Size |
+|-------|---------|------|
+| Tattoo detection | Identifies tattoos for performer matching | ~50 MB |
+
+**Validation:** Each model download is verified against a SHA256 checksum before activation. If a model file becomes corrupted (disk error, partial write), the sidecar detects the mismatch and marks the model as `corrupted`.
+
+**Status tracking:**
+
+| Status | Meaning |
+|--------|---------|
+| `not_installed` | Model available for download but not present locally |
+| `installed` | Model downloaded, verified, and ready for use |
+| `corrupted` | Checksum mismatch — re-download required |
+
+**Download progress UI:** The plugin Settings tab shows real-time download progress for each model with a progress bar. Models can be installed or removed at any time without restarting the sidecar.
 
 ---
 
