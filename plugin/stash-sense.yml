@@ -1,6 +1,6 @@
 name: Stash Sense
 description: AI-powered performer identification using face recognition against StashDB database
-version: 0.1.0-beta.8
+version: 0.1.0-beta.9
 url: https://github.com/carrotwaxr/stash-sense
 
 ui:
