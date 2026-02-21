@@ -338,21 +338,26 @@ async def require_db_available():
             headers={"Retry-After": "10"},
         )
 
-    # Lazy-load face recognition via ResourceManager if not yet loaded
-    if _recognizer is None:
-        try:
-            from resource_manager import get_resource_manager
-            mgr = get_resource_manager()
+    # Lazy-load face recognition via ResourceManager if not yet loaded,
+    # and touch last_access on every request to prevent idle unloading
+    # while the resource is actively in use (e.g. fingerprint generation).
+    try:
+        from resource_manager import get_resource_manager
+        mgr = get_resource_manager()
+        if _recognizer is None:
             mgr.require("face_recognition")
             # After require(), router globals are updated by the loader
-        except RuntimeError:
-            # ResourceManager not initialized
+        else:
+            mgr.touch("face_recognition")
+    except RuntimeError:
+        # ResourceManager not initialized
+        if _recognizer is None:
             raise HTTPException(status_code=503, detail="Database not loaded")
-        except Exception as e:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Face recognition unavailable: {e}",
-            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Face recognition unavailable: {e}",
+        )
 
     # Double-check after lazy load attempt
     if _recognizer is None:

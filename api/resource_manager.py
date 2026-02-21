@@ -126,6 +126,20 @@ class ResourceManager:
             logger.warning(f"Loaded resource group: {name} in {elapsed:.2f}s")
             return group.data
 
+    def touch(self, name: str) -> None:
+        """Update the last access time for a loaded resource group.
+
+        Lightweight call to prevent idle unloading while the resource is
+        in active use. No-op if the group is not currently loaded.
+
+        Args:
+            name: Name of the resource group.
+        """
+        with self._lock:
+            group = self._groups.get(name)
+            if group is not None and group.loaded:
+                group.last_access = time.monotonic()
+
     def is_loaded(self, name: str) -> bool:
         """Check if a resource group is currently loaded.
 

@@ -203,6 +203,36 @@ class TestCheckIdle:
         assert mgr.is_loaded("face_data")
         unloader.assert_not_called()
 
+    def test_touch_resets_idle_timer(self, mgr):
+        """touch() resets the idle timer like require() does."""
+        unloader = _make_unloader()
+        mgr.register("face_data", _make_loader(), unloader)
+        mgr.require("face_data")
+
+        # Wait partway through timeout
+        time.sleep(0.06)
+        mgr.touch("face_data")  # Reset timer via touch
+
+        # Wait partway again (total from last access < timeout)
+        time.sleep(0.06)
+        mgr.check_idle()
+
+        # Should still be loaded because touch reset the timer
+        assert mgr.is_loaded("face_data")
+        unloader.assert_not_called()
+
+    def test_touch_noop_when_not_loaded(self, mgr):
+        """touch() is a no-op when the resource is not loaded."""
+        mgr.register("face_data", _make_loader(), _make_unloader())
+        # Don't call require(), so resource is not loaded
+        mgr.touch("face_data")
+        assert not mgr.is_loaded("face_data")
+
+    def test_touch_noop_for_unknown_group(self, mgr):
+        """touch() silently ignores unknown group names."""
+        # Should not raise
+        mgr.touch("nonexistent")
+
     def test_idle_unload_calls_gc_collect(self, mgr):
         """check_idle() calls gc.collect() after unloading."""
         mgr.register("face_data", _make_loader(), _make_unloader())
