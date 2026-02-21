@@ -186,8 +186,8 @@ class TestBuildLocalStudioData:
         assert result["parent_studio"] == "parent-uuid-1"
         assert result["_parent_studio_name"] == "Parent Studio"
 
-    def test_falls_back_to_local_id_when_parent_not_linked(self):
-        """If parent has no stash_id for this endpoint, fall back to local ID."""
+    def test_none_when_parent_not_linked_to_endpoint(self):
+        """If parent has no stash_id for this endpoint, parent_studio is None."""
         studio = {
             "name": "Sub Studio",
             "url": None,
@@ -200,10 +200,11 @@ class TestBuildLocalStudioData:
             },
         }
         result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
-        assert result["parent_studio"] == "10"
+        assert result["parent_studio"] is None
+        assert result["_parent_studio_name"] == "Parent Studio"
 
-    def test_parent_with_empty_stash_ids(self):
-        """Parent with no stash_ids falls back to local ID."""
+    def test_none_when_parent_has_empty_stash_ids(self):
+        """Parent with no stash_ids results in None parent_studio."""
         studio = {
             "name": "Sub Studio",
             "url": None,
@@ -214,7 +215,8 @@ class TestBuildLocalStudioData:
             },
         }
         result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
-        assert result["parent_studio"] == "10"
+        assert result["parent_studio"] is None
+        assert result["_parent_studio_name"] == "Parent Studio"
 
     def test_no_parent(self):
         studio = {"name": "Studio", "url": "https://example.com", "parent_studio": None}

@@ -136,18 +136,27 @@ async def ffmpeg_health():
 
 @router.get("/database/info", response_model=DatabaseInfo)
 async def database_info():
-    """Get information about the loaded database."""
-    if _recognizer is None:
-        raise HTTPException(status_code=503, detail="Database not loaded")
+    """Get information about the loaded database.
 
+    Returns manifest values when recognizer is lazily loaded but not yet
+    initialized, so the UI always has database info available.
+    """
     tattoo_count = None
     if _multi_signal_matcher is not None:
         tattoo_count = len(_multi_signal_matcher.performers_with_tattoo_embeddings) or None
 
+    # Use live counts from recognizer if loaded, otherwise fall back to manifest
+    if _recognizer is not None:
+        performer_count = len(_recognizer.performers)
+        face_count = len(_recognizer.faces)
+    else:
+        performer_count = _db_manifest.get("performer_count", 0)
+        face_count = _db_manifest.get("face_count", 0)
+
     return DatabaseInfo(
         version=_db_manifest.get("version", "unknown"),
-        performer_count=len(_recognizer.performers),
-        face_count=len(_recognizer.faces),
+        performer_count=performer_count,
+        face_count=face_count,
         sources=_db_manifest.get("sources", ["stashdb.org"]),
         created_at=_db_manifest.get("created_at"),
         tattoo_embedding_count=tattoo_count,
