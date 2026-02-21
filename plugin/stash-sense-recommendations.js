@@ -219,6 +219,21 @@
       const result = await apiCall('user_get_all_settings');
       return result.settings || {};
     },
+
+    async acceptFingerprintMatch(recommendationId, sceneId, endpoint, stashId) {
+      return apiCall('rec_accept_fingerprint_match', {
+        recommendation_id: recommendationId,
+        scene_id: sceneId,
+        endpoint: endpoint,
+        stash_id: stashId,
+      });
+    },
+
+    async acceptAllFingerprintMatches(endpoint) {
+      return apiCall('rec_accept_all_fingerprint_matches', {
+        endpoint: endpoint || null,
+      });
+    },
   };
 
   /**
@@ -387,6 +402,11 @@
           title: 'Upstream Scene Changes',
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>`,
           description: 'Scene fields and relationships updated on StashDB since last sync',
+        },
+        scene_fingerprint_match: {
+          title: 'Scene Fingerprint Matches',
+          icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
+          description: 'Local scenes matched to stash-box entries via file fingerprints',
         },
       };
 
@@ -728,6 +748,7 @@
       upstream_tag_changes: 'Upstream Tag Changes',
       upstream_studio_changes: 'Upstream Studio Changes',
       upstream_scene_changes: 'Upstream Scene Changes',
+      scene_fingerprint_match: 'Scene Fingerprint Matches',
     };
 
     container.innerHTML = `
@@ -755,6 +776,10 @@
         </div>
         ${currentState.status === 'pending' && (currentState.type === 'upstream_performer_changes' || currentState.type === 'upstream_tag_changes' || currentState.type === 'upstream_studio_changes')
           ? '<button class="ss-accept-all-btn" id="ss-accept-all-btn">Accept All Changes</button>'
+          : ''
+        }
+        ${currentState.status === 'pending' && currentState.type === 'scene_fingerprint_match'
+          ? '<button class="ss-accept-all-btn" id="ss-accept-all-fp-btn">Accept All High-Confidence</button>'
           : ''
         }
       </div>
@@ -832,6 +857,27 @@
         } catch (e) {
           acceptAllBtn.textContent = `Error: ${e.message}`;
           acceptAllBtn.disabled = false;
+        }
+      });
+    }
+
+    // Accept All High-Confidence fingerprint matches button
+    const acceptAllFpBtn = container.querySelector('#ss-accept-all-fp-btn');
+    if (acceptAllFpBtn) {
+      acceptAllFpBtn.addEventListener('click', async () => {
+        acceptAllFpBtn.disabled = true;
+        acceptAllFpBtn.textContent = 'Accepting...';
+        try {
+          const result = await RecommendationsAPI.acceptAllFingerprintMatches();
+          acceptAllFpBtn.textContent = `Accepted ${result.accepted_count}!`;
+          acceptAllFpBtn.classList.add('ss-btn-success');
+          setTimeout(() => {
+            renderCurrentView(document.getElementById('ss-recommendations'));
+          }, 1500);
+        } catch (e) {
+          acceptAllFpBtn.textContent = `Failed: ${e.message}`;
+          acceptAllFpBtn.classList.add('ss-btn-error');
+          acceptAllFpBtn.disabled = false;
         }
       });
     }
@@ -1078,6 +1124,38 @@
       });
     }
 
+    if (rec.type === 'scene_fingerprint_match') {
+      const d = details;
+      const matchColor = d.match_percentage >= 100 ? '#28a745' :
+                         d.match_percentage >= 66 ? '#ffc107' : '#dc3545';
+
+      return SS.createElement('div', {
+        className: 'ss-rec-card',
+        innerHTML: `
+          <div class="ss-rec-card-header">
+            <div class="ss-rec-tag-icon">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+            </div>
+            <div class="ss-rec-card-info">
+              <div class="ss-rec-card-title">
+                ${escapeHtml(d.local_scene_title || 'Unknown Scene')}
+                ${d.high_confidence ? '<span class="ss-badge ss-badge-success">High Confidence</span>' : ''}
+              </div>
+              <div class="ss-rec-card-subtitle">
+                &rarr; ${escapeHtml(d.stashbox_scene_title || 'Unknown')}
+                ${d.stashbox_studio ? ` &middot; ${escapeHtml(d.stashbox_studio)}` : ''}
+              </div>
+              <div class="ss-rec-card-fields" style="color: ${matchColor}">
+                ${d.match_count}/${d.total_local_fingerprints} fingerprints
+                ${d.has_exact_hash ? '(exact)' : '(phash only)'}
+                &middot; ${escapeHtml(d.endpoint_name || d.endpoint || '')}
+              </div>
+            </div>
+          </div>
+        `,
+      });
+    }
+
     // Fallback for unknown types
     return SS.createElement('div', {
       className: 'ss-rec-card',
@@ -1132,6 +1210,8 @@
       await renderUpstreamStudioDetail(content, rec);
     } else if (rec.type === 'upstream_scene_changes') {
       await renderUpstreamSceneDetail(content, rec);
+    } else if (rec.type === 'scene_fingerprint_match') {
+      renderFingerprintMatchDetail(content, rec);
     } else {
       content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
     }
@@ -3431,6 +3511,137 @@
     } else {
       resultContent.innerHTML = `<span class="ss-upstream-alias-result-count">${checkedAliases.length}</span> items<ul style="margin:0.25rem 0 0 1.25rem;padding:0;list-style:disc;">${checkedAliases.map(a => `<li style="font-size:0.8rem;color:#fff;margin-bottom:2px;">${escapeHtml(a)}</li>`).join('')}</ul>`;
     }
+  }
+
+  // ==================== Fingerprint Match Detail ====================
+
+  function formatDuration(seconds) {
+    if (!seconds && seconds !== 0) return 'N/A';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  function renderFingerprintMatchDetail(container, rec) {
+    const d = rec.details;
+    const isPending = rec.status === 'pending';
+
+    container.innerHTML = `
+      <div class="ss-fp-detail">
+        <div class="ss-fp-detail-header">
+          <h2>Scene Fingerprint Match</h2>
+          <span class="ss-badge ${d.high_confidence ? 'ss-badge-success' : 'ss-badge-warning'}">
+            ${d.high_confidence ? 'High Confidence' : 'Review Recommended'}
+          </span>
+        </div>
+
+        <div class="ss-fp-detail-comparison">
+          <div class="ss-fp-detail-side">
+            <h4>Local Scene</h4>
+            <div class="ss-fp-field"><strong>Title:</strong> ${escapeHtml(d.local_scene_title || 'Unknown')}</div>
+            <div class="ss-fp-field"><strong>Duration:</strong> ${d.duration_local ? formatDuration(d.duration_local) : 'N/A'}</div>
+            <div class="ss-fp-field"><strong>Fingerprints:</strong> ${d.total_local_fingerprints}</div>
+          </div>
+          <div class="ss-fp-detail-divider"></div>
+          <div class="ss-fp-detail-side">
+            <h4>Stash-Box Match</h4>
+            <div class="ss-fp-field"><strong>Title:</strong> ${escapeHtml(d.stashbox_scene_title || 'Unknown')}</div>
+            ${d.stashbox_studio ? `<div class="ss-fp-field"><strong>Studio:</strong> ${escapeHtml(d.stashbox_studio)}</div>` : ''}
+            ${d.stashbox_performers?.length ? `<div class="ss-fp-field"><strong>Performers:</strong> ${d.stashbox_performers.map(escapeHtml).join(', ')}</div>` : ''}
+            ${d.stashbox_date ? `<div class="ss-fp-field"><strong>Date:</strong> ${d.stashbox_date}</div>` : ''}
+            <div class="ss-fp-field"><strong>Duration:</strong> ${d.duration_remote ? formatDuration(d.duration_remote) : 'N/A'}</div>
+            <div class="ss-fp-field"><strong>Endpoint:</strong> ${escapeHtml(d.endpoint_name || d.endpoint)}</div>
+          </div>
+        </div>
+
+        <div class="ss-fp-detail-fingerprints">
+          <h4>Fingerprint Comparison</h4>
+          <div class="ss-fp-table-wrap">
+            <table class="ss-fp-table">
+              <thead>
+                <tr>
+                  <th>Algorithm</th>
+                  <th>Hash</th>
+                  <th>Duration</th>
+                  <th>Submissions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(d.matching_fingerprints || []).map(fp => `
+                  <tr>
+                    <td><span class="ss-badge ss-badge-${fp.algorithm === 'PHASH' ? 'warning' : 'success'}">${fp.algorithm}</span></td>
+                    <td class="ss-fp-hash">${fp.hash}</td>
+                    <td>${fp.duration ? formatDuration(fp.duration) : 'N/A'}</td>
+                    <td>${fp.submissions || 0}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="ss-fp-summary-line">
+            <strong>${d.match_count}/${d.total_local_fingerprints}</strong> fingerprints match
+            (${d.match_percentage}%)
+            ${d.duration_agreement ? '&mdash; duration agrees' : '&mdash; <span class="ss-text-warning">duration mismatch</span>'}
+          </div>
+        </div>
+
+        ${isPending ? `
+          <div class="ss-fp-detail-actions">
+            <button id="ss-fp-accept-btn" class="ss-btn ss-btn-primary">Accept Match</button>
+            <button id="ss-fp-dismiss-btn" class="ss-btn ss-btn-secondary">Dismiss</button>
+          </div>
+        ` : `
+          <div class="ss-fp-detail-status">
+            Status: <strong>${rec.status}</strong>
+            ${rec.resolution_action ? ` (${rec.resolution_action})` : ''}
+          </div>
+        `}
+      </div>
+    `;
+
+    if (!isPending) return;
+
+    // Accept button
+    const acceptBtn = container.querySelector('#ss-fp-accept-btn');
+    acceptBtn.addEventListener('click', async () => {
+      acceptBtn.disabled = true;
+      acceptBtn.textContent = 'Accepting...';
+      try {
+        await RecommendationsAPI.acceptFingerprintMatch(
+          rec.id, d.local_scene_id, d.endpoint, d.stashbox_scene_id
+        );
+        acceptBtn.textContent = 'Accepted!';
+        acceptBtn.classList.add('ss-btn-success');
+        setTimeout(() => {
+          currentState.view = 'list';
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        }, 1500);
+      } catch (e) {
+        acceptBtn.textContent = `Failed: ${e.message}`;
+        acceptBtn.classList.add('ss-btn-error');
+        acceptBtn.disabled = false;
+      }
+    });
+
+    // Dismiss button
+    const dismissBtn = container.querySelector('#ss-fp-dismiss-btn');
+    dismissBtn.addEventListener('click', async () => {
+      dismissBtn.disabled = true;
+      dismissBtn.textContent = 'Dismissing...';
+      try {
+        await RecommendationsAPI.dismiss(rec.id);
+        dismissBtn.textContent = 'Dismissed!';
+        dismissBtn.classList.add('ss-btn-success');
+        setTimeout(() => {
+          currentState.view = 'list';
+          renderCurrentView(document.getElementById('ss-recommendations'));
+        }, 1500);
+      } catch (e) {
+        dismissBtn.textContent = `Failed: ${e.message}`;
+        dismissBtn.classList.add('ss-btn-error');
+        dismissBtn.disabled = false;
+      }
+    });
   }
 
   function escapeHtml(str) {

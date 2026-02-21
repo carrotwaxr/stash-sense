@@ -3166,3 +3166,164 @@
 .ss-scene-tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .ss-scene-tag-chip { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); font-size: 12px; }
 .ss-scene-tag-chip.ss-scene-tag-removed { opacity: 0.6; text-decoration: line-through; background: rgba(244,67,54,0.1); }
+
+/* ==================== Badges ==================== */
+
+.ss-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.ss-badge-success {
+  background: rgba(25, 135, 84, 0.2);
+  color: #198754;
+}
+
+.ss-badge-warning {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+/* ==================== Scene Fingerprint Match ==================== */
+
+/* Detail view - comparison layout */
+.ss-fp-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ss-fp-detail-header h2 {
+  margin: 0;
+}
+
+.ss-fp-detail-comparison {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.ss-fp-detail-side {
+  flex: 1;
+  padding: 1rem;
+  background: var(--bs-body-bg, #1a1a1a);
+  border-radius: 0.5rem;
+}
+
+.ss-fp-detail-side h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bs-body-color, #fff);
+}
+
+.ss-fp-detail-divider {
+  width: 2px;
+  background: var(--bs-border-color, #333);
+}
+
+.ss-fp-field {
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+  color: var(--bs-secondary-color, #aaa);
+}
+
+.ss-fp-field strong {
+  color: var(--bs-body-color, #fff);
+}
+
+/* Detail view - fingerprint table */
+.ss-fp-detail-fingerprints {
+  margin-top: 1.5rem;
+}
+
+.ss-fp-detail-fingerprints h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ss-fp-table-wrap {
+  overflow-x: auto;
+}
+
+.ss-fp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+
+.ss-fp-table th,
+.ss-fp-table td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--bs-border-color, #333);
+  font-size: 13px;
+}
+
+.ss-fp-table th {
+  color: var(--bs-secondary-color, #888);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.ss-fp-hash {
+  font-family: monospace;
+  font-size: 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-fp-summary-line {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--bs-secondary-color, #aaa);
+}
+
+.ss-fp-summary-line strong {
+  color: var(--bs-body-color, #fff);
+}
+
+/* Detail view - actions */
+.ss-fp-detail-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bs-border-color, #333);
+}
+
+.ss-fp-detail-status {
+  margin-top: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bs-body-bg, #1a1a1a);
+  border-radius: 0.25rem;
+  font-size: 14px;
+  color: var(--bs-secondary-color, #aaa);
+}
+
+/* Warning text */
+.ss-text-warning {
+  color: #ffc107;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ss-fp-detail-comparison {
+    flex-direction: column;
+  }
+
+  .ss-fp-detail-divider {
+    width: 100%;
+    height: 2px;
+  }
+}
