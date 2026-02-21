@@ -2,13 +2,6 @@ name: Deploy Documentation & Plugin Index
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "plugin/**"
-      - "build_plugin_index.sh"
-      - ".github/workflows/docs.yml"
     tags: ["v*"]
   workflow_dispatch:
 
