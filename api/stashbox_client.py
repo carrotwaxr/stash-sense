@@ -288,3 +288,51 @@ class StashBoxClient:
 
         data = await self._execute(query, variables={"id": scene_id})
         return data.get("findScene")
+
+    async def find_scenes_by_fingerprints(
+        self, fingerprint_sets: list[list[dict]]
+    ) -> list[list[dict]]:
+        """Batch lookup scenes by fingerprint sets.
+
+        Uses stash-box's findScenesBySceneFingerprints query which accepts
+        multiple fingerprint sets (one per local scene) and returns matched
+        stash-box scenes for each.
+
+        Args:
+            fingerprint_sets: List of fingerprint lists. Each inner list has
+                dicts with keys: hash (str), algorithm (str: MD5/OSHASH/PHASH)
+
+        Returns:
+            List of match-lists, one per input fingerprint set. Each match
+            includes scene metadata and matched fingerprints.
+        """
+        if not fingerprint_sets:
+            return []
+
+        query = """
+        query FindScenesByFingerprints($fingerprints: [[FingerprintQueryInput!]!]!) {
+          findScenesBySceneFingerprints(fingerprints: $fingerprints) {
+            id
+            title
+            date
+            duration
+            studio { id name }
+            performers { performer { id name } as }
+            urls { url site { name } }
+            images { id url }
+            fingerprints {
+              hash
+              algorithm
+              duration
+              submissions
+              created
+              updated
+            }
+          }
+        }
+        """
+
+        data = await self._execute(
+            query, variables={"fingerprints": fingerprint_sets}
+        )
+        return data.get("findScenesBySceneFingerprints", [])

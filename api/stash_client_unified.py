@@ -894,6 +894,52 @@ class StashClientUnified:
         data = await self._execute(query, {"filter": filter_input, "scene_filter": scene_filter})
         return data["findScenes"]["scenes"], data["findScenes"]["count"]
 
+    async def get_scenes_with_fingerprints(
+        self,
+        updated_after: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """
+        Get scenes with file fingerprint hashes for stash-box matching.
+        Returns (scenes, total_count).
+
+        Each scene includes files[].fingerprints with type (md5/oshash/phash)
+        and value, plus stash_ids showing which endpoints are already linked.
+        """
+        query = """
+        query ScenesWithFingerprints($filter: FindFilterType, $scene_filter: SceneFilterType) {
+          findScenes(filter: $filter, scene_filter: $scene_filter) {
+            count
+            scenes {
+              id
+              title
+              updated_at
+              files {
+                id
+                duration
+                fingerprints {
+                  type
+                  value
+                }
+              }
+              stash_ids {
+                endpoint
+                stash_id
+              }
+            }
+          }
+        }
+        """
+        filter_input = {"per_page": limit, "page": (offset // limit) + 1}
+        scene_filter = {}
+
+        if updated_after:
+            scene_filter["updated_at"] = {"value": updated_after, "modifier": "GREATER_THAN"}
+
+        data = await self._execute(query, {"filter": filter_input, "scene_filter": scene_filter})
+        return data["findScenes"]["scenes"], data["findScenes"]["count"]
+
     async def get_scene_stream_url(self, scene_id: str) -> Optional[str]:
         """Get the stream URL for a scene."""
         query = """

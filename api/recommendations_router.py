@@ -15,6 +15,7 @@ import face_config
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer, UpstreamSceneAnalyzer
+from analyzers.scene_fingerprint_match import SceneFingerprintMatchAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -407,6 +408,7 @@ ANALYZERS = {
     "upstream_tag_changes": UpstreamTagAnalyzer,
     "upstream_studio_changes": UpstreamStudioAnalyzer,
     "upstream_scene_changes": UpstreamSceneAnalyzer,
+    "scene_fingerprint_match": SceneFingerprintMatchAnalyzer,
 }
 
 
@@ -1357,3 +1359,93 @@ async def set_field_config(endpoint_b64: str, field_configs: dict[str, bool], en
     db = get_rec_db()
     db.set_field_config(endpoint, entity_type, field_configs)
     return {"success": True}
+
+
+# ==================== Scene Fingerprint Match Actions ====================
+
+
+class AcceptFingerprintMatchRequest(BaseModel):
+    recommendation_id: int
+    scene_id: str
+    endpoint: str
+    stash_id: str
+
+
+async def _accept_fingerprint_match(
+    stash, db, rec_id: int, scene_id: str, endpoint: str, stash_id: str,
+):
+    """Accept a fingerprint match: add stash_id to local scene, resolve rec."""
+    scene = await stash.get_scene_by_id(scene_id)
+    existing_stash_ids = scene.get("stash_ids") or []
+
+    # Append new stash_id (avoid duplicates)
+    already_linked = any(
+        s["endpoint"] == endpoint and s["stash_id"] == stash_id
+        for s in existing_stash_ids
+    )
+    if not already_linked:
+        updated_stash_ids = existing_stash_ids + [{"endpoint": endpoint, "stash_id": stash_id}]
+        await stash.update_scene(scene_id, stash_ids=updated_stash_ids)
+
+    db.resolve_recommendation(rec_id, action="accepted")
+
+
+@router.post("/actions/accept-fingerprint-match", response_model=SuccessResponse)
+async def accept_fingerprint_match(request: AcceptFingerprintMatchRequest):
+    """Accept a scene fingerprint match — links the stash_id to the local scene."""
+    stash = get_stash_client()
+    db = get_rec_db()
+    await _accept_fingerprint_match(
+        stash, db,
+        rec_id=request.recommendation_id,
+        scene_id=request.scene_id,
+        endpoint=request.endpoint,
+        stash_id=request.stash_id,
+    )
+    return {"success": True}
+
+
+class AcceptAllFingerprintMatchesRequest(BaseModel):
+    endpoint: Optional[str] = None
+
+
+async def _accept_all_fingerprint_matches(
+    stash, db, endpoint: Optional[str] = None,
+) -> int:
+    """Accept all high-confidence fingerprint matches. Returns count accepted."""
+    recs = db.get_recommendations(
+        status="pending", type="scene_fingerprint_match", limit=10000,
+    )
+
+    accepted = 0
+    for rec in recs:
+        details = rec.details or {}
+        if not details.get("high_confidence"):
+            continue
+        if endpoint and details.get("endpoint") != endpoint:
+            continue
+
+        try:
+            await _accept_fingerprint_match(
+                stash, db,
+                rec_id=rec.id,
+                scene_id=details["local_scene_id"],
+                endpoint=details["endpoint"],
+                stash_id=details["stashbox_scene_id"],
+            )
+            accepted += 1
+        except Exception as e:
+            logger.warning("Failed to accept rec %s: %s", rec.id, e)
+
+    return accepted
+
+
+@router.post("/actions/accept-all-fingerprint-matches")
+async def accept_all_fingerprint_matches(
+    request: AcceptAllFingerprintMatchesRequest = AcceptAllFingerprintMatchesRequest(),
+):
+    """Accept all high-confidence scene fingerprint matches."""
+    stash = get_stash_client()
+    db = get_rec_db()
+    accepted = await _accept_all_fingerprint_matches(stash, db, request.endpoint)
+    return {"success": True, "accepted_count": accepted}
