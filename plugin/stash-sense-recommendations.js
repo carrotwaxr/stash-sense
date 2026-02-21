@@ -2927,9 +2927,13 @@
           chip.className = 'ss-scene-tag-chip';
           chip.dataset.stashboxId = tag.id;
 
+          // Check if tag already exists locally (created earlier in this session)
+          const cacheKey = `${endpoint}|${tag.id}`;
+          const cachedId = entityCache.get(cacheKey);
+
           const cb = document.createElement('input');
           cb.type = 'checkbox';
-          cb.checked = true;
+          cb.checked = !!cachedId;  // Only default-check tags that already exist locally
           cb.className = 'ss-scene-tag-add-cb';
           cb.dataset.stashboxId = tag.id;
           cb.dataset.name = tag.name;
@@ -2939,10 +2943,6 @@
 
           chip.appendChild(cb);
           chip.appendChild(nameSpan);
-
-          // Create button or cached status
-          const cacheKey = `${endpoint}|${tag.id}`;
-          const cachedId = entityCache.get(cacheKey);
           if (cachedId) {
             const note = document.createElement('span');
             note.className = 'ss-scene-entity-created';

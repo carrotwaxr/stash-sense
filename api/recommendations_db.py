@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 @dataclass
@@ -176,7 +176,8 @@ class RecommendationsDB:
                 type TEXT PRIMARY KEY,
                 last_completed_at TEXT,
                 last_cursor TEXT,
-                last_stash_updated_at TEXT
+                last_stash_updated_at TEXT,
+                logic_version INTEGER DEFAULT 1
             );
 
             -- Scene fingerprints for duplicate detection
@@ -473,6 +474,13 @@ class RecommendationsDB:
                 );
 
                 UPDATE schema_version SET version = 8;
+            """)
+
+        if from_version < 9:
+            conn.executescript("""
+                ALTER TABLE analysis_watermarks ADD COLUMN logic_version INTEGER DEFAULT 1;
+
+                UPDATE schema_version SET version = 9;
             """)
 
     @contextmanager
@@ -959,19 +967,29 @@ class RecommendationsDB:
         type: str,
         last_cursor: Optional[str] = None,
         last_stash_updated_at: Optional[str] = None,
+        logic_version: Optional[int] = None,
     ):
         """Update analysis watermark."""
         with self._connection() as conn:
             conn.execute(
                 """
-                INSERT INTO analysis_watermarks (type, last_completed_at, last_cursor, last_stash_updated_at)
-                VALUES (?, datetime('now'), ?, ?)
+                INSERT INTO analysis_watermarks (type, last_completed_at, last_cursor, last_stash_updated_at, logic_version)
+                VALUES (?, datetime('now'), ?, ?, COALESCE(?, 1))
                 ON CONFLICT(type) DO UPDATE SET
                     last_completed_at = datetime('now'),
                     last_cursor = COALESCE(?, last_cursor),
-                    last_stash_updated_at = COALESCE(?, last_stash_updated_at)
+                    last_stash_updated_at = COALESCE(?, last_stash_updated_at),
+                    logic_version = COALESCE(?, logic_version)
                 """,
-                (type, last_cursor, last_stash_updated_at, last_cursor, last_stash_updated_at)
+                (type, last_cursor, last_stash_updated_at, logic_version,
+                 last_cursor, last_stash_updated_at, logic_version)
+            )
+
+    def delete_watermark(self, type: str):
+        """Delete a watermark entry."""
+        with self._connection() as conn:
+            conn.execute(
+                "DELETE FROM analysis_watermarks WHERE type = ?", (type,)
             )
 
     # ==================== Upstream Snapshots ====================
@@ -1028,6 +1046,15 @@ class RecommendationsDB:
                 result["upstream_data"] = json.loads(result["upstream_data"])
                 return result
         return None
+
+    def delete_snapshots_for_endpoint(self, entity_type: str, endpoint: str) -> int:
+        """Delete all upstream snapshots for an entity type + endpoint. Returns count deleted."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM upstream_snapshots WHERE entity_type = ? AND endpoint = ?",
+                (entity_type, endpoint)
+            )
+            return cursor.rowcount
 
     # ==================== Upstream Field Config ====================
 

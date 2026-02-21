@@ -31,7 +31,15 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
     - How to normalize upstream data
     - What fields to monitor by default
     - Human-readable field labels
+
+    Subclasses should bump `logic_version` when their comparison logic changes
+    (e.g., field set changes, normalization changes). This forces a full
+    re-analysis by clearing stale snapshots and watermarks.
     """
+
+    # Bump this in subclasses when comparison logic changes to auto-invalidate
+    # stale snapshots and recommendations from the previous logic.
+    logic_version: int = 1
 
     @property
     @abstractmethod
@@ -248,9 +256,25 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
         )
         self.set_items_total(len(local_lookup))
 
+        # Check if comparison logic version has changed since last run.
+        # If so, clear stale snapshots and watermark to force full re-analysis.
+        wm_key = f"{self.type}:{endpoint}"
+        wm = self.rec_db.get_watermark(wm_key)
+        if wm and wm.get("logic_version", 0) != self.logic_version:
+            deleted = self.rec_db.delete_snapshots_for_endpoint(
+                self.entity_type, endpoint
+            )
+            self.rec_db.delete_watermark(wm_key)
+            logger.warning(
+                f"Logic version changed ({wm.get('logic_version', 0)} -> {self.logic_version}) "
+                f"for {self.entity_type} on {endpoint}. "
+                f"Cleared {deleted} stale snapshots, forcing full re-analysis."
+            )
+            wm = None
+            incremental = False
+
         watermark = None
         if incremental:
-            wm = self.rec_db.get_watermark(f"{self.type}:{endpoint}")
             if wm and wm.get("last_cursor"):
                 watermark = wm["last_cursor"]
 
@@ -404,6 +428,7 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
             self.rec_db.set_watermark(
                 f"{self.type}:{endpoint}",
                 last_cursor=latest_updated_at,
+                logic_version=self.logic_version,
             )
 
         return created, processed

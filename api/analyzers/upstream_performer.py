@@ -50,7 +50,6 @@ def _build_local_performer_data(performer: dict) -> dict:
         "career_end_year": career["career_end_year"],
         "urls": performer.get("urls") or [],
         "details": performer.get("details") or "",
-        "favorite": performer.get("favorite", False),
     }
 
 
@@ -63,6 +62,7 @@ class UpstreamPerformerAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_performer_changes"
+    logic_version = 2  # v2: removed favorite field from comparison
 
     @property
     def entity_type(self) -> str:
