@@ -1395,7 +1395,7 @@
 <ul>
 <li>Missing database files - ensure <code>/data</code> contains the <code>.voy</code> files</li>
 <li>GPU driver issues - try without GPU first to isolate</li>
-<li>Port conflict - change from 5000 to another port</li>
+<li>Port conflict - change from 6960 to another port</li>
 </ul>
 <h3 id="database-not-loaded">"Database not loaded"</h3>
 <p>The container started but can't find database files.</p>
@@ -1411,7 +1411,7 @@
 <p>If empty, the volume mount is misconfigured or database wasn't extracted.</p>
 <h3 id="health-check-failing">Health check failing</h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Test manually</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>curl<span class="w"> </span>http://localhost:5000/health
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>curl<span class="w"> </span>http://localhost:6960/health
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Check container status</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>docker<span class="w"> </span>ps<span class="w"> </span>-a<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>stash-sense
@@ -1454,7 +1454,7 @@
 <ul>
 <li>Use container name if on same Docker network</li>
 <li>Use host IP if on different networks</li>
-<li>Check firewall isn't blocking port 5000</li>
+<li>Check firewall isn't blocking port 6960</li>
 </ul>
 <h3 id="sidecar-cant-reach-stash">Sidecar can't reach Stash</h3>
 <p><strong>Test from sidecar:</strong>
@@ -1498,7 +1498,7 @@
 </code></pre></div>
 <h3 id="outdated-database">Outdated database</h3>
 <p>Check current version:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>curl<span class="w"> </span>http://localhost:5000/database/info
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>curl<span class="w"> </span>http://localhost:6960/database/info
 </code></pre></div></p>
 <p>Compare with latest release on GitHub. New databases include more performers and improved embeddings.</p>
 <hr />
@@ -1506,7 +1506,7 @@
 <p>If you're stuck:</p>
 <ol>
 <li>Check container logs: <code>docker logs stash-sense</code></li>
-<li>Test health endpoint: <code>curl http://localhost:5000/health</code></li>
+<li>Test health endpoint: <code>curl http://localhost:6960/health</code></li>
 <li>Verify database files exist and have correct permissions</li>
 <li>Open an issue on GitHub with:</li>
 <li>Container logs</li>

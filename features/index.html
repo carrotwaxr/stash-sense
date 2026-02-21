@@ -574,10 +574,54 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upstream-studio-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream Studio Sync
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-scene-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream Scene Sync
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recommendations-dashboard" class="md-nav__link">
     <span class="md-ellipsis">
       
         Recommendations Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation Queue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Management
       
     </span>
   </a>
@@ -1011,10 +1055,54 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upstream-studio-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream Studio Sync
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-scene-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream Scene Sync
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recommendations-dashboard" class="md-nav__link">
     <span class="md-ellipsis">
       
         Recommendations Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation Queue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Management
       
     </span>
   </a>
@@ -1156,6 +1244,49 @@
 </table>
 <p><strong>Dismissal:</strong> Soft dismiss resurfaces if upstream changes again. Permanent dismiss skips entirely.</p>
 <hr />
+<h2 id="upstream-studio-sync">Upstream Studio Sync</h2>
+<p>Same pattern as performer sync, applied to studios. Detects changes on stash-box endpoints and presents merge controls to keep your local studio metadata current.</p>
+<p><strong>Tracked fields:</strong></p>
+<ul>
+<li><strong>Name</strong> — studio display name</li>
+<li><strong>URL</strong> — studio website</li>
+<li><strong>Parent studio</strong> — hierarchical studio relationships</li>
+</ul>
+<p><strong>Parent studio comparison</strong> uses stash-box IDs rather than name matching, so renamed parent studios are still correctly identified. The 3-way diff engine (upstream / local / snapshot) works identically to performer sync — intentional local differences are preserved across syncs.</p>
+<p><strong>Merge controls</strong> mirror the performer sync UI: keep local, accept upstream, or dismiss (soft or permanent).</p>
+<hr />
+<h2 id="upstream-scene-sync">Upstream Scene Sync</h2>
+<p>Detects metadata changes for scenes linked to stash-box endpoints and provides per-field merge controls for updating your local library.</p>
+<p><strong>Tracked field categories:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core metadata</td>
+<td>Title, details, date, director, code, URLs</td>
+</tr>
+<tr>
+<td>Studio assignment</td>
+<td>Studio linked to the scene</td>
+</tr>
+<tr>
+<td>Performer lineup</td>
+<td>Added/removed performers, alias changes</td>
+</tr>
+<tr>
+<td>Tags</td>
+<td>Tag set additions and removals</td>
+</tr>
+</tbody>
+</table>
+<p><strong>3-way diff with snapshots:</strong> Like performer and studio sync, scene sync stores a snapshot of the last-seen upstream state. This distinguishes genuine upstream edits from intentional local differences — if you have customized a scene title locally, it will not be flagged on every sync cycle.</p>
+<p><strong>Per-field merge controls</strong> allow you to accept, reject, or customize each change independently. Performer lineup changes show which performers were added or removed upstream, and alias changes are surfaced when an upstream performer's credited name differs from the local alias.</p>
+<hr />
 <h2 id="recommendations-dashboard">Recommendations Dashboard</h2>
 <p>A unified plugin page showing all actionable suggestions:</p>
 <ul>
@@ -1165,6 +1296,117 @@
 <li><strong>Upstream updates</strong> — per-field changes from stash-box endpoints</li>
 </ul>
 <p>Each recommendation type runs as a background analyzer with incremental watermarking — only items modified since the last run are re-processed, keeping subsequent runs fast.</p>
+<hr />
+<h2 id="operation-queue">Operation Queue</h2>
+<p>An async job queue with resource-aware scheduling that coordinates all background work — analysis runs, sync operations, and database updates.</p>
+<p><strong>Priority levels:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Use case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Critical</td>
+<td>Database updates, rollback operations</td>
+</tr>
+<tr>
+<td>High</td>
+<td>User-initiated analysis (e.g., "Identify Performers" click)</td>
+</tr>
+<tr>
+<td>Normal</td>
+<td>Scheduled analysis runs</td>
+</tr>
+<tr>
+<td>Low</td>
+<td>Background housekeeping</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Resource slots</strong> prevent contention by ensuring only compatible jobs run concurrently:</p>
+<table>
+<thead>
+<tr>
+<th>Slot</th>
+<th>What uses it</th>
+<th>Why limited</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GPU</code></td>
+<td>Face detection, embedding inference</td>
+<td>VRAM is finite</td>
+</tr>
+<tr>
+<td><code>CPU_HEAVY</code></td>
+<td>Clustering, fingerprint computation</td>
+<td>Avoid saturating cores</td>
+</tr>
+<tr>
+<td><code>NETWORK</code></td>
+<td>Stash-box API calls, database downloads</td>
+<td>Rate limits, bandwidth</td>
+</tr>
+<tr>
+<td><code>LIGHT</code></td>
+<td>Metadata reads, cache checks</td>
+<td>Runs alongside anything</td>
+</tr>
+</tbody>
+</table>
+<p>Jobs declare which resource slot they need. The scheduler runs all compatible jobs in parallel but serializes jobs that compete for the same resource.</p>
+<p><strong>Persistence:</strong> The queue survives sidecar restarts. In-progress jobs are re-queued on startup.</p>
+<p><strong>Configurable schedules:</strong> Recurring analysis jobs (upstream sync, duplicate detection) can be scheduled via the plugin UI with cron-style intervals. Manual triggers are always available.</p>
+<p><strong>Monitoring:</strong> The plugin UI shows active, queued, and completed jobs with status, duration, and error details.</p>
+<hr />
+<h2 id="model-management">Model Management</h2>
+<p>On-demand download and lifecycle management for optional ONNX models that are not bundled in the Docker image.</p>
+<p><strong>Supported optional models:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Purpose</th>
+<th>Size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tattoo detection</td>
+<td>Identifies tattoos for performer matching</td>
+<td>~50 MB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Validation:</strong> Each model download is verified against a SHA256 checksum before activation. If a model file becomes corrupted (disk error, partial write), the sidecar detects the mismatch and marks the model as <code>corrupted</code>.</p>
+<p><strong>Status tracking:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>not_installed</code></td>
+<td>Model available for download but not present locally</td>
+</tr>
+<tr>
+<td><code>installed</code></td>
+<td>Model downloaded, verified, and ready for use</td>
+</tr>
+<tr>
+<td><code>corrupted</code></td>
+<td>Checksum mismatch — re-download required</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Download progress UI:</strong> The plugin Settings tab shows real-time download progress for each model with a progress bar. Models can be installed or removed at any time without restarting the sidecar.</p>
 <hr />
 <h2 id="settings-system">Settings System</h2>
 <p>The sidecar auto-detects your hardware at startup (GPU model, VRAM, CPU cores, RAM) and classifies it into a performance tier:</p>

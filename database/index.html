@@ -588,6 +588,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Two-Database Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stash_sensedb-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stash_sense.db Tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1014,6 +1031,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Two-Database Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stash_sensedb-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stash_sense.db Tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1210,9 +1244,56 @@
 <p>Stash Sense uses two separate databases:</p>
 <ul>
 <li><strong><code>performers.db</code></strong> + Voyager indices (read-only) — The distributable face recognition data. Updated via stash-sense-data releases. Contains no user-specific information.</li>
-<li><strong><code>stash_sense.db</code></strong> (read-write, user-local) — Your recommendation history, dismissed items, analysis watermarks, upstream snapshots, scene fingerprints, and settings overrides.</li>
+<li><strong><code>stash_sense.db</code></strong> (read-write, user-local, schema version 9) — Your recommendation history, dismissed items, analysis watermarks, upstream snapshots, scene fingerprints, operation queue, and settings overrides.</li>
 </ul>
 <p>This separation means database updates never touch your personal data, and the distributable database contains nothing specific to your library.</p>
+<h3 id="stash_sensedb-tables">stash_sense.db Tables</h3>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recommendations</code></td>
+<td>Core recommendations (face matches, upstream changes, duplicates)</td>
+</tr>
+<tr>
+<td><code>dismissed_recommendations</code></td>
+<td>Permanently or temporarily dismissed items</td>
+</tr>
+<tr>
+<td><code>analysis_watermarks</code></td>
+<td>Tracks last-completed timestamps and cursors for incremental analysis runs. Includes a <code>logic_version</code> column to detect when comparison logic changes and a full re-analysis is needed.</td>
+</tr>
+<tr>
+<td><code>upstream_snapshots</code></td>
+<td>Cached upstream performer data for 3-way diff engine</td>
+</tr>
+<tr>
+<td><code>scene_fingerprints</code></td>
+<td>Per-scene face fingerprints for duplicate detection</td>
+</tr>
+<tr>
+<td><code>duplicate_candidates</code></td>
+<td>Candidate duplicate scene pairs from fingerprint matching</td>
+</tr>
+<tr>
+<td><code>job_queue</code></td>
+<td>Persistent operation queue with priority, status (<code>queued</code>/<code>running</code>/<code>completed</code>/<code>failed</code>/<code>cancelled</code>), cursor-based resumption, and progress tracking (<code>items_processed</code>/<code>items_total</code>)</td>
+</tr>
+<tr>
+<td><code>job_schedules</code></td>
+<td>Configurable recurring job schedules with enable/disable toggle, interval (hours), priority, and next-run tracking</td>
+</tr>
+<tr>
+<td><code>user_settings</code></td>
+<td>User setting overrides (key-value with JSON-encoded values)</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="checking-for-updates">Checking for Updates</h2>
 <h3 id="via-the-plugin-ui">Via the Plugin UI</h3>
