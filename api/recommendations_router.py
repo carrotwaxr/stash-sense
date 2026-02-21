@@ -1044,6 +1044,21 @@ class CreateStudioRequest(BaseModel):
     stashbox_id: str
 
 
+class SearchEntitiesRequest(BaseModel):
+    """Request to search local entities by name."""
+    entity_type: str  # "performer", "tag", "studio"
+    query: str
+    endpoint: str  # stash-box endpoint (to check if already linked)
+
+
+class LinkEntityRequest(BaseModel):
+    """Request to link a local entity to a stash-box ID."""
+    entity_type: str  # "performer", "tag", "studio"
+    entity_id: str
+    endpoint: str
+    stashbox_id: str
+
+
 class UpdateSceneRequest(BaseModel):
     """Request to apply upstream changes to a scene."""
     scene_id: str
@@ -1122,6 +1137,118 @@ async def create_studio_action(request: CreateStudioRequest):
         url=(request.stashbox_data.get("urls") or [{}])[0].get("url") if request.stashbox_data.get("urls") else None,
     )
     return {"success": True, "studio": result}
+
+
+@router.post("/actions/search-entities")
+async def search_entities_action(request: SearchEntitiesRequest):
+    """Search local entities by name for linking to stash-box IDs."""
+    stash = get_stash_client()
+
+    if request.entity_type == "performer":
+        results = await stash.search_performers(request.query)
+        return {
+            "results": [
+                {
+                    "id": p["id"],
+                    "name": p["name"],
+                    "disambiguation": p.get("disambiguation"),
+                    "linked": any(
+                        s["endpoint"] == request.endpoint
+                        for s in (p.get("stash_ids") or [])
+                    ),
+                    "stash_ids": p.get("stash_ids") or [],
+                }
+                for p in results
+            ]
+        }
+    elif request.entity_type == "tag":
+        results = await stash.search_tags(request.query)
+        return {
+            "results": [
+                {
+                    "id": t["id"],
+                    "name": t["name"],
+                    "linked": any(
+                        s["endpoint"] == request.endpoint
+                        for s in (t.get("stash_ids") or [])
+                    ),
+                    "stash_ids": t.get("stash_ids") or [],
+                }
+                for t in results
+            ]
+        }
+    elif request.entity_type == "studio":
+        results = await stash.search_studios(request.query)
+        return {
+            "results": [
+                {
+                    "id": s["id"],
+                    "name": s["name"],
+                    "linked": any(
+                        sid["endpoint"] == request.endpoint
+                        for sid in (s.get("stash_ids") or [])
+                    ),
+                    "stash_ids": s.get("stash_ids") or [],
+                }
+                for s in results
+            ]
+        }
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown entity type: {request.entity_type}")
+
+
+@router.post("/actions/link-entity")
+async def link_entity_action(request: LinkEntityRequest):
+    """Link a local entity to a stash-box ID by adding a stash_id entry."""
+    stash = get_stash_client()
+    new_stash_id = {"endpoint": request.endpoint, "stash_id": request.stashbox_id}
+
+    if request.entity_type == "performer":
+        entity = await stash.get_performer(request.entity_id)
+        if not entity:
+            raise HTTPException(status_code=404, detail="Performer not found")
+        current_stash_ids = entity.get("stash_ids") or []
+        # Skip if already linked
+        if not any(s["endpoint"] == request.endpoint and s["stash_id"] == request.stashbox_id for s in current_stash_ids):
+            current_stash_ids.append(new_stash_id)
+        await stash.update_performer(request.entity_id, stash_ids=current_stash_ids)
+        return {"success": True, "entity_id": request.entity_id, "entity_name": entity["name"]}
+
+    elif request.entity_type == "tag":
+        # Fetch tag with stash_ids
+        tags = await stash.search_tags(request.entity_id, limit=1)
+        # search_tags won't find by ID, use a direct query instead
+        tag = await stash._execute("""
+            query GetTag($id: ID!) {
+              findTag(id: $id) { id name stash_ids { endpoint stash_id } }
+            }
+        """, {"id": request.entity_id})
+        tag = tag["findTag"]
+        if not tag:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        current_stash_ids = tag.get("stash_ids") or []
+        if not any(s["endpoint"] == request.endpoint and s["stash_id"] == request.stashbox_id for s in current_stash_ids):
+            current_stash_ids.append(new_stash_id)
+        await stash.update_tag(request.entity_id, stash_ids=current_stash_ids)
+        return {"success": True, "entity_id": request.entity_id, "entity_name": tag["name"]}
+
+    elif request.entity_type == "studio":
+        studio = await stash._execute("""
+            query GetStudio($id: ID!) {
+              findStudio(id: $id) { id name stash_ids { endpoint stash_id } }
+            }
+        """, {"id": request.entity_id})
+        studio = studio["findStudio"]
+        if not studio:
+            raise HTTPException(status_code=404, detail="Studio not found")
+        current_stash_ids = studio.get("stash_ids") or []
+        if not any(s["endpoint"] == request.endpoint and s["stash_id"] == request.stashbox_id for s in current_stash_ids):
+            current_stash_ids.append(new_stash_id)
+        await stash.update_studio(request.entity_id, stash_ids=current_stash_ids)
+        return {"success": True, "entity_id": request.entity_id, "entity_name": studio["name"]}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown entity type: {request.entity_type}")
 
 
 @router.post("/actions/update-scene")

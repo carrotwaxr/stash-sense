@@ -274,6 +274,9 @@ class TestUpstreamSceneAnalyzer:
                 ],
             }
         ])
+        stash.get_all_performers = AsyncMock(return_value=[])
+        stash.get_all_tags = AsyncMock(return_value=[])
+        stash.get_all_studios = AsyncMock(return_value=[])
         return stash
 
     @pytest.mark.asyncio
@@ -561,6 +564,9 @@ class TestSceneSyncIntegration:
                 ],
             }
         ])
+        stash.get_all_performers = AsyncMock(return_value=[])
+        stash.get_all_tags = AsyncMock(return_value=[])
+        stash.get_all_studios = AsyncMock(return_value=[])
         return stash
 
     @pytest.mark.asyncio
