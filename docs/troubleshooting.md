@@ -17,22 +17,33 @@ docker logs stash-sense
 
 ### "Database not loaded"
 
-The container started but can't find database files.
+The face recognition database hasn't been downloaded yet. This is normal on first startup.
+
+**Fix:** Navigate to `/plugins/stash-sense` in Stash, go to the **Settings** tab, and click **Update** in the Database section to download the database.
+
+Alternatively, verify the volume mount has database files:
 
 ```bash
-# Check what's in the data volume
 docker exec stash-sense ls -la /data
 ```
 
-Should show:
-```
-face_facenet.voy
-face_arcface.voy
-performers.json
-manifest.json
+Should show `face_facenet.voy`, `face_arcface.voy`, `performers.json`, `manifest.json`. If empty, either download via the Settings UI or check your volume mount path.
+
+### "Load model from /app/models/facenet512.onnx failed: File doesn't exist"
+
+The ONNX face recognition models are not bundled in the Docker image — they need to be downloaded after first startup.
+
+**Fix:** Navigate to `/plugins/stash-sense` in Stash, go to the **Settings** tab, and click **Download All** in the Models section. This downloads FaceNet512 (~90 MB) and ArcFace (~130 MB) to `/data/models/`.
+
+Alternatively, download via the API:
+
+```bash
+curl -X POST http://localhost:6960/models/download-all
 ```
 
-If empty, the volume mount is misconfigured or database wasn't extracted.
+### Health check shows "degraded"
+
+This is expected on first startup before the database and models are downloaded. Once you download both from the Settings tab, the status will change to `"healthy"` after the first identification request.
 
 ### Health check failing
 

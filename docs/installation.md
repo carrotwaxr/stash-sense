@@ -10,38 +10,7 @@ Before installing Stash Sense:
 4. **NVIDIA GPU** with 4GB+ VRAM recommended (CPU fallback available)
 5. **Scene sprite sheets** generated in Stash (Settings > Tasks > Generate > Sprites)
 
-## Step 1: Download the Database
-
-Stash Sense requires a pre-built face recognition database. Download the latest release from the [stash-sense-data](https://github.com/carrotwaxr/stash-sense-data/releases/latest) repository.
-
-```bash
-mkdir -p stash-sense-data
-cd stash-sense-data
-# Download the .zip file from the latest release (~1.5 GB)
-unzip stash-sense-data-*.zip
-cd ..
-```
-
-After extraction, you should have:
-
-```
-stash-sense-data/
-├── performers.db            # Performer metadata (required)
-├── face_facenet.voy         # FaceNet512 embedding index (required)
-├── face_arcface.voy         # ArcFace embedding index (required)
-├── faces.json               # Face reference data (required)
-├── performers.json          # Performer lookup data (required)
-├── manifest.json            # Database version and checksums (required)
-├── face_adaface.voy         # AdaFace IR-101 embedding index (optional)
-├── tattoo_embeddings.voy    # Tattoo embedding index (optional)
-└── tattoo_embeddings.json   # Tattoo reference data (optional)
-```
-
-The six required files are needed for core face recognition. The optional files (`face_adaface.voy`, `tattoo_embeddings.voy`, `tattoo_embeddings.json`) are only needed if you enable the AdaFace model or tattoo detection features in settings.
-
----
-
-## Step 2: Start the Container
+## Step 1: Start the Container
 
 ### Docker Run
 
@@ -52,10 +21,13 @@ docker run -d \
   -p 6960:5000 \
   -e STASH_URL=http://your-stash-host:9999 \
   -e STASH_API_KEY=your-api-key \
-  -v /path/to/stash-sense-data:/data:ro \
+  -v /path/to/stash-sense-data:/data \
   -v stash-sense-insightface:/root/.insightface \
   carrotwaxr/stash-sense:latest
 ```
+
+!!! warning "The `/data` volume must be read-write"
+    The sidecar writes `stash_sense.db` (your recommendations, settings, and analysis history) to `/data`, and in-app database updates also write here. Do **not** mount with `:ro`.
 
 ### Docker Compose
 
@@ -70,7 +42,7 @@ services:
     ports:
       - "6960:5000"
     volumes:
-      - /path/to/stash-sense-data:/data:ro
+      - /path/to/stash-sense-data:/data
       - stash-sense-insightface:/root/.insightface
     environment:
       - STASH_URL=http://your-stash-host:9999
@@ -105,7 +77,7 @@ docker run -d \
   -p 6960:5000 \
   -e STASH_URL=http://your-stash-host:9999 \
   -e STASH_API_KEY=your-api-key \
-  -v /path/to/stash-sense-data:/data:ro \
+  -v /path/to/stash-sense-data:/data \
   -v stash-sense-insightface:/root/.insightface \
   carrotwaxr/stash-sense:latest
 ```
@@ -116,7 +88,7 @@ CPU mode works but is significantly slower for face detection (~2-3 seconds per 
 
 ---
 
-## Step 3: Verify
+## Step 2: Verify
 
 ```bash
 curl http://localhost:6960/health
@@ -126,16 +98,18 @@ Should return:
 
 ```json
 {
-  "status": "healthy",
-  "database_loaded": true,
-  "performer_count": 108001,
-  "face_count": 366794
+  "status": "degraded",
+  "database_loaded": false,
+  "performer_count": 0,
+  "face_count": 0
 }
 ```
 
+This is expected — the database and models haven't been downloaded yet. Once downloaded (Step 4), the status will change to `"healthy"`.
+
 ---
 
-## Step 4: Install the Stash Plugin
+## Step 3: Install the Stash Plugin
 
 Add the Stash Sense plugin source in Stash:
 
@@ -147,7 +121,36 @@ Add the Stash Sense plugin source in Stash:
 4. Find **Stash Sense** in the available plugins list and click **Install**
 5. Go to **Settings > Plugins > Stash Sense** and set the **Sidecar URL** to `http://your-stash-sense-host:6960`
 
-> **Tip**: If Stash and Stash Sense run on the same machine, use `http://stash-sense:5000` (Docker networking) or `http://localhost:6960` (host networking).
+> **Tip**: If Stash and Stash Sense run on the same machine, use the host IP (e.g., `http://10.0.0.4:6960`). Docker container names don't resolve unless both containers share a Docker network.
+
+---
+
+## Step 4: Download Database and Models
+
+Navigate to **`/plugins/stash-sense`** in your Stash UI to open the Stash Sense dashboard, then go to the **Settings** tab.
+
+### Download the Face Recognition Database
+
+1. In the **Database** section, click **Update** to download the latest database (~1.5 GB)
+2. Progress is shown in real-time (download, extract, verify, swap)
+3. Once complete, the `/health` endpoint will report `"database_loaded": true`
+
+### Download ONNX Models
+
+1. In the **Models** section, click **Download All** to download the required face recognition models (~220 MB)
+2. Two models are required: **FaceNet512** (~90 MB) and **ArcFace** (~130 MB)
+3. Optional models (tattoo detection) can be downloaded separately if needed
+
+!!! note "Face recognition won't work until both the database and models are downloaded"
+    If you try to identify performers before downloading, you'll see a "Database not loaded" or model-not-found error.
+
+### Alternative: Manual Database Download
+
+If you prefer to pre-populate the data directory before starting the container:
+
+1. Download the latest release from [stash-sense-data](https://github.com/carrotwaxr/stash-sense-data/releases/latest)
+2. Extract the zip into your data directory (the path mounted to `/data`)
+3. The sidecar will detect the files on startup
 
 ---
 
@@ -159,7 +162,7 @@ See [unRAID Setup](unraid/setup.md) for template-based installation and GPU pass
 
 ## Next Steps
 
-- [Configure settings](configuration.md) — environment variables and volume mounts
-- [Plugin usage](plugin.md) — how to identify performers and use the dashboard
+- [Configuration](configuration.md) — environment variables and volume mounts
+- [Plugin Usage](plugin.md) — identifying performers and using the dashboard
 - [Features](features.md) — full feature overview
 - [Database & Updates](database.md) — where the data comes from and how to update

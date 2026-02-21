@@ -7,23 +7,12 @@
 | `STASH_URL` | Yes | — | URL to your Stash instance (e.g., `http://stash:9999`) |
 | `STASH_API_KEY` | Yes | — | Stash API key (Settings > Security > API Key) |
 | `DATA_DIR` | No | `/data` | Path to database files inside the container |
-| `LOG_LEVEL` | No | `warning` | Logging verbosity: `debug`, `info`, `warning`, `error` |
 
-### Stash-Box API Keys (Optional)
+### Stash-Box API Keys
 
-For upstream sync to detect metadata changes on stash-box endpoints, add API keys for each endpoint you want to monitor:
+Stash-box endpoint API keys are **not** configured as environment variables. The sidecar auto-discovers all configured stash-box endpoints from your Stash instance's **Settings > Metadata Providers** at startup. Any endpoints you've added there (StashDB, FansDB, ThePornDB, etc.) are automatically available for upstream sync.
 
-| Variable | Endpoint |
-|----------|----------|
-| `STASHDB_API_KEY` | [StashDB](https://stashdb.org) |
-| `FANSDB_API_KEY` | [FansDB](https://fansdb.cc) |
-| `THEPORNDB_API_KEY` | [ThePornDB](https://theporndb.net) |
-| `PMVSTASH_API_KEY` | [PMVStash](https://pmvstash.org) |
-| `JAVSTASH_API_KEY` | [JAVStash](https://javstash.org) |
-
-These are only needed for upstream sync. Face recognition works without them.
-
-> **Tip**: Get API keys from each stash-box site's user settings page. StashDB requires an account at [stashdb.org](https://stashdb.org).
+To add a new endpoint, configure it in Stash's Metadata Providers settings, then restart the sidecar (or use the **Refresh** button in the plugin's Settings tab).
 
 ---
 
@@ -31,8 +20,11 @@ These are only needed for upstream sync. Face recognition works without them.
 
 | Container Path | Purpose | Mode |
 |----------------|---------|------|
-| `/data` | Database files (Voyager indices, performers.db, manifest) | Read-only |
-| `/root/.insightface` | Cached model weights (~500 MB) | Read-write |
+| `/data` | Database files, models, and local data (`stash_sense.db`) | **Read-write** |
+| `/root/.insightface` | Cached face detection model weights (~500 MB) | Read-write |
+
+!!! warning
+    The `/data` volume **must** be read-write. The sidecar writes `stash_sense.db` (recommendations, settings, analysis history) here, and in-app database updates download files to this directory.
 
 ### Database Files
 
@@ -46,15 +38,18 @@ The `/data` volume should contain the files from a [stash-sense-data release](ht
 ├── faces.json           # Face-to-performer mapping
 ├── performers.json      # Performer lookup data
 ├── manifest.json        # Version and checksums
+├── models/              # (auto-created) ONNX models downloaded via Settings UI
+│   ├── facenet512.onnx  # FaceNet512 embedding model (~90 MB)
+│   └── arcface.onnx     # ArcFace embedding model (~130 MB)
 └── stash_sense.db       # (auto-created) Your local data — do not delete
 ```
 
 !!! note
-    `stash_sense.db` is created automatically by the sidecar and stores your recommendations, settings, and analysis history. It is **not** part of the database release and should not be deleted during updates.
+    `stash_sense.db` and the `models/` directory are created automatically by the sidecar. They are **not** part of the database release and should not be deleted during updates. The database files and models can both be downloaded from the plugin's **Settings** tab after startup.
 
 ### Model Cache
 
-The `/root/.insightface` volume caches the RetinaFace detection model weights. Without this mount, the model is re-downloaded on every container start (~500 MB download).
+The `/root/.insightface` volume caches the RetinaFace face detection model weights. Without this mount, the model is re-downloaded on every container start (~500 MB download).
 
 ---
 

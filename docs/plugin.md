@@ -2,35 +2,24 @@
 
 ## Installation
 
-### 1. Copy plugin files to Stash
+### 1. Add the plugin source
 
-Copy the `plugin/` directory contents to your Stash plugins folder:
+In Stash, go to **Settings > Plugins > Available Plugins** and click **Add Source**:
 
-```
-~/.stash/plugins/stash-sense/
-├── stash-sense.yml
-├── stash-sense.js
-├── stash-sense.css
-└── stash_sense_backend.py
-```
+- **Name**: `Stash Sense`
+- **URL**: `https://carrotwaxr.github.io/stash-sense/plugin/index.yml`
 
-Or if using Docker:
+### 2. Install the plugin
 
-```
-/root/.stash/plugins/stash-sense/
-```
+Find **Stash Sense** in the available plugins list and click **Install**.
 
-### 2. Reload plugins
+### 3. Configure the sidecar URL
 
-In Stash: **Settings → Plugins → Reload Plugins**
+Go to **Settings > Plugins > Stash Sense** and set the **Sidecar URL** to the address of your Stash Sense container (e.g., `http://10.0.0.4:6960`).
 
-### 3. Configure the plugin
+### 4. Open the dashboard
 
-In Stash: **Settings → Plugins → Stash Sense**
-
-| Setting | Value |
-|---------|-------|
-| Sidecar URL | `http://localhost:5000` or your Stash Sense host |
+Navigate to **`/plugins/stash-sense`** in your Stash UI to access the Stash Sense dashboard. This is where you'll find the Settings tab, Recommendations dashboard, and Operation Queue.
 
 ## Usage
 
@@ -81,9 +70,9 @@ If a scene doesn't have sprites:
 
 ### "Failed to connect to Stash Sense"
 
-- Verify sidecar is running: `curl http://localhost:5000/health`
-- Check sidecar URL in plugin settings
-- If using Docker, ensure network connectivity
+- Verify sidecar is running: `curl http://localhost:6960/health`
+- Check sidecar URL in plugin settings matches your container's host and port
+- If using Docker, ensure network connectivity between Stash and the sidecar
 
 ### "No faces detected"
 
@@ -111,7 +100,7 @@ The face matched a StashDB performer who isn't in your Stash library. Options:
 
 ### Recommendations Dashboard
 
-The main dashboard (accessible from the Stash navigation) shows all recommendation types:
+The main dashboard is accessible at **`/plugins/stash-sense`** in your Stash UI. It shows all recommendation types:
 
 - **Upstream Changes** — Performer field updates detected from stash-box endpoints, with a 3-way diff view showing local, upstream, and original values
 - **Duplicates** — Candidate duplicate scenes identified by face fingerprint matching
