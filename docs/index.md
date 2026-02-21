@@ -19,7 +19,7 @@ AI-powered performer identification and library curation for [Stash](https://git
 
 ## Get Started
 
-- [Installation](installation.md) — Docker setup, database download, plugin install
+- [Installation](installation.md) — Docker setup, plugin install, database and model download
 - [Plugin Usage](plugin.md) — identifying performers, understanding results
 - [Features](features.md) — full feature overview
 - [Database & Updates](database.md) — where the data comes from, how to update

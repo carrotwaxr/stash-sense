@@ -49,7 +49,7 @@ The data directory contains:
 
 Stash Sense uses two separate databases:
 
-- **`performers.db`** + Voyager indices (read-only) — The distributable face recognition data. Updated via stash-sense-data releases. Contains no user-specific information.
+- **`performers.db`** + Voyager indices — The distributable face recognition data. Updated via stash-sense-data releases either in-app (Settings tab) or manually. Contains no user-specific information.
 - **`stash_sense.db`** (read-write, user-local, schema version 9) — Your recommendation history, dismissed items, analysis watermarks, upstream snapshots, scene fingerprints, operation queue, and settings overrides.
 
 This separation means database updates never touch your personal data, and the distributable database contains nothing specific to your library.

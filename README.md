@@ -21,19 +21,7 @@ Stash Sense is a sidecar service and Stash plugin that brings AI-powered analysi
 2. **Docker** installed on your system
 3. **NVIDIA GPU** with 4GB+ VRAM recommended (CPU fallback available)
 
-### 1. Download the database
-
-Download the latest release from [stash-sense-data](https://github.com/carrotwaxr/stash-sense-data/releases/latest) and extract it:
-
-```bash
-mkdir -p stash-sense-data
-cd stash-sense-data
-# Download the latest .zip from the releases page
-unzip stash-sense-data-*.zip
-cd ..
-```
-
-### 2. Start the container
+### 1. Start the container
 
 ```bash
 docker run -d \
@@ -42,20 +30,20 @@ docker run -d \
   -p 6960:5000 \
   -e STASH_URL=http://your-stash-host:9999 \
   -e STASH_API_KEY=your-api-key \
-  -v ./stash-sense-data:/data:ro \
+  -v ./stash-sense-data:/data \
   -v stash-sense-insightface:/root/.insightface \
   carrotwaxr/stash-sense:latest
 ```
 
 > **No NVIDIA GPU?** Remove `--gpus all` — the sidecar auto-detects and falls back to CPU mode.
 
-### 3. Verify it's running
+### 2. Verify it's running
 
 ```bash
 curl http://localhost:6960/health
 ```
 
-### 4. Install the Stash plugin
+### 3. Install the Stash plugin
 
 In Stash, go to **Settings > Plugins > Available Plugins** and add this source:
 
@@ -65,16 +53,21 @@ https://carrotwaxr.github.io/stash-sense/plugin/index.yml
 
 Name it **Stash Sense**, then install the plugin and configure the sidecar URL (`http://your-host:6960`).
 
+### 4. Download database and models
+
+Navigate to `/plugins/stash-sense` in Stash to open the Stash Sense dashboard. From the **Settings** tab:
+
+1. **Database** — Click **Update** to download the face recognition database (~1.5 GB)
+2. **Models** — Click **Download All** to download the required ONNX models (~220 MB)
+
 ## Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `STASH_URL` | Yes | — | URL to your Stash instance (e.g., `http://stash:9999`) |
 | `STASH_API_KEY` | Yes | — | Stash API key (Settings > Security > API Key) |
-| `DATA_DIR` | No | `/data` | Path to database files inside the container |
-| `LOG_LEVEL` | No | `warning` | Logging verbosity: `debug`, `info`, `warning`, `error` |
 
-Additional performance and recognition settings are configurable via the **Settings** tab in the plugin UI. The sidecar auto-tunes defaults based on your hardware.
+Additional performance and recognition settings are configurable via the **Settings** tab in the plugin UI. The sidecar auto-tunes defaults based on your hardware. Stash-box API keys are auto-discovered from your Stash instance's configured metadata providers (Settings > Metadata Providers).
 
 ## Updating
 
@@ -105,7 +98,7 @@ Full documentation: **[https://carrotwaxr.github.io/stash-sense](https://carrotw
 - [Installation Guide](https://carrotwaxr.github.io/stash-sense/installation/)
 - [Configuration](https://carrotwaxr.github.io/stash-sense/configuration/)
 - [Features](https://carrotwaxr.github.io/stash-sense/features/)
-- [Plugin Setup](https://carrotwaxr.github.io/stash-sense/plugin/)
+- [Plugin Setup](https://carrotwaxr.github.io/stash-sense/plugin)
 - [Database & Updates](https://carrotwaxr.github.io/stash-sense/database/)
 - [Settings](https://carrotwaxr.github.io/stash-sense/settings-system/)
 - [Troubleshooting](https://carrotwaxr.github.io/stash-sense/troubleshooting/)

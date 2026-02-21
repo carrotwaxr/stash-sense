@@ -156,13 +156,16 @@ Jobs declare which resource slot they need. The scheduler runs all compatible jo
 
 ## Model Management
 
-On-demand download and lifecycle management for optional ONNX models that are not bundled in the Docker image.
+On-demand download and lifecycle management for ONNX models. Models are **not** bundled in the Docker image — they are downloaded from the plugin's Settings tab on first setup.
 
-**Supported optional models:**
+**Models:**
 
-| Model | Purpose | Size |
-|-------|---------|------|
-| Tattoo detection | Identifies tattoos for performer matching | ~50 MB |
+| Model | Purpose | Size | Required |
+|-------|---------|------|----------|
+| FaceNet512 | Face embedding model | ~90 MB | Yes |
+| ArcFace | Face embedding model | ~130 MB | Yes |
+| Tattoo YOLOv5s | Tattoo detection | ~80 MB | No |
+| Tattoo EfficientNet-B0 | Tattoo classification | ~15 MB | No |
 
 **Validation:** Each model download is verified against a SHA256 checksum before activation. If a model file becomes corrupted (disk error, partial write), the sidecar detects the mismatch and marks the model as `corrupted`.
 
