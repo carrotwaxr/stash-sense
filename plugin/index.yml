@@ -2,7 +2,7 @@
   name: Stash Sense
   metadata:
     description: AI-powered performer identification using face recognition against StashDB database
-  version: 0.1.2-beta.1-9c7a300
-  date: 2026-02-21 21:47:01
+  version: 0.1.2-beta.2-7b8b48c
+  date: 2026-02-21 22:00:23
   path: stash-sense.zip
-  sha256: ed666b8148f4f821de18d1644dd2358976421a9e01ce3f08be72b59b8ba0f2fc
+  sha256: 01e289731dbe0e046cb63a0cd4b339255f2e08e56a9efa3be31b78c426552dfd

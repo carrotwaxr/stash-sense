@@ -425,10 +425,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#stash-box-api-keys-optional" class="md-nav__link">
+  <a href="#stash-box-api-keys" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stash-Box API Keys (Optional)
+        Stash-Box API Keys
       
     </span>
   </a>
@@ -1008,10 +1008,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#stash-box-api-keys-optional" class="md-nav__link">
+  <a href="#stash-box-api-keys" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stash-Box API Keys (Optional)
+        Stash-Box API Keys
       
     </span>
   </a>
@@ -1151,50 +1151,11 @@
 <td><code>/data</code></td>
 <td>Path to database files inside the container</td>
 </tr>
-<tr>
-<td><code>LOG_LEVEL</code></td>
-<td>No</td>
-<td><code>warning</code></td>
-<td>Logging verbosity: <code>debug</code>, <code>info</code>, <code>warning</code>, <code>error</code></td>
-</tr>
 </tbody>
 </table>
-<h3 id="stash-box-api-keys-optional">Stash-Box API Keys (Optional)</h3>
-<p>For upstream sync to detect metadata changes on stash-box endpoints, add API keys for each endpoint you want to monitor:</p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Endpoint</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>STASHDB_API_KEY</code></td>
-<td><a href="https://stashdb.org">StashDB</a></td>
-</tr>
-<tr>
-<td><code>FANSDB_API_KEY</code></td>
-<td><a href="https://fansdb.cc">FansDB</a></td>
-</tr>
-<tr>
-<td><code>THEPORNDB_API_KEY</code></td>
-<td><a href="https://theporndb.net">ThePornDB</a></td>
-</tr>
-<tr>
-<td><code>PMVSTASH_API_KEY</code></td>
-<td><a href="https://pmvstash.org">PMVStash</a></td>
-</tr>
-<tr>
-<td><code>JAVSTASH_API_KEY</code></td>
-<td><a href="https://javstash.org">JAVStash</a></td>
-</tr>
-</tbody>
-</table>
-<p>These are only needed for upstream sync. Face recognition works without them.</p>
-<blockquote>
-<p><strong>Tip</strong>: Get API keys from each stash-box site's user settings page. StashDB requires an account at <a href="https://stashdb.org">stashdb.org</a>.</p>
-</blockquote>
+<h3 id="stash-box-api-keys">Stash-Box API Keys</h3>
+<p>Stash-box endpoint API keys are <strong>not</strong> configured as environment variables. The sidecar auto-discovers all configured stash-box endpoints from your Stash instance's <strong>Settings &gt; Metadata Providers</strong> at startup. Any endpoints you've added there (StashDB, FansDB, ThePornDB, etc.) are automatically available for upstream sync.</p>
+<p>To add a new endpoint, configure it in Stash's Metadata Providers settings, then restart the sidecar (or use the <strong>Refresh</strong> button in the plugin's Settings tab).</p>
 <hr />
 <h2 id="volume-mounts">Volume Mounts</h2>
 <table>
@@ -1208,16 +1169,20 @@
 <tbody>
 <tr>
 <td><code>/data</code></td>
-<td>Database files (Voyager indices, performers.db, manifest)</td>
-<td>Read-only</td>
+<td>Database files, models, and local data (<code>stash_sense.db</code>)</td>
+<td><strong>Read-write</strong></td>
 </tr>
 <tr>
 <td><code>/root/.insightface</code></td>
-<td>Cached model weights (~500 MB)</td>
+<td>Cached face detection model weights (~500 MB)</td>
 <td>Read-write</td>
 </tr>
 </tbody>
 </table>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The <code>/data</code> volume <strong>must</strong> be read-write. The sidecar writes <code>stash_sense.db</code> (recommendations, settings, analysis history) here, and in-app database updates download files to this directory.</p>
+</div>
 <h3 id="database-files">Database Files</h3>
 <p>The <code>/data</code> volume should contain the files from a <a href="https://github.com/carrotwaxr/stash-sense-data/releases">stash-sense-data release</a>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
@@ -1227,14 +1192,17 @@
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── faces.json           # Face-to-performer mapping
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── performers.json      # Performer lookup data
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── manifest.json        # Version and checksums
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>└── stash_sense.db       # (auto-created) Your local data — do not delete
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── models/              # (auto-created) ONNX models downloaded via Settings UI
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── facenet512.onnx  # FaceNet512 embedding model (~90 MB)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   └── arcface.onnx     # ArcFace embedding model (~130 MB)
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>└── stash_sense.db       # (auto-created) Your local data — do not delete
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p><code>stash_sense.db</code> is created automatically by the sidecar and stores your recommendations, settings, and analysis history. It is <strong>not</strong> part of the database release and should not be deleted during updates.</p>
+<p><code>stash_sense.db</code> and the <code>models/</code> directory are created automatically by the sidecar. They are <strong>not</strong> part of the database release and should not be deleted during updates. The database files and models can both be downloaded from the plugin's <strong>Settings</strong> tab after startup.</p>
 </div>
 <h3 id="model-cache">Model Cache</h3>
-<p>The <code>/root/.insightface</code> volume caches the RetinaFace detection model weights. Without this mount, the model is re-downloaded on every container start (~500 MB download).</p>
+<p>The <code>/root/.insightface</code> volume caches the RetinaFace face detection model weights. Without this mount, the model is re-downloaded on every container start (~500 MB download).</p>
 <hr />
 <h2 id="ports">Ports</h2>
 <p>The sidecar listens on port <strong>5000</strong> inside the container. The recommended host port is <strong>6960</strong>:</p>

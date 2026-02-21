@@ -880,6 +880,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#load-model-from-appmodelsfacenet512onnx-failed-file-doesnt-exist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Load model from /app/models/facenet512.onnx failed: File doesn't exist"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#health-check-shows-degraded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health check shows "degraded"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#health-check-failing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1161,6 +1183,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#load-model-from-appmodelsfacenet512onnx-failed-file-doesnt-exist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Load model from /app/models/facenet512.onnx failed: File doesn't exist"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#health-check-shows-degraded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health check shows "degraded"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#health-check-failing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1398,17 +1442,20 @@
 <li>Port conflict - change from 6960 to another port</li>
 </ul>
 <h3 id="database-not-loaded">"Database not loaded"</h3>
-<p>The container started but can't find database files.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Check what&#39;s in the data volume</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>stash-sense<span class="w"> </span>ls<span class="w"> </span>-la<span class="w"> </span>/data
+<p>The face recognition database hasn't been downloaded yet. This is normal on first startup.</p>
+<p><strong>Fix:</strong> Navigate to <code>/plugins/stash-sense</code> in Stash, go to the <strong>Settings</strong> tab, and click <strong>Update</strong> in the Database section to download the database.</p>
+<p>Alternatively, verify the volume mount has database files:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>stash-sense<span class="w"> </span>ls<span class="w"> </span>-la<span class="w"> </span>/data
 </code></pre></div>
-<p>Should show:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>face_facenet.voy
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>face_arcface.voy
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>performers.json
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>manifest.json
-</code></pre></div></p>
-<p>If empty, the volume mount is misconfigured or database wasn't extracted.</p>
+<p>Should show <code>face_facenet.voy</code>, <code>face_arcface.voy</code>, <code>performers.json</code>, <code>manifest.json</code>. If empty, either download via the Settings UI or check your volume mount path.</p>
+<h3 id="load-model-from-appmodelsfacenet512onnx-failed-file-doesnt-exist">"Load model from /app/models/facenet512.onnx failed: File doesn't exist"</h3>
+<p>The ONNX face recognition models are not bundled in the Docker image — they need to be downloaded after first startup.</p>
+<p><strong>Fix:</strong> Navigate to <code>/plugins/stash-sense</code> in Stash, go to the <strong>Settings</strong> tab, and click <strong>Download All</strong> in the Models section. This downloads FaceNet512 (~90 MB) and ArcFace (~130 MB) to <code>/data/models/</code>.</p>
+<p>Alternatively, download via the API:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:6960/models/download-all
+</code></pre></div>
+<h3 id="health-check-shows-degraded">Health check shows "degraded"</h3>
+<p>This is expected on first startup before the database and models are downloaded. Once you download both from the Settings tab, the status will change to <code>"healthy"</code> after the first identification request.</p>
 <h3 id="health-check-failing">Health check failing</h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Test manually</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>curl<span class="w"> </span>http://localhost:6960/health

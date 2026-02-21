@@ -1364,21 +1364,41 @@
 <p><strong>Monitoring:</strong> The plugin UI shows active, queued, and completed jobs with status, duration, and error details.</p>
 <hr />
 <h2 id="model-management">Model Management</h2>
-<p>On-demand download and lifecycle management for optional ONNX models that are not bundled in the Docker image.</p>
-<p><strong>Supported optional models:</strong></p>
+<p>On-demand download and lifecycle management for ONNX models. Models are <strong>not</strong> bundled in the Docker image — they are downloaded from the plugin's Settings tab on first setup.</p>
+<p><strong>Models:</strong></p>
 <table>
 <thead>
 <tr>
 <th>Model</th>
 <th>Purpose</th>
 <th>Size</th>
+<th>Required</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td>FaceNet512</td>
+<td>Face embedding model</td>
+<td>~90 MB</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ArcFace</td>
+<td>Face embedding model</td>
+<td>~130 MB</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Tattoo YOLOv5s</td>
 <td>Tattoo detection</td>
-<td>Identifies tattoos for performer matching</td>
-<td>~50 MB</td>
+<td>~80 MB</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Tattoo EfficientNet-B0</td>
+<td>Tattoo classification</td>
+<td>~15 MB</td>
+<td>No</td>
 </tr>
 </tbody>
 </table>
