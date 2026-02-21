@@ -8,6 +8,7 @@ from upstream_field_mapper import (
     normalize_upstream_studio,
     diff_studio_fields,
 )
+from analyzers.upstream_studio import _build_local_studio_data
 
 
 class TestStudioFieldConfig:
@@ -60,6 +61,16 @@ class TestNormalizeUpstreamStudio:
         upstream = {"name": "Brazzers Exxtra", "urls": [], "parent": {"id": "parent-uuid-1", "name": "Brazzers"}}
         result = normalize_upstream_studio(upstream)
         assert result["parent_studio"] == "parent-uuid-1"
+
+    def test_extracts_parent_display_name(self):
+        upstream = {"name": "Brazzers Exxtra", "urls": [], "parent": {"id": "parent-uuid-1", "name": "Brazzers"}}
+        result = normalize_upstream_studio(upstream)
+        assert result["_parent_studio_name"] == "Brazzers"
+
+    def test_no_parent_gives_none_display_name(self):
+        upstream = {"name": "Brazzers", "urls": [], "parent": None}
+        result = normalize_upstream_studio(upstream)
+        assert result["_parent_studio_name"] is None
 
     def test_no_parent_gives_none(self):
         upstream = {"name": "Brazzers", "urls": [], "parent": None}
@@ -129,3 +140,101 @@ class TestDiffStudioFields:
         upstream = {"url": ""}
         changes = diff_studio_fields(local, upstream, None, {"url"})
         assert len(changes) == 0
+
+    def test_parent_change_includes_display_names(self):
+        local = {"name": "Sub", "url": None, "parent_studio": None, "_parent_studio_name": None}
+        upstream = {"name": "Sub", "url": None, "parent_studio": "parent-uuid-1", "_parent_studio_name": "Brazzers"}
+        changes = diff_studio_fields(local, upstream, None, {"parent_studio"})
+        assert len(changes) == 1
+        assert changes[0]["field"] == "parent_studio"
+        assert changes[0]["upstream_display"] == "Brazzers"
+        assert changes[0]["local_display"] is None
+
+    def test_parent_change_display_fallback_to_raw_value(self):
+        """When no display name is available, display falls back to the raw value."""
+        local = {"name": "Sub", "url": None, "parent_studio": "old-uuid"}
+        upstream = {"name": "Sub", "url": None, "parent_studio": "new-uuid"}
+        changes = diff_studio_fields(local, upstream, None, {"parent_studio"})
+        assert len(changes) == 1
+        assert changes[0]["local_display"] == "old-uuid"
+        assert changes[0]["upstream_display"] == "new-uuid"
+
+    def test_non_parent_fields_have_no_display_keys(self):
+        """Only parent_studio gets display enrichment."""
+        local = {"name": "Old", "url": None, "parent_studio": None}
+        upstream = {"name": "New", "url": None, "parent_studio": None}
+        changes = diff_studio_fields(local, upstream, None, {"name"})
+        assert len(changes) == 1
+        assert "local_display" not in changes[0]
+
+
+class TestBuildLocalStudioData:
+    def test_resolves_parent_stashbox_id_for_endpoint(self):
+        """Parent's stashbox ID should be used instead of local numeric ID."""
+        studio = {
+            "name": "Sub Studio",
+            "url": None,
+            "parent_studio": {
+                "id": "10",
+                "name": "Parent Studio",
+                "stash_ids": [
+                    {"endpoint": "https://stashdb.org/graphql", "stash_id": "parent-uuid-1"},
+                ],
+            },
+        }
+        result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
+        assert result["parent_studio"] == "parent-uuid-1"
+        assert result["_parent_studio_name"] == "Parent Studio"
+
+    def test_falls_back_to_local_id_when_parent_not_linked(self):
+        """If parent has no stash_id for this endpoint, fall back to local ID."""
+        studio = {
+            "name": "Sub Studio",
+            "url": None,
+            "parent_studio": {
+                "id": "10",
+                "name": "Parent Studio",
+                "stash_ids": [
+                    {"endpoint": "https://other.org/graphql", "stash_id": "other-uuid"},
+                ],
+            },
+        }
+        result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
+        assert result["parent_studio"] == "10"
+
+    def test_parent_with_empty_stash_ids(self):
+        """Parent with no stash_ids falls back to local ID."""
+        studio = {
+            "name": "Sub Studio",
+            "url": None,
+            "parent_studio": {
+                "id": "10",
+                "name": "Parent Studio",
+                "stash_ids": [],
+            },
+        }
+        result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
+        assert result["parent_studio"] == "10"
+
+    def test_no_parent(self):
+        studio = {"name": "Studio", "url": "https://example.com", "parent_studio": None}
+        result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
+        assert result["parent_studio"] is None
+        assert result["_parent_studio_name"] is None
+
+    def test_parent_multiple_endpoints_picks_correct(self):
+        """When parent is linked to multiple endpoints, picks the right one."""
+        studio = {
+            "name": "Sub",
+            "url": None,
+            "parent_studio": {
+                "id": "10",
+                "name": "Parent",
+                "stash_ids": [
+                    {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fansdb-uuid"},
+                    {"endpoint": "https://stashdb.org/graphql", "stash_id": "stashdb-uuid"},
+                ],
+            },
+        }
+        result = _build_local_studio_data(studio, "https://stashdb.org/graphql")
+        assert result["parent_studio"] == "stashdb-uuid"

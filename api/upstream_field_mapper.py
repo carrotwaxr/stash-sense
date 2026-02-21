@@ -252,10 +252,11 @@ def normalize_upstream_studio(upstream: dict) -> dict:
         else:
             result["url"] = None
 
-    # Parent: extract StashBox UUID
+    # Parent: extract StashBox UUID and name
     if "parent" in upstream:
         parent = upstream["parent"]
         result["parent_studio"] = parent["id"] if parent else None
+        result["_parent_studio_name"] = parent["name"] if parent else None
 
     return result
 
@@ -266,8 +267,12 @@ def diff_studio_fields(
     snapshot: Optional[dict],
     enabled_fields: set[str],
 ) -> list[dict]:
-    """Convenience wrapper: 3-way diff using studio field config."""
-    return diff_fields(
+    """Convenience wrapper: 3-way diff using studio field config.
+
+    Enriches parent_studio changes with display-friendly names so the UI
+    can show "Studio Name" instead of raw stashbox UUIDs.
+    """
+    changes = diff_fields(
         local=local,
         upstream=upstream,
         snapshot=snapshot,
@@ -275,6 +280,14 @@ def diff_studio_fields(
         merge_types=STUDIO_FIELD_MERGE_TYPES,
         labels=STUDIO_FIELD_LABELS,
     )
+
+    # Enrich parent_studio changes with display names
+    for change in changes:
+        if change["field"] == "parent_studio":
+            change["local_display"] = local.get("_parent_studio_name") or change["local_value"]
+            change["upstream_display"] = upstream.get("_parent_studio_name") or change["upstream_value"]
+
+    return changes
 
 
 # ==================== Performer-Specific Mapping Constants ====================

@@ -685,6 +685,10 @@ class StashClientUnified:
               parent_studio {
                 id
                 name
+                stash_ids {
+                  endpoint
+                  stash_id
+                }
               }
               stash_ids {
                 endpoint

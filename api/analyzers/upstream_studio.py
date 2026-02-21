@@ -20,17 +20,32 @@ from upstream_field_mapper import (
 logger = logging.getLogger(__name__)
 
 
-def _build_local_studio_data(studio: dict) -> dict:
-    """Extract comparable field values from a local Stash studio."""
+def _build_local_studio_data(studio: dict, endpoint: str = "") -> dict:
+    """Extract comparable field values from a local Stash studio.
+
+    For parent_studio, resolves the parent's stashbox ID for the given endpoint
+    so it can be compared against the upstream stashbox UUID. Falls back to the
+    local numeric ID if the parent isn't linked to this endpoint.
+    """
     parent = studio.get("parent_studio")
     parent_studio_val = None
+    parent_studio_name = None
     if parent and parent.get("id"):
-        parent_studio_val = str(parent["id"])
+        parent_studio_name = parent.get("name")
+        # Resolve parent's stashbox ID for this endpoint
+        for sid in parent.get("stash_ids", []):
+            if sid["endpoint"] == endpoint:
+                parent_studio_val = sid["stash_id"]
+                break
+        if parent_studio_val is None:
+            # Parent not linked to this endpoint — use local ID as fallback
+            parent_studio_val = str(parent["id"])
 
     return {
         "name": studio.get("name"),
         "url": studio.get("url") or None,
         "parent_studio": parent_studio_val,
+        "_parent_studio_name": parent_studio_name,
     }
 
 
@@ -49,13 +64,14 @@ class UpstreamStudioAnalyzer(BaseUpstreamAnalyzer):
         return "studio"
 
     async def _get_local_entities(self, endpoint: str) -> list[dict]:
+        self._current_endpoint = endpoint
         return await self.stash.get_studios_for_endpoint(endpoint)
 
     async def _get_upstream_entity(self, stashbox_client: StashBoxClient, stashbox_id: str) -> Optional[dict]:
         return await stashbox_client.get_studio(stashbox_id)
 
     def _build_local_data(self, entity: dict) -> dict:
-        return _build_local_studio_data(entity)
+        return _build_local_studio_data(entity, self._current_endpoint)
 
     def _normalize_upstream(self, raw_data: dict) -> dict:
         return normalize_upstream_studio(raw_data)

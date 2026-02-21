@@ -2491,13 +2491,6 @@
         const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
         if (upstreamCb) { upstreamCb.checked = true; upstreamCb.dispatchEvent(new Event('change')); }
         if (localCb) localCb.checked = false;
-        // Update result input
-        const fieldIndex = parseInt(row.dataset.fieldIndex);
-        const change = changes[fieldIndex];
-        const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
-        if (resultInput) {
-          resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : formatFieldValue(change.upstream_value);
-        }
       });
     });
 
@@ -2516,7 +2509,8 @@
         const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
         if (!resultInput) return;
 
-        const resultVal = resultInput.value.trim();
+        // Use raw value if available (e.g. parent_studio stores UUID, displays name)
+        const resultVal = (resultInput.dataset.rawValue !== undefined ? resultInput.dataset.rawValue : resultInput.value).trim();
         const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
 
         // Skip if result equals local (no change)
@@ -3234,7 +3228,7 @@
     localCb.className = 'ss-upstream-cb-local';
     localCb.checked = defaultChoice === 'local';
     localCheckLabel.appendChild(localCb);
-    localCheckLabel.appendChild(document.createTextNode(' ' + displayValue(change.local_value)));
+    localCheckLabel.appendChild(document.createTextNode(' ' + displayValue(change.local_display || change.local_value)));
     localCell.appendChild(localLabel);
     localCell.appendChild(localCheckLabel);
 
@@ -3250,7 +3244,7 @@
     upstreamCb.className = 'ss-upstream-cb-upstream';
     upstreamCb.checked = defaultChoice === 'upstream';
     upstreamCheckLabel.appendChild(upstreamCb);
-    upstreamCheckLabel.appendChild(document.createTextNode(' ' + displayValue(change.upstream_value)));
+    upstreamCheckLabel.appendChild(document.createTextNode(' ' + displayValue(change.upstream_display || change.upstream_value)));
     upstreamCell.appendChild(upstreamLabel);
     upstreamCell.appendChild(upstreamCheckLabel);
 
@@ -3272,8 +3266,18 @@
     }
 
     // Set initial result value based on smart default
+    // For fields with display names (e.g. parent_studio), show the name but store the raw value
+    const hasDisplay = change.local_display || change.upstream_display;
     const defaultVal = defaultChoice === 'upstream' ? change.upstream_value : change.local_value;
-    resultInput.value = formatFieldValue(defaultVal) === '(empty)' ? '' : String(defaultVal || '');
+    const defaultDisplay = defaultChoice === 'upstream'
+      ? (change.upstream_display || change.upstream_value)
+      : (change.local_display || change.local_value);
+    resultInput.value = formatFieldValue(defaultDisplay) === '(empty)' ? '' : String(defaultDisplay || '');
+    if (hasDisplay) {
+      resultInput.dataset.rawValue = defaultVal != null ? String(defaultVal) : '';
+      resultInput.readOnly = true;
+      resultInput.title = defaultVal != null ? String(defaultVal) : '';
+    }
 
     resultCell.appendChild(resultLabel);
     resultCell.appendChild(resultInput);
@@ -3287,14 +3291,18 @@
     localCb.addEventListener('change', () => {
       if (localCb.checked) {
         upstreamCb.checked = false;
-        resultInput.value = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+        const displayVal = hasDisplay ? (change.local_display || change.local_value) : change.local_value;
+        resultInput.value = formatFieldValue(displayVal) === '(empty)' ? '' : String(displayVal || '');
+        if (hasDisplay) resultInput.dataset.rawValue = change.local_value != null ? String(change.local_value) : '';
       }
     });
 
     upstreamCb.addEventListener('change', () => {
       if (upstreamCb.checked) {
         localCb.checked = false;
-        resultInput.value = formatFieldValue(change.upstream_value) === '(empty)' ? '' : String(change.upstream_value || '');
+        const displayVal = hasDisplay ? (change.upstream_display || change.upstream_value) : change.upstream_value;
+        resultInput.value = formatFieldValue(displayVal) === '(empty)' ? '' : String(displayVal || '');
+        if (hasDisplay) resultInput.dataset.rawValue = change.upstream_value != null ? String(change.upstream_value) : '';
       }
     });
 

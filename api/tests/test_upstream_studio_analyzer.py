@@ -178,6 +178,63 @@ class TestUpstreamStudioAnalyzer:
         assert result.recommendations_created == 0
 
     @pytest.mark.asyncio
+    async def test_no_false_positive_when_parent_ids_match(self, mock_stash, rec_db):
+        """Regression: parent_studio should compare stashbox UUIDs, not local ID vs UUID."""
+        from analyzers.upstream_studio import UpstreamStudioAnalyzer
+        mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
+            {"id": "20", "name": "Brazzers Exxtra", "url": None,
+             "parent_studio": {
+                 "id": "10", "name": "Brazzers",
+                 "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "parent-uuid-1"}],
+             },
+             "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-2"}]},
+        ])
+        upstream = {
+            "id": "studio-uuid-2", "name": "Brazzers Exxtra",
+            "urls": [], "parent": {"id": "parent-uuid-1", "name": "Brazzers"},
+            "deleted": False, "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
+        }
+        analyzer = UpstreamStudioAnalyzer(mock_stash, rec_db)
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_studio = AsyncMock(return_value=upstream)
+            MockSBC.return_value = mock_sbc
+            result = await analyzer.run()
+        # Should NOT create a recommendation — parent_studio matches via stashbox UUID
+        assert result.recommendations_created == 0
+
+    @pytest.mark.asyncio
+    async def test_parent_change_includes_display_names(self, mock_stash, rec_db):
+        """Display names should be included in parent_studio change details."""
+        from analyzers.upstream_studio import UpstreamStudioAnalyzer
+        mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
+            {"id": "20", "name": "Sub Studio", "url": None,
+             "parent_studio": {
+                 "id": "10", "name": "Old Parent",
+                 "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "old-parent-uuid"}],
+             },
+             "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-2"}]},
+        ])
+        upstream = {
+            "id": "studio-uuid-2", "name": "Sub Studio",
+            "urls": [], "parent": {"id": "new-parent-uuid", "name": "New Parent"},
+            "deleted": False, "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
+        }
+        analyzer = UpstreamStudioAnalyzer(mock_stash, rec_db)
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_studio = AsyncMock(return_value=upstream)
+            MockSBC.return_value = mock_sbc
+            result = await analyzer.run()
+        assert result.recommendations_created == 1
+        changes = rec_db.get_recommendations(type="upstream_studio_changes")[0].details["changes"]
+        parent_change = next(c for c in changes if c["field"] == "parent_studio")
+        assert parent_change["local_display"] == "Old Parent"
+        assert parent_change["upstream_display"] == "New Parent"
+        assert parent_change["local_value"] == "old-parent-uuid"
+        assert parent_change["upstream_value"] == "new-parent-uuid"
+
+    @pytest.mark.asyncio
     async def test_3way_diff_skips_user_intentional_override(self, mock_stash, rec_db):
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         rec_db.upsert_upstream_snapshot(
