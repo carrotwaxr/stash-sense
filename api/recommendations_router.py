@@ -569,6 +569,11 @@ def set_db_version(version: str):
     _current_db_version = version
 
 
+def get_db_version() -> Optional[str]:
+    """Get the current face recognition DB version."""
+    return _current_db_version
+
+
 class FingerprintStatusResponse(BaseModel):
     """Response for fingerprint status endpoint."""
     total_fingerprints: int

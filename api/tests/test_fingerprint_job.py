@@ -33,19 +33,33 @@ class TestFingerprintJob:
 
         with patch('jobs.fingerprint_job.SceneFingerprintGenerator', mock_generator_cls), \
              patch('jobs.fingerprint_job.get_stash_client', return_value=MagicMock()), \
-             patch('jobs.fingerprint_job.get_rec_db', return_value=MagicMock()):
+             patch('jobs.fingerprint_job.get_rec_db', return_value=MagicMock()), \
+             patch('jobs.fingerprint_job.get_db_version', return_value='2026.01.30'):
             job = FingerprintGenerationJob()
             await job.run(ctx)
 
+        mock_generator_cls.assert_called_once()
+        call_kwargs = mock_generator_cls.call_args[1]
+        assert call_kwargs['db_version'] == '2026.01.30'
         ctx._db.update_job_progress.assert_called()
 
     @pytest.mark.asyncio
     async def test_stops_on_request(self, ctx):
         from jobs.fingerprint_job import FingerprintGenerationJob
         ctx.request_stop()
-        with patch('jobs.fingerprint_job.SceneFingerprintGenerator'), \
+        with patch('jobs.fingerprint_job.SceneFingerprintGenerator') as mock_gen, \
              patch('jobs.fingerprint_job.get_stash_client', return_value=MagicMock()), \
-             patch('jobs.fingerprint_job.get_rec_db', return_value=MagicMock()):
+             patch('jobs.fingerprint_job.get_rec_db', return_value=MagicMock()), \
+             patch('jobs.fingerprint_job.get_db_version', return_value='2026.01.30'):
             job = FingerprintGenerationJob()
             result = await job.run(ctx)
         assert result is None
+        mock_gen.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fails_without_db_version(self, ctx):
+        from jobs.fingerprint_job import FingerprintGenerationJob
+        with patch('jobs.fingerprint_job.get_db_version', return_value=None):
+            job = FingerprintGenerationJob()
+            with pytest.raises(RuntimeError, match="No face recognition database loaded"):
+                await job.run(ctx)
