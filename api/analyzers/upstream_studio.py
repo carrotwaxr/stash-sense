@@ -56,7 +56,7 @@ class UpstreamStudioAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_studio_changes"
-    logic_version = 3  # v3: drop numeric ID fallback for unlinked parent studios
+    logic_version = 4  # v4: suppress false parent_studio diffs when names match
 
     @property
     def entity_type(self) -> str:
@@ -88,4 +88,17 @@ class UpstreamStudioAnalyzer(BaseUpstreamAnalyzer):
         snapshot: Optional[dict],
         enabled_fields: set[str],
     ) -> list[dict]:
-        return diff_studio_fields(local_data, upstream_data, snapshot, enabled_fields)
+        changes = diff_studio_fields(local_data, upstream_data, snapshot, enabled_fields)
+
+        # Suppress parent_studio changes when the local parent exists with the
+        # same name as upstream — the parent is correct, just not linked to this
+        # endpoint's stash_id. The resolution layer handles linking when needed.
+        filtered = []
+        for change in changes:
+            if change["field"] == "parent_studio":
+                local_name = (local_data.get("_parent_studio_name") or "").strip().lower()
+                upstream_name = (upstream_data.get("_parent_studio_name") or "").strip().lower()
+                if local_name and upstream_name and local_name == upstream_name:
+                    continue
+            filtered.append(change)
+        return filtered
