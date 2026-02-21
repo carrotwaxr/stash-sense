@@ -990,7 +990,7 @@ async def _resolve_stashbox_studio_to_local(
     if studios:
         return studios[0]["id"]
 
-    # Not found locally — import from StashBox
+    # Not found by stash_id — fetch upstream info and try name match
     from stashbox_connection_manager import get_connection_manager
     mgr = get_connection_manager()
     sbc = mgr.get_client(endpoint)
@@ -1005,12 +1005,26 @@ async def _resolve_stashbox_studio_to_local(
             detail=f"Parent studio {stashbox_id} not found on StashBox"
         )
 
-    # Extract first URL
+    # Try to find locally by exact name match before creating
+    local_matches = await stash.search_studios(upstream["name"], limit=10)
+    upstream_name_lower = upstream["name"].strip().lower()
+    for match in local_matches:
+        if (match.get("name") or "").strip().lower() == upstream_name_lower:
+            # Exact name match — link the stash_id to the existing studio
+            existing_stash_ids = match.get("stash_ids") or []
+            existing_stash_ids.append({"endpoint": endpoint, "stash_id": stashbox_id})
+            await stash.update_studio(match["id"], stash_ids=existing_stash_ids)
+            logger.warning(
+                f"Linked existing studio '{match['name']}' (ID: {match['id']}) "
+                f"to StashBox {stashbox_id} on {endpoint}"
+            )
+            return match["id"]
+
+    # No local match by name — auto-import from StashBox
     url = None
     if upstream.get("urls") and len(upstream["urls"]) > 0:
         url = upstream["urls"][0].get("url") if isinstance(upstream["urls"][0], dict) else upstream["urls"][0]
 
-    # Create locally
     new_studio = await stash.create_studio(
         name=upstream["name"],
         url=url,
