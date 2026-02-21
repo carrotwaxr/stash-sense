@@ -218,18 +218,22 @@ class ModelManager:
         logger.warning(f"Downloading model {model_name} from {url}")
 
         try:
-            async with httpx.AsyncClient(follow_redirects=True) as client:
+            timeout = httpx.Timeout(connect=30.0, read=60.0, write=None, pool=30.0)
+            sha256_hasher = hashlib.sha256()
+
+            async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
                 async with client.stream("GET", url) as response:
                     response.raise_for_status()
 
                     with open(dest, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size=65536):
                             f.write(chunk)
+                            sha256_hasher.update(chunk)
                             progress.downloaded_bytes += len(chunk)
 
-            # Validate SHA256
+            # Validate SHA256 (already computed incrementally)
             progress.status = DownloadStatus.VALIDATING
-            actual_hash = self._compute_sha256(dest)
+            actual_hash = sha256_hasher.hexdigest()
 
             if actual_hash != model.sha256:
                 dest.unlink(missing_ok=True)

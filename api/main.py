@@ -119,8 +119,8 @@ def _load_face_recognition(data_dir: Path) -> dict:
     tattoo_matcher = None
     if tattoo_enabled:
         # Use model manager paths for tattoo models
-        tattoo_det_path = mgr.get_model_path("tattoo_detector")
-        tattoo_emb_path = mgr.get_model_path("tattoo_embedder")
+        tattoo_det_path = mgr.get_model_path("tattoo_yolov5s")
+        tattoo_emb_path = mgr.get_model_path("tattoo_efficientnet_b0")
 
         print("Initializing tattoo detector...")
         tattoo_detector = TattooDetector(

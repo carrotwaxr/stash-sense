@@ -173,7 +173,11 @@
         apiCall('capabilities'),
       ]);
 
-      const models = modelsResult.models || [];
+      const modelsObj = modelsResult.models || {};
+      const models = Object.entries(modelsObj).map(([key, info]) => ({
+        name: key,
+        ...info,
+      }));
 
       if (models.length === 0) {
         const emptyRow = SS.createElement('div', {
@@ -214,8 +218,8 @@
             .replace(/_/g, ' ')
             .replace(/\b\w/g, c => c.toUpperCase());
 
-          const sizeMB = model.size_bytes
-            ? `${(model.size_bytes / (1024 * 1024)).toFixed(0)} MB`
+          const sizeMB = model.size
+            ? `${(model.size / (1024 * 1024)).toFixed(0)} MB`
             : '';
 
           const info = SS.createElement('div', { className: 'ss-setting-info' });
@@ -260,7 +264,7 @@
                 const pollInterval = setInterval(async () => {
                   try {
                     const progress = await apiCall('models_progress');
-                    const dl = progress.downloads?.[model.name] || progress.current;
+                    const dl = progress.progress?.[model.name] || progress.current;
 
                     if (dl && dl.percent !== undefined) {
                       dlBtn.textContent = `${Math.round(dl.percent)}%`;
