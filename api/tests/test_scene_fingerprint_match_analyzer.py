@@ -202,3 +202,92 @@ class TestAnalyzerRun:
         for call in db.create_recommendation.call_args_list:
             details = call[1]["details"]
             assert details["high_confidence"] is False
+
+
+class TestAcceptAction:
+    """Test the accept fingerprint match action logic."""
+
+    @pytest.mark.asyncio
+    async def test_accept_adds_stash_id_to_scene(self):
+        """Accepting a match should add the stash_id to the local scene."""
+        from recommendations_router import _accept_fingerprint_match
+
+        mock_stash = AsyncMock()
+        mock_stash.get_scene_by_id.return_value = {
+            "id": "42",
+            "stash_ids": [
+                {"endpoint": "https://other.org/graphql", "stash_id": "other-uuid"},
+            ],
+        }
+        mock_stash.update_scene.return_value = {"id": "42"}
+
+        mock_db = MagicMock()
+        mock_db.resolve_recommendation.return_value = True
+
+        await _accept_fingerprint_match(
+            stash=mock_stash,
+            db=mock_db,
+            rec_id=1,
+            scene_id="42",
+            endpoint="https://stashdb.org/graphql",
+            stash_id="sb-uuid-1",
+        )
+
+        # Verify stash_ids includes both old and new
+        call_kwargs = mock_stash.update_scene.call_args[1]
+        stash_ids = call_kwargs["stash_ids"]
+        assert len(stash_ids) == 2
+        assert {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-uuid-1"} in stash_ids
+
+        # Verify recommendation was resolved
+        mock_db.resolve_recommendation.assert_called_once_with(1, action="accepted")
+
+
+class TestAcceptAllAction:
+    """Test the accept-all fingerprint matches action."""
+
+    @pytest.mark.asyncio
+    async def test_accepts_only_high_confidence(self):
+        """Only high_confidence recommendations should be accepted."""
+        from recommendations_router import _accept_all_fingerprint_matches
+        from recommendations_db import Recommendation
+
+        high_conf_rec = Recommendation(
+            id=1, type="scene_fingerprint_match", status="pending",
+            target_type="scene", target_id="42|https://stashdb.org/graphql|sb-1",
+            details={
+                "local_scene_id": "42",
+                "endpoint": "https://stashdb.org/graphql",
+                "stashbox_scene_id": "sb-1",
+                "high_confidence": True,
+            },
+            resolution_action=None, resolution_details=None, resolved_at=None,
+            confidence=0.67, source_analysis_id=None,
+            created_at="2026-01-01", updated_at="2026-01-01",
+        )
+        low_conf_rec = Recommendation(
+            id=2, type="scene_fingerprint_match", status="pending",
+            target_type="scene", target_id="43|https://stashdb.org/graphql|sb-2",
+            details={
+                "local_scene_id": "43",
+                "endpoint": "https://stashdb.org/graphql",
+                "stashbox_scene_id": "sb-2",
+                "high_confidence": False,
+            },
+            resolution_action=None, resolution_details=None, resolved_at=None,
+            confidence=0.33, source_analysis_id=None,
+            created_at="2026-01-01", updated_at="2026-01-01",
+        )
+
+        mock_db = MagicMock()
+        mock_db.get_recommendations.return_value = [high_conf_rec, low_conf_rec]
+        mock_db.resolve_recommendation.return_value = True
+
+        mock_stash = AsyncMock()
+        mock_stash.get_scene_by_id.return_value = {"id": "42", "stash_ids": []}
+        mock_stash.update_scene.return_value = {"id": "42"}
+
+        accepted = await _accept_all_fingerprint_matches(mock_stash, mock_db)
+
+        assert accepted == 1
+        mock_db.resolve_recommendation.assert_called_once_with(1, action="accepted")
