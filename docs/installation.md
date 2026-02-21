@@ -26,16 +26,18 @@ After extraction, you should have:
 
 ```
 stash-sense-data/
-├── performers.db            # Performer metadata
-├── face_facenet.voy         # FaceNet512 embedding index
-├── face_arcface.voy         # ArcFace embedding index
-├── face_adaface.voy         # AdaFace IR-101 embedding index
-├── tattoo_embeddings.voy    # Tattoo embedding index
-├── faces.json               # Face reference data
-├── performers.json          # Performer lookup data
-├── tattoo_embeddings.json   # Tattoo reference data
-└── manifest.json            # Database version and checksums
+├── performers.db            # Performer metadata (required)
+├── face_facenet.voy         # FaceNet512 embedding index (required)
+├── face_arcface.voy         # ArcFace embedding index (required)
+├── faces.json               # Face reference data (required)
+├── performers.json          # Performer lookup data (required)
+├── manifest.json            # Database version and checksums (required)
+├── face_adaface.voy         # AdaFace IR-101 embedding index (optional)
+├── tattoo_embeddings.voy    # Tattoo embedding index (optional)
+└── tattoo_embeddings.json   # Tattoo reference data (optional)
 ```
+
+The six required files are needed for core face recognition. The optional files (`face_adaface.voy`, `tattoo_embeddings.voy`, `tattoo_embeddings.json`) are only needed if you enable the AdaFace model or tattoo detection features in settings.
 
 ---
 
