@@ -24,8 +24,9 @@ def _build_local_studio_data(studio: dict, endpoint: str = "") -> dict:
     """Extract comparable field values from a local Stash studio.
 
     For parent_studio, resolves the parent's stashbox ID for the given endpoint
-    so it can be compared against the upstream stashbox UUID. Falls back to the
-    local numeric ID if the parent isn't linked to this endpoint.
+    so it can be compared against the upstream stashbox UUID. If the parent isn't
+    linked to this endpoint, parent_studio stays None — a numeric local ID can't
+    be meaningfully compared against a stash-box UUID.
     """
     parent = studio.get("parent_studio")
     parent_studio_val = None
@@ -37,9 +38,6 @@ def _build_local_studio_data(studio: dict, endpoint: str = "") -> dict:
             if sid["endpoint"] == endpoint:
                 parent_studio_val = sid["stash_id"]
                 break
-        if parent_studio_val is None:
-            # Parent not linked to this endpoint — use local ID as fallback
-            parent_studio_val = str(parent["id"])
 
     return {
         "name": studio.get("name"),
@@ -58,7 +56,7 @@ class UpstreamStudioAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_studio_changes"
-    logic_version = 2  # v2: parent studio uses stashbox ID instead of local numeric ID
+    logic_version = 3  # v3: drop numeric ID fallback for unlinked parent studios
 
     @property
     def entity_type(self) -> str:
