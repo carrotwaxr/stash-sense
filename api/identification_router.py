@@ -260,7 +260,7 @@ def _match_to_response(m, **overrides) -> PerformerMatchResponse:
     """Convert a PerformerMatch (or MultiSignalMatch or PerformerMatchResponse) to PerformerMatchResponse."""
     uid = getattr(m, "universal_id", None)
     score = getattr(m, "combined_score", getattr(m, "distance", 0))
-    return PerformerMatchResponse(
+    defaults = dict(
         stashdb_id=m.stashdb_id,
         name=m.name,
         confidence=distance_to_confidence(score),
@@ -270,8 +270,9 @@ def _match_to_response(m, **overrides) -> PerformerMatchResponse:
         country=m.country,
         image_url=m.image_url,
         endpoint=_extract_endpoint(uid) or getattr(m, "endpoint", None),
-        **overrides,
     )
+    defaults.update(overrides)
+    return PerformerMatchResponse(**defaults)
 
 
 async def _fetch_image_for_match(match: PerformerMatch) -> None:
