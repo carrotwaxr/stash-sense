@@ -15,6 +15,7 @@ import face_config
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer, UpstreamSceneAnalyzer
+from analyzers.scene_fingerprint_match import SceneFingerprintMatchAnalyzer
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -407,6 +408,7 @@ ANALYZERS = {
     "upstream_tag_changes": UpstreamTagAnalyzer,
     "upstream_studio_changes": UpstreamStudioAnalyzer,
     "upstream_scene_changes": UpstreamSceneAnalyzer,
+    "scene_fingerprint_match": SceneFingerprintMatchAnalyzer,
 }
 
 

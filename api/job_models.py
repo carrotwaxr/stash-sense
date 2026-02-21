@@ -250,6 +250,18 @@ _register(
 )
 
 _register(
+    "scene_fingerprint_match",
+    "Scene Fingerprint Matching",
+    "Match local scenes to stash-box entries via fingerprints",
+    ResourceType.NETWORK,
+    JobPriority.NORMAL,
+    supports_incremental=True,
+    schedulable=True,
+    default_interval_hours=168,
+    allowed_intervals=INTERVALS_INFREQUENT,
+)
+
+_register(
     "fingerprint_generation",
     "Fingerprint Generation",
     "Generates face recognition fingerprints for scenes",
