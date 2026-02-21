@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "repo": "carrotwaxr/stash-sense",
+  "release_tag": "models",
+  "models": {
+    "facenet512": {
+      "file": "facenet512.onnx",
+      "size": 93985006,
+      "sha256": "4b6fcd19d0355d532d25007989d62cdfb5f86d761e52c6287aac9d821011a9e6",
+      "group": "face_recognition",
+      "description": "FaceNet512 face embedding model"
+    },
+    "arcface": {
+      "file": "arcface.onnx",
+      "size": 136564309,
+      "sha256": "2eff37a187485caef7ffb3bbb3a542132d195bbdc02e071f20e80614477b735c",
+      "group": "face_recognition",
+      "description": "ArcFace face embedding model"
+    },
+    "tattoo_yolov5s": {
+      "file": "tattoo_yolov5s.onnx",
+      "size": 83882182,
+      "sha256": "91ad9d010d8f0d09847db2bc3769b854ec67366a5755b29fd152dc975361692b",
+      "group": "tattoo_detection",
+      "description": "YOLOv5s tattoo detection model"
+    },
+    "tattoo_efficientnet_b0": {
+      "file": "tattoo_efficientnet_b0.onnx",
+      "size": 16019984,
+      "sha256": "55c58c908dd674a77e0d90d00aeae738ad649d19c77c30214cbfe121ea75c099",
+      "group": "tattoo_detection",
+      "description": "EfficientNet-B0 tattoo classification model"
+    }
+  }
+}

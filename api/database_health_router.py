@@ -32,14 +32,17 @@ def init_database_health_router(recognizer, multi_signal_matcher, db_manifest: d
     _db_updater = db_updater
 
 
-def update_database_health_globals(recognizer=None, multi_signal_matcher=None, db_manifest=None):
-    """Update globals after a database hot-swap."""
+_UNSET = object()  # sentinel to distinguish "not provided" from None
+
+
+def update_database_health_globals(recognizer=_UNSET, multi_signal_matcher=_UNSET, db_manifest=_UNSET):
+    """Update globals after a database hot-swap or idle unload."""
     global _recognizer, _multi_signal_matcher, _db_manifest
-    if recognizer is not None:
+    if recognizer is not _UNSET:
         _recognizer = recognizer
-    if multi_signal_matcher is not None:
+    if multi_signal_matcher is not _UNSET:
         _multi_signal_matcher = multi_signal_matcher
-    if db_manifest is not None:
+    if db_manifest is not _UNSET:
         _db_manifest = db_manifest
 
 
@@ -93,7 +96,12 @@ class UpdateStatusResponse(BaseModel):
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Check API health and database status."""
+    """Check API health and database status.
+
+    Does NOT trigger lazy loading -- reports current state without
+    side effects. The face recognition database loads on first
+    /identify request.
+    """
     if _recognizer is None:
         return HealthResponse(
             status="degraded",

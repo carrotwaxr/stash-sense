@@ -1,78 +1,59 @@
 """
-Tattoo detection using TattooTrace YOLOv5s model.
+Tattoo detection using YOLOv5s model via ONNX Runtime.
 
-Downloads the pre-trained model from Google Drive on first use and
-uses it to detect tattoos in images.
+Loads the pre-trained TattooTrace YOLOv5s ONNX model and uses it to
+detect tattoos in images. All preprocessing (letterbox, normalization)
+and post-processing (NMS, coordinate mapping) is done in numpy/cv2.
 """
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import cv2
 import numpy as np
+import onnxruntime as ort
 
 logger = logging.getLogger(__name__)
 
-# Google Drive file ID for TattooTrace YOLOv5s model
-GDRIVE_FILE_ID = "14VpsSrTkOxp0MTzN7uaVJp8uAZ167l-z"
-DEFAULT_MODEL_DIR = Path(__file__).parent / "models" / "tattoo"
-MODEL_FILENAME = "tattoo_yolov5s.pt"
-FINETUNED_MODEL_FILENAME = "tattoo_yolov5s_latest.pt"  # Symlink to latest fine-tuned model
+# Model filename (ONNX format, converted from PyTorch via convert_models_to_onnx.py)
+ONNX_MODEL_FILENAME = "tattoo_yolov5s.onnx"
+
+# Model search paths: DATA_DIR/models first, then ./models (relative to this file)
+DATA_DIR = os.environ.get("DATA_DIR", "./data")
+LOCAL_MODELS_DIR = Path(__file__).parent / "models"
 
 
-def _get_model_path(model_dir: Optional[Path] = None) -> Path:
+def _find_model_path() -> Path:
     """
-    Get path to the tattoo detection model, downloading if needed.
+    Find the ONNX tattoo detection model.
 
-    Prefers fine-tuned model (tattoo_yolov5s_latest.pt) if available,
-    otherwise falls back to base model (tattoo_yolov5s.pt).
-
-    Args:
-        model_dir: Directory to store the model file
+    Search order:
+    1. {DATA_DIR}/models/tattoo_yolov5s.onnx (Docker / production)
+    2. ./models/tattoo_yolov5s.onnx (local development, relative to this file)
 
     Returns:
-        Path to the model file
+        Path to the ONNX model file.
+
+    Raises:
+        FileNotFoundError: If the model cannot be found in any search path.
     """
-    if model_dir is None:
-        model_dir = DEFAULT_MODEL_DIR
+    # Check DATA_DIR/models first (production / Docker)
+    data_models_path = Path(DATA_DIR) / "models" / ONNX_MODEL_FILENAME
+    if data_models_path.exists():
+        return data_models_path
 
-    model_dir_path = Path(model_dir)
+    # Fall back to local models directory
+    local_path = LOCAL_MODELS_DIR / ONNX_MODEL_FILENAME
+    if local_path.exists():
+        return local_path
 
-    # Prefer fine-tuned model if it exists
-    finetuned_path = model_dir_path / FINETUNED_MODEL_FILENAME
-    if finetuned_path.exists():
-        logger.info(f"Using fine-tuned model: {finetuned_path}")
-        return finetuned_path
-
-    # Fall back to base model
-    model_path = model_dir_path / MODEL_FILENAME
-
-    if not model_path.exists():
-        logger.info(f"Downloading tattoo detection model to {model_path}...")
-        try:
-            import gdown
-
-            # Create directory if it doesn't exist
-            model_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Download from Google Drive
-            url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
-            gdown.download(url, str(model_path), quiet=False)
-
-            if not model_path.exists():
-                raise RuntimeError("Download completed but model file not found")
-
-            logger.info("Model download complete.")
-        except Exception as e:
-            # Clean up partial download if it exists
-            if model_path.exists():
-                model_path.unlink()
-            raise RuntimeError(
-                f"Failed to download tattoo detection model. "
-                f"Please check your network connection and try again. Error: {e}"
-            ) from e
-
-    return model_path
+    raise FileNotFoundError(
+        f"Tattoo detection ONNX model not found. "
+        f"Searched: {data_models_path}, {local_path}. "
+        f"Run convert_models_to_onnx.py to generate the model."
+    )
 
 
 @dataclass
@@ -132,36 +113,34 @@ class TattooResult:
 
 class TattooDetector:
     """
-    Detects tattoos in images using YOLOv5.
+    Detects tattoos in images using YOLOv5 via ONNX Runtime.
 
-    Uses lazy loading of the model to avoid startup cost if tattoo
-    detection is not needed.
+    Uses lazy loading of the ONNX session to avoid startup cost if tattoo
+    detection is not needed. All preprocessing and post-processing is done
+    in numpy/cv2 -- no PyTorch dependency.
     """
 
     MIN_CONFIDENCE = 0.25
+    INPUT_SIZE = 640  # YOLOv5 input resolution
+    IOU_THRESHOLD = 0.45  # NMS IoU threshold (matches YOLOv5 default)
 
     def __init__(self, model_path: Optional[str] = None):
         """
         Initialize detector.
 
         Args:
-            model_path: Path to model file. If None, uses default path
-                       and downloads model if needed.
+            model_path: Path to ONNX model file. If None, searches default
+                       locations (DATA_DIR/models, then ./models).
         """
-        self._model = None
+        self._session = None
         self._model_path = model_path
+        self._input_name = None
+        self._output_name = None
 
     @property
-    def model(self):
-        """Lazy-load YOLOv5 model."""
-        if self._model is None:
-            import pathlib
-            import torch
-
-            # Fix for models saved on Windows - patch WindowsPath to PosixPath
-            # This is needed because TattooTrace model was saved on Windows
-            pathlib.WindowsPath = pathlib.PosixPath
-
+    def session(self) -> ort.InferenceSession:
+        """Lazy-load ONNX Runtime session."""
+        if self._session is None:
             if self._model_path:
                 model_path = Path(self._model_path)
                 if not model_path.exists():
@@ -169,19 +148,128 @@ class TattooDetector:
                         f"Model file not found at {self._model_path}"
                     )
             else:
-                model_path = _get_model_path()
+                model_path = _find_model_path()
 
-            logger.info(f"Loading tattoo detection model from {model_path}...")
-            self._model = torch.hub.load(
-                "ultralytics/yolov5",
-                "custom",
-                path=str(model_path),
-                trust_repo=True,
+            # Use GPU if available, fall back to CPU
+            providers = ort.get_available_providers()
+            if "CUDAExecutionProvider" in providers:
+                ort_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                ort_providers = ["CPUExecutionProvider"]
+
+            logger.info(f"Loading tattoo detection ONNX model from {model_path}...")
+            self._session = ort.InferenceSession(
+                str(model_path), providers=ort_providers,
             )
-            self._model.conf = self.MIN_CONFIDENCE
+            self._input_name = self._session.get_inputs()[0].name
+            self._output_name = self._session.get_outputs()[0].name
             logger.info("Tattoo detection model loaded.")
 
-        return self._model
+        return self._session
+
+    # Keep backward-compatible `model` alias so existing attribute checks
+    # (e.g. `hasattr(TattooDetector, 'model')`) still pass.
+    model = session
+
+    def _letterbox(
+        self, image: np.ndarray, new_shape: int = 640
+    ) -> tuple[np.ndarray, float, tuple[int, int]]:
+        """
+        Resize image with letterboxing (preserve aspect ratio, pad with gray).
+
+        This replicates YOLOv5's letterbox preprocessing:
+        - Scale the image so its longest side fits within new_shape
+        - Pad the shorter side with gray (114, 114, 114) to reach new_shape
+
+        Args:
+            image: Input image as numpy array (H, W, 3), any color space.
+            new_shape: Target square size (default 640).
+
+        Returns:
+            Tuple of:
+            - letterboxed: Padded image of shape (new_shape, new_shape, 3)
+            - ratio: Scale factor applied to the image
+            - pad: (pad_w, pad_h) padding added to each side (half-pad)
+        """
+        h, w = image.shape[:2]
+
+        # Compute scale factor (fit longest side)
+        ratio = new_shape / max(h, w)
+        new_unpad_w = int(round(w * ratio))
+        new_unpad_h = int(round(h * ratio))
+
+        # Compute padding needed
+        dw = new_shape - new_unpad_w
+        dh = new_shape - new_unpad_h
+
+        # Divide padding evenly on both sides
+        pad_left = dw // 2
+        pad_top = dh // 2
+
+        # Resize image (only if needed)
+        if (new_unpad_w, new_unpad_h) != (w, h):
+            resized = cv2.resize(image, (new_unpad_w, new_unpad_h), interpolation=cv2.INTER_LINEAR)
+        else:
+            resized = image
+
+        # Pad with gray (114 is YOLOv5's default pad value)
+        letterboxed = np.full((new_shape, new_shape, 3), 114, dtype=np.uint8)
+        letterboxed[pad_top:pad_top + new_unpad_h, pad_left:pad_left + new_unpad_w] = resized
+
+        return letterboxed, ratio, (pad_left, pad_top)
+
+    def _nms(self, detections: np.ndarray, iou_threshold: float = 0.45) -> np.ndarray:
+        """
+        Non-Maximum Suppression in pure numpy.
+
+        Args:
+            detections: Array of shape (N, 6) with columns
+                       [x1, y1, x2, y2, confidence, class_id].
+                       Must already be filtered by confidence threshold.
+            iou_threshold: IoU threshold for suppression.
+
+        Returns:
+            Filtered detections array after NMS, shape (M, 6) where M <= N.
+        """
+        if len(detections) == 0:
+            return detections
+
+        x1 = detections[:, 0]
+        y1 = detections[:, 1]
+        x2 = detections[:, 2]
+        y2 = detections[:, 3]
+        scores = detections[:, 4]
+
+        areas = (x2 - x1) * (y2 - y1)
+        order = scores.argsort()[::-1]
+
+        keep = []
+        while len(order) > 0:
+            i = order[0]
+            keep.append(i)
+
+            if len(order) == 1:
+                break
+
+            # Compute IoU of the picked box with the rest
+            rest = order[1:]
+            xx1 = np.maximum(x1[i], x1[rest])
+            yy1 = np.maximum(y1[i], y1[rest])
+            xx2 = np.minimum(x2[i], x2[rest])
+            yy2 = np.minimum(y2[i], y2[rest])
+
+            inter_w = np.maximum(0.0, xx2 - xx1)
+            inter_h = np.maximum(0.0, yy2 - yy1)
+            intersection = inter_w * inter_h
+
+            union = areas[i] + areas[rest] - intersection
+            iou = intersection / np.maximum(union, 1e-6)
+
+            # Keep boxes with IoU below threshold
+            remaining = np.where(iou <= iou_threshold)[0]
+            order = rest[remaining]
+
+        return detections[keep]
 
     def detect(self, image: np.ndarray) -> TattooResult:
         """
@@ -193,36 +281,92 @@ class TattooDetector:
         Returns:
             TattooResult with detected tattoos
         """
-        # Run inference
-        results = self.model(image)
+        orig_h, orig_w = image.shape[:2]
 
-        # Parse detections
+        # --- Preprocessing (replicate YOLOv5 letterbox pipeline) ---
+        letterboxed, ratio, (pad_left, pad_top) = self._letterbox(image, self.INPUT_SIZE)
+
+        # HWC -> CHW, uint8 -> float32, normalize to [0, 1]
+        blob = letterboxed.transpose(2, 0, 1).astype(np.float32) / 255.0
+        blob = blob[np.newaxis, ...]  # Add batch dimension: (1, 3, 640, 640)
+
+        # --- ONNX Inference ---
+        raw_output = self.session.run(
+            [self._output_name], {self._input_name: blob}
+        )[0]  # Shape: (1, 25200, 6)
+
+        predictions = raw_output[0]  # (25200, 6)
+
+        # --- Post-processing ---
+        # Columns: [x_center, y_center, w, h, obj_conf, class_conf]
+        obj_conf = predictions[:, 4]
+        class_conf = predictions[:, 5]
+        scores = obj_conf * class_conf
+
+        # Filter by confidence threshold
+        mask = scores >= self.MIN_CONFIDENCE
+        filtered = predictions[mask]
+        filtered_scores = scores[mask]
+
+        if len(filtered) == 0:
+            return TattooResult(detections=[], has_tattoos=False, confidence=0.0)
+
+        # Convert xywh (center) to xyxy (corner) in 640x640 pixel space
+        cx = filtered[:, 0]
+        cy = filtered[:, 1]
+        w = filtered[:, 2]
+        h = filtered[:, 3]
+
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
+
+        # Build detection array for NMS: [x1, y1, x2, y2, score, class_id=0]
+        nms_input = np.column_stack([
+            x1, y1, x2, y2, filtered_scores, np.zeros(len(filtered_scores))
+        ])
+
+        # Apply NMS
+        nms_output = self._nms(nms_input, self.IOU_THRESHOLD)
+
+        # --- Map coordinates back to original image space ---
         detections = []
-        height, width = image.shape[:2]
+        for det in nms_output:
+            det_x1, det_y1, det_x2, det_y2, conf, _ = det
 
-        # Results format: xyxy, conf, cls
-        for *xyxy, conf, cls in results.xyxy[0].cpu().numpy():
-            x1, y1, x2, y2 = xyxy
-            conf = float(conf)
+            # Remove letterbox padding
+            det_x1 -= pad_left
+            det_y1 -= pad_top
+            det_x2 -= pad_left
+            det_y2 -= pad_top
 
-            if conf < self.MIN_CONFIDENCE:
-                continue
+            # Undo letterbox scaling to get original pixel coordinates
+            det_x1 /= ratio
+            det_y1 /= ratio
+            det_x2 /= ratio
+            det_y2 /= ratio
+
+            # Clip to image bounds
+            det_x1 = max(0.0, min(float(det_x1), orig_w))
+            det_y1 = max(0.0, min(float(det_y1), orig_h))
+            det_x2 = max(0.0, min(float(det_x2), orig_w))
+            det_y2 = max(0.0, min(float(det_y2), orig_h))
 
             # Convert to normalized bbox {x, y, w, h}
             bbox = {
-                "x": float(x1 / width),
-                "y": float(y1 / height),
-                "w": float((x2 - x1) / width),
-                "h": float((y2 - y1) / height),
+                "x": det_x1 / orig_w,
+                "y": det_y1 / orig_h,
+                "w": (det_x2 - det_x1) / orig_w,
+                "h": (det_y2 - det_y1) / orig_h,
             }
 
-            # Estimate location hint based on bbox position
             location_hint = self._estimate_location(bbox)
 
             detections.append(
                 TattooDetection(
                     bbox=bbox,
-                    confidence=conf,
+                    confidence=float(conf),
                     location_hint=location_hint,
                 )
             )
@@ -230,7 +374,6 @@ class TattooDetector:
         # Sort by confidence (highest first)
         detections.sort(key=lambda d: d.confidence, reverse=True)
 
-        # Calculate overall confidence
         overall_confidence = max((d.confidence for d in detections), default=0.0)
 
         return TattooResult(

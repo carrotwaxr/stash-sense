@@ -63,6 +63,17 @@ def main():
             "stash_ids": args.get("stash_ids", []),
             "update_metadata": args.get("update_metadata", False),
         })
+    elif mode == "models_status":
+        result = sidecar_get(sidecar_url, "/models/status")
+    elif mode == "models_download":
+        model_name = args.get("model_name", "")
+        result = sidecar_post(sidecar_url, f"/models/download/{model_name}", timeout=300)
+    elif mode == "models_download_all":
+        result = sidecar_post(sidecar_url, "/models/download-all", timeout=300)
+    elif mode == "models_progress":
+        result = sidecar_get(sidecar_url, "/models/download-progress")
+    elif mode == "capabilities":
+        result = sidecar_get(sidecar_url, "/capabilities")
     elif mode.startswith("settings_") or mode == "system_info":
         result = handle_settings(mode, args, sidecar_url)
         if result is None:
