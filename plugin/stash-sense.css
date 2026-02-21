@@ -2819,6 +2819,36 @@
   }
 }
 
+/* ==================== Model Status Badges ==================== */
+
+.ss-model-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.ss-model-installed {
+  color: #198754;
+  background: rgba(25, 135, 84, 0.15);
+}
+
+.ss-model-not_installed {
+  color: #888;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ss-model-corrupted {
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.15);
+}
+
+.ss-models-group-header {
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 /* ==================== Operations Page ==================== */
 
 .ss-operations-page {

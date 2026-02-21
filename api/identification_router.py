@@ -76,18 +76,21 @@ def init_identification_router(
     _stash_api_key = stash_api_key
 
 
+_UNSET = object()  # sentinel to distinguish "not provided" from None
+
+
 def update_identification_globals(
-    recognizer=None,
-    multi_signal_matcher=None,
-    db_manifest=None,
+    recognizer=_UNSET,
+    multi_signal_matcher=_UNSET,
+    db_manifest=_UNSET,
 ):
-    """Update globals after a database hot-swap."""
+    """Update globals after a database hot-swap or idle unload."""
     global _recognizer, _multi_signal_matcher, _db_manifest
-    if recognizer is not None:
+    if recognizer is not _UNSET:
         _recognizer = recognizer
-    if multi_signal_matcher is not None:
+    if multi_signal_matcher is not _UNSET:
         _multi_signal_matcher = multi_signal_matcher
-    if db_manifest is not None:
+    if db_manifest is not _UNSET:
         _db_manifest = db_manifest
 
 
@@ -320,7 +323,11 @@ async def _fetch_missing_images(all_matches: list[PerformerMatch]) -> None:
 
 
 async def require_db_available():
-    """Return 503 if a database update is currently swapping files."""
+    """Ensure face recognition is loaded, return 503 if unavailable.
+
+    Uses ResourceManager to lazily load on first request. Returns 503 if
+    a database update is in progress or if loading fails.
+    """
     if _db_updater and _db_updater._state.status in (
         UpdateStatus.SWAPPING, UpdateStatus.RELOADING,
     ):
@@ -329,6 +336,24 @@ async def require_db_available():
             detail="Database update in progress",
             headers={"Retry-After": "10"},
         )
+
+    # Lazy-load face recognition via ResourceManager if not yet loaded
+    if _recognizer is None:
+        try:
+            from resource_manager import get_resource_manager
+            mgr = get_resource_manager()
+            mgr.require("face_recognition")
+            # After require(), router globals are updated by the loader
+        except RuntimeError:
+            # ResourceManager not initialized
+            raise HTTPException(status_code=503, detail="Database not loaded")
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Face recognition unavailable: {e}",
+            )
+
+    # Double-check after lazy load attempt
     if _recognizer is None:
         raise HTTPException(status_code=503, detail="Database not loaded")
 

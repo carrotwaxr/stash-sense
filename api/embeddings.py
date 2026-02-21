@@ -8,6 +8,7 @@ All inference runs through ONNX Runtime with CUDAExecutionProvider when
 available, falling back to CPU. No TensorFlow dependency at runtime.
 """
 import io
+import os
 import cv2
 import numpy as np
 import onnxruntime as ort
@@ -21,8 +22,9 @@ from insightface.app import FaceAnalysis
 from insightface.utils.face_align import norm_crop
 
 
-# Default path for ONNX embedding models
+# Model search paths: DATA_DIR/models first, then ./models (relative to this file)
 MODELS_DIR = Path(__file__).parent / "models"
+DATA_MODELS_DIR = Path(os.environ.get("DATA_DIR", "./data")) / "models"
 
 
 @dataclass
@@ -49,13 +51,15 @@ class FaceEmbeddingGenerator:
     Supports batch inference for processing multiple faces in a single call.
     """
 
-    def __init__(self, device: str = None, models_dir: Path = MODELS_DIR):
+    def __init__(self, device: str = None, models_dir: Path = None):
         """
         Initialize the embedding generator.
 
         Args:
             device: Device for inference ("cuda", "cpu", or None for auto)
-            models_dir: Directory containing facenet512.onnx and arcface.onnx
+            models_dir: Directory containing facenet512.onnx and arcface.onnx.
+                If None, checks DATA_DIR/models first (Docker/production),
+                then falls back to ./models (local development).
         """
         # Auto-detect device
         if device is None:
@@ -64,6 +68,12 @@ class FaceEmbeddingGenerator:
         else:
             self.device = device
 
+        # Auto-detect models directory: DATA_DIR/models first, then local ./models
+        if models_dir is None:
+            if (DATA_MODELS_DIR / "facenet512.onnx").exists():
+                models_dir = DATA_MODELS_DIR
+            else:
+                models_dir = MODELS_DIR
         self._models_dir = models_dir
         self._face_analyzer = None
         self._facenet_session = None
