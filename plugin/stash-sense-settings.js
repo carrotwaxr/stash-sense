@@ -271,9 +271,8 @@
                     }
 
                     // Check if complete
-                    const isComplete = dl?.status === 'completed'
-                      || dl?.percent >= 100
-                      || progress.status === 'idle';
+                    const isComplete = dl?.status === 'complete'
+                      || dl?.percent >= 100;
 
                     if (isComplete || (!dl && progress.status !== 'downloading')) {
                       clearInterval(pollInterval);
@@ -332,30 +331,35 @@
             // Poll for progress
             const pollInterval = setInterval(async () => {
               try {
-                const progress = await apiCall('models_progress');
+                const progressResult = await apiCall('models_progress');
+                const entries = Object.values(progressResult.progress || {});
 
-                if (progress.percent !== undefined) {
-                  downloadAllBtn.textContent = `Downloading... ${Math.round(progress.percent)}%`;
-                }
+                if (entries.length > 0) {
+                  const totalBytes = entries.reduce((s, e) => s + (e.total_bytes || 0), 0);
+                  const dlBytes = entries.reduce((s, e) => s + (e.downloaded_bytes || 0), 0);
+                  const pct = totalBytes > 0 ? Math.round((dlBytes / totalBytes) * 100) : 0;
+                  downloadAllBtn.textContent = `Downloading... ${pct}%`;
 
-                if (progress.status === 'idle' || progress.status === 'completed' || progress.percent >= 100) {
-                  clearInterval(pollInterval);
-                  downloadAllBtn.textContent = 'Done';
-                  downloadAllBtn.className = 'ss-btn ss-btn-success';
+                  const allDone = entries.every(e => e.status === 'complete');
+                  const anyFailed = entries.some(e => e.status === 'failed');
 
-                  // Refresh the entire settings page after a brief delay
-                  setTimeout(() => {
-                    if (window.StashSenseSettings) {
-                      window.StashSenseSettings.refresh();
-                    }
-                  }, 1500);
-                }
+                  if (allDone) {
+                    clearInterval(pollInterval);
+                    downloadAllBtn.textContent = 'Done';
+                    downloadAllBtn.className = 'ss-btn ss-btn-success';
 
-                if (progress.status === 'failed' || progress.status === 'error') {
-                  clearInterval(pollInterval);
-                  downloadAllBtn.textContent = 'Retry';
-                  downloadAllBtn.disabled = false;
-                  downloadAllBtn.className = 'ss-btn ss-btn-danger';
+                    // Refresh the entire settings page after a brief delay
+                    setTimeout(() => {
+                      if (window.StashSenseSettings) {
+                        window.StashSenseSettings.refresh();
+                      }
+                    }, 1500);
+                  } else if (anyFailed) {
+                    clearInterval(pollInterval);
+                    downloadAllBtn.textContent = 'Retry';
+                    downloadAllBtn.disabled = false;
+                    downloadAllBtn.className = 'ss-btn ss-btn-danger';
+                  }
                 }
               } catch (pollErr) {
                 // Ignore poll errors
