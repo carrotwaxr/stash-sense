@@ -582,6 +582,25 @@ def handle_recommendations(mode, args, sidecar_url):
             timeout=30,
         )
 
+    elif mode == "rec_search_entities":
+        return sidecar_post(sidecar_url, "/recommendations/actions/search-entities", {
+            "entity_type": args.get("entity_type", ""),
+            "query": args.get("query", ""),
+            "endpoint": args.get("endpoint", ""),
+        })
+
+    elif mode == "rec_link_entity":
+        entity_type = args.get("entity_type", "")
+        entity_id = args.get("entity_id", "")
+        if not entity_type or not entity_id:
+            return {"error": "entity_type and entity_id required"}
+        return sidecar_post(sidecar_url, "/recommendations/actions/link-entity", {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "endpoint": args.get("endpoint", ""),
+            "stashbox_id": args.get("stashbox_id", ""),
+        })
+
     elif mode == "rec_create_performer":
         return sidecar_post(sidecar_url, "/recommendations/actions/create-performer", {
             "stashbox_data": args.get("stashbox_data", {}),

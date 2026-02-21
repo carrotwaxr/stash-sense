@@ -1849,6 +1849,12 @@
   color: white;
   padding: 2px 8px;
   border-radius: 4px;
+  text-decoration: none;
+}
+
+a.ss-upstream-endpoint-badge:hover {
+  opacity: 0.85;
+  color: white;
 }
 
 /* Quick action buttons */
@@ -3162,7 +3168,49 @@
 .ss-scene-entity-item.ss-scene-entity-removed { opacity: 0.6; text-decoration: line-through; }
 .ss-scene-entity-name { font-size: 13px; }
 .ss-scene-entity-created { font-size: 11px; color: #4caf50; }
+.ss-scene-entity-linked { font-size: 11px; color: #2196f3; font-weight: 500; }
 .ss-scene-create-btn { font-size: 11px !important; padding: 2px 8px !important; }
+
+/* Entity search dropdown */
+.ss-entity-search-dropdown { position: relative; display: inline-block; }
+.ss-entity-link-btn { font-size: 11px !important; padding: 2px 8px !important; }
+.ss-entity-search-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 6px;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  margin-top: 4px;
+}
+.ss-entity-search-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #1a1a1a;
+  color: #eee;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.ss-entity-search-input:focus { outline: none; border-color: var(--bs-primary, #2563eb); }
+.ss-entity-search-results { max-height: 180px; overflow-y: auto; margin-top: 4px; }
+.ss-entity-search-result-item {
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ddd;
+}
+.ss-entity-search-result-item:hover { background: rgba(255,255,255,0.1); }
+.ss-entity-search-result-item.ss-entity-already-linked { opacity: 0.5; }
+.ss-entity-search-loading, .ss-entity-search-empty { font-size: 11px; color: #888; padding: 6px 8px; }
+.ss-entity-search-disambig { color: #999; font-size: 11px; }
+.ss-entity-search-linked-badge { font-size: 10px; background: #444; color: #aaa; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
 .ss-scene-tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .ss-scene-tag-chip { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); font-size: 12px; }
 .ss-scene-tag-chip.ss-scene-tag-removed { opacity: 0.6; text-decoration: line-through; background: rgba(244,67,54,0.1); }
