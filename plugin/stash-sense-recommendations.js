@@ -412,9 +412,9 @@
           description: 'Scene fields and relationships updated on StashDB since last sync',
         },
         scene_fingerprint_match: {
-          title: 'Scene Fingerprint Matches',
+          title: 'Scene Stash-Box Tagger',
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
-          description: 'Local scenes matched to stash-box entries via file fingerprints',
+          description: 'Searches untagged Scenes on all Stash-Box endpoints',
         },
       };
 
@@ -756,7 +756,7 @@
       upstream_tag_changes: 'Upstream Tag Changes',
       upstream_studio_changes: 'Upstream Studio Changes',
       upstream_scene_changes: 'Upstream Scene Changes',
-      scene_fingerprint_match: 'Scene Fingerprint Matches',
+      scene_fingerprint_match: 'Scene Stash-Box Tagger',
     };
 
     container.innerHTML = `
@@ -2702,6 +2702,27 @@
     `;
     wrapper.appendChild(headerDiv);
 
+    // Local context summary
+    const localPerformers = details.current_performers || [];
+    const localTags = details.current_tags || [];
+    const localStudio = details.current_studio;
+    const contextParts = [];
+    if (localPerformers.length > 0) {
+      contextParts.push(localPerformers.map(p => escapeHtml(p.name)).join(', '));
+    }
+    if (localTags.length > 0) {
+      contextParts.push('Tags: ' + localTags.map(t => escapeHtml(t.name)).join(', '));
+    }
+    if (localStudio) {
+      contextParts.push('Studio: ' + escapeHtml(localStudio.name));
+    }
+    if (contextParts.length > 0) {
+      const contextDiv = document.createElement('div');
+      contextDiv.className = 'ss-scene-local-context';
+      contextDiv.innerHTML = `<span class="ss-scene-local-context-label">Local:</span> ${contextParts.join(' &middot; ')}`;
+      wrapper.appendChild(contextDiv);
+    }
+
     // ===== Simple field diffs =====
     if (hasSimple) {
       const simpleSection = document.createElement('div');
@@ -2710,8 +2731,10 @@
       const quickActions = document.createElement('div');
       quickActions.className = 'ss-upstream-quick-actions';
       const keepAllBtn = document.createElement('button');
+      keepAllBtn.className = 'ss-btn ss-btn-sm ss-btn-secondary';
       keepAllBtn.textContent = 'Keep All Local';
       const acceptAllBtn = document.createElement('button');
+      acceptAllBtn.className = 'ss-btn ss-btn-sm ss-btn-primary';
       acceptAllBtn.textContent = 'Accept All Upstream';
       quickActions.appendChild(keepAllBtn);
       quickActions.appendChild(acceptAllBtn);
@@ -2854,7 +2877,7 @@
             dropdown.replaceWith(linked);
             const btn = studioRow.querySelector('.ss-scene-create-btn');
             if (btn) btn.remove();
-          });
+          }, upstreamStudio.name);
           studioRow.appendChild(dropdown);
 
           const createBtn = document.createElement('button');
@@ -2959,7 +2982,7 @@
               dropdown.replaceWith(linked);
               const btn = row.querySelector('.ss-scene-create-btn');
               if (btn) btn.remove();
-            });
+            }, perf.name);
             row.appendChild(dropdown);
 
             const createBtn = document.createElement('button');
@@ -3101,7 +3124,7 @@
               dropdown.replaceWith(linked);
               const btn = chip.querySelector('.ss-scene-create-btn');
               if (btn) btn.remove();
-            });
+            }, tag.name);
             chip.appendChild(dropdown);
 
             const createBtn = document.createElement('button');
@@ -3172,14 +3195,14 @@
     actionBar.className = 'ss-upstream-action-bar';
 
     const applyBtn = document.createElement('button');
-    applyBtn.className = 'ss-btn ss-upstream-apply-btn';
+    applyBtn.className = 'ss-btn ss-btn-primary ss-upstream-apply-btn';
     applyBtn.textContent = 'Apply Changes';
 
     // Dismiss dropdown
     const dismissDropdown = document.createElement('div');
     dismissDropdown.style.cssText = 'position:relative;';
     const dismissToggle = document.createElement('button');
-    dismissToggle.className = 'ss-btn ss-upstream-dismiss-btn';
+    dismissToggle.className = 'ss-btn ss-btn-danger ss-upstream-dismiss-btn';
     dismissToggle.textContent = 'Dismiss';
     const dismissMenu = document.createElement('div');
     dismissMenu.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px 0;min-width:220px;z-index:10;';
@@ -3591,7 +3614,7 @@
     }
   }
 
-  // ==================== Fingerprint Match Detail ====================
+  // ==================== Scene Stash-Box Tagger Detail ====================
 
   function formatDuration(seconds) {
     if (!seconds && seconds !== 0) return 'N/A';
@@ -3607,7 +3630,7 @@
     container.innerHTML = `
       <div class="ss-fp-detail">
         <div class="ss-fp-detail-header">
-          <h2>Scene Fingerprint Match</h2>
+          <h2>Scene Stash-Box Tagger</h2>
           <span class="ss-badge ${d.high_confidence ? 'ss-badge-success' : 'ss-badge-warning'}">
             ${d.high_confidence ? 'High Confidence' : 'Review Recommended'}
           </span>
@@ -3730,7 +3753,7 @@
    * @param {function} onMatch - callback(localId, localName) when linked
    * @returns {HTMLElement} the dropdown container element
    */
-  function createEntitySearchDropdown(entityType, endpoint, stashboxId, onMatch) {
+  function createEntitySearchDropdown(entityType, endpoint, stashboxId, onMatch, initialSearch) {
     const container = document.createElement('div');
     container.className = 'ss-entity-search-dropdown';
 
@@ -3754,6 +3777,67 @@
     panel.appendChild(resultsList);
 
     container.appendChild(panel);
+
+    // Auto-expand and search if initialSearch provided
+    if (initialSearch) {
+      trigger.style.display = 'none'; // Hide "Link" button
+      panel.style.display = ''; // Show panel immediately
+      input.value = initialSearch;
+
+      // Auto-trigger search
+      setTimeout(async () => {
+        resultsList.innerHTML = '<div class="ss-entity-search-loading">Searching...</div>';
+        try {
+          const resp = await RecommendationsAPI.searchEntities(entityType, initialSearch, endpoint);
+          const results = resp.results || [];
+          if (results.length === 0) {
+            resultsList.innerHTML = '<div class="ss-entity-search-empty">No results</div>';
+            trigger.style.display = ''; // Show Link button as fallback
+            return;
+          }
+          resultsList.innerHTML = '';
+          results.forEach(r => {
+            const item = document.createElement('div');
+            item.className = 'ss-entity-search-result-item';
+            if (r.linked) item.classList.add('ss-entity-already-linked');
+
+            let label = escapeHtml(r.name);
+            if (r.disambiguation) label += ` <span class="ss-entity-search-disambig">(${escapeHtml(r.disambiguation)})</span>`;
+            if (r.linked) label += ' <span class="ss-entity-search-linked-badge">linked</span>';
+
+            item.innerHTML = label;
+            item.addEventListener('click', async () => {
+              item.textContent = 'Linking...';
+              try {
+                await RecommendationsAPI.linkEntity(entityType, r.id, endpoint, stashboxId);
+                panel.style.display = 'none';
+                onMatch(r.id, r.name);
+              } catch (err) {
+                item.textContent = `Failed: ${err.message}`;
+              }
+            });
+            resultsList.appendChild(item);
+          });
+
+          // Pre-select if exactly one non-linked result with exact name match
+          const nonLinked = results.filter(r => !r.linked);
+          if (nonLinked.length === 1 && nonLinked[0].name.toLowerCase() === initialSearch.toLowerCase()) {
+            const r = nonLinked[0];
+            // Auto-link the exact match
+            try {
+              await RecommendationsAPI.linkEntity(entityType, r.id, endpoint, stashboxId);
+              panel.style.display = 'none';
+              onMatch(r.id, r.name);
+            } catch (err) {
+              // If auto-link fails, leave results visible for manual selection
+            }
+          }
+        } catch (err) {
+          resultsList.innerHTML = `<div class="ss-entity-search-empty">Error: ${escapeHtml(err.message)}</div>`;
+          trigger.style.display = ''; // Show Link button as fallback
+        }
+      }, 0);
+    }
 
     let debounceTimer = null;
 

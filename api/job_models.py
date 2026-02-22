@@ -251,8 +251,8 @@ _register(
 
 _register(
     "scene_fingerprint_match",
-    "Scene Fingerprint Matching",
-    "Match local scenes to stash-box entries via fingerprints",
+    "Scene Stash-Box Tagger",
+    "Searches untagged Scenes on all Stash-Box endpoints",
     ResourceType.NETWORK,
     JobPriority.NORMAL,
     supports_incremental=True,

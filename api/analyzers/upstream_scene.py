@@ -204,10 +204,20 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
         current_tag_ids = [
             str(t["id"]) for t in (local_entity.get("tags") or [])
         ]
+        current_performers = [
+            {"id": str(p["id"]), "name": p.get("name", "")}
+            for p in (local_entity.get("performers") or [])
+        ]
+        current_tags = [
+            {"id": str(t["id"]), "name": t.get("name", "")}
+            for t in (local_entity.get("tags") or [])
+        ]
         current_studio_id = None
+        current_studio = None
         local_studio = local_entity.get("studio")
         if local_studio:
             current_studio_id = str(local_studio["id"])
+            current_studio = {"id": current_studio_id, "name": local_studio.get("name", "")}
 
         details = {
             "endpoint": endpoint,
@@ -219,6 +229,9 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
             "current_performer_ids": current_performer_ids,
             "current_tag_ids": current_tag_ids,
             "current_studio_id": current_studio_id,
+            "current_performers": current_performers,
+            "current_tags": current_tags,
+            "current_studio": current_studio,
         }
         details["changes"] = changes.get("changes", [])
         details["studio_change"] = changes.get("studio_change")
@@ -229,8 +242,14 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
         pc = details.get("performer_changes") or {}
         if pc.get("added") and self._performer_name_lookup:
             for perf in pc["added"]:
-                name = (perf.get("name") or "").strip().lower()
-                match_id = self._performer_name_lookup.get(name)
+                match_id = self._performer_name_lookup.get(
+                    (perf.get("name") or "").strip().lower()
+                )
+                if not match_id:
+                    for alias in (perf.get("aliases") or []):
+                        match_id = self._performer_name_lookup.get(alias.strip().lower())
+                        if match_id:
+                            break
                 if match_id:
                     perf["local_match"] = {"id": match_id}
 
@@ -244,9 +263,16 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
 
         sc = details.get("studio_change")
         if sc and sc.get("upstream") and self._studio_name_lookup:
-            name = (sc["upstream"].get("name") or "").strip().lower()
-            match_id = self._studio_name_lookup.get(name)
+            upstream_studio = sc["upstream"]
+            match_id = self._studio_name_lookup.get(
+                (upstream_studio.get("name") or "").strip().lower()
+            )
+            if not match_id:
+                for alias in (upstream_studio.get("aliases") or []):
+                    match_id = self._studio_name_lookup.get(alias.strip().lower())
+                    if match_id:
+                        break
             if match_id:
-                sc["upstream"]["local_match"] = {"id": match_id}
+                upstream_studio["local_match"] = {"id": match_id}
 
         return details
