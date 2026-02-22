@@ -271,10 +271,11 @@
       if (typeof local === 'string' && typeof upstream === 'string') {
         if (local.toLowerCase() === upstream.toLowerCase()) return false;
       }
-      // List comparison (alias_list, urls) - case-insensitive set equality
+      // List comparison (alias_list, urls) - case-insensitive set equality with trailing slash normalization
       if (Array.isArray(local) && Array.isArray(upstream)) {
-        const localSet = new Set(local.map(v => String(v).toLowerCase()));
-        const upstreamSet = new Set(upstream.map(v => String(v).toLowerCase()));
+        const norm = v => String(v).toLowerCase().replace(/\/+$/, '');
+        const localSet = new Set(local.map(norm));
+        const upstreamSet = new Set(upstream.map(norm));
         if (localSet.size === upstreamSet.size && [...localSet].every(v => upstreamSet.has(v))) return false;
       }
       // Strict equality for other types
@@ -2482,7 +2483,11 @@
       label.textContent = change.field_label || change.field;
       fieldRow.appendChild(label);
 
-      renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault);
+      if (mergeType === 'alias_list') {
+        renderAliasListField(fieldRow, change, idx);
+      } else {
+        renderCompareField(fieldRow, change, idx, mergeType, displayValue, smartDefault);
+      }
 
       wrapper.appendChild(fieldRow);
     });
@@ -2566,19 +2571,34 @@
 
     keepAllBtn.addEventListener('click', () => {
       wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
-        const localCb = row.querySelector('.ss-upstream-cb-local');
-        const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
-        if (localCb) { localCb.checked = true; localCb.dispatchEvent(new Event('change')); }
-        if (upstreamCb) upstreamCb.checked = false;
+        const mt = row.dataset.mergeType;
+        if (mt === 'alias_list') {
+          row.querySelectorAll('.ss-upstream-alias-item').forEach(item => {
+            const cb = item.querySelector('input[type="checkbox"]');
+            cb.checked = item.classList.contains('local-only') || item.classList.contains('both');
+          });
+          updateAliasResultSummary(row);
+        } else {
+          const localCb = row.querySelector('.ss-upstream-cb-local');
+          const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+          if (localCb) { localCb.checked = true; localCb.dispatchEvent(new Event('change')); }
+          if (upstreamCb) upstreamCb.checked = false;
+        }
       });
     });
 
     acceptAllBtn.addEventListener('click', () => {
       wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
-        const localCb = row.querySelector('.ss-upstream-cb-local');
-        const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
-        if (upstreamCb) { upstreamCb.checked = true; upstreamCb.dispatchEvent(new Event('change')); }
-        if (localCb) localCb.checked = false;
+        const mt = row.dataset.mergeType;
+        if (mt === 'alias_list') {
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+          updateAliasResultSummary(row);
+        } else {
+          const localCb = row.querySelector('.ss-upstream-cb-local');
+          const upstreamCb = row.querySelector('.ss-upstream-cb-upstream');
+          if (upstreamCb) { upstreamCb.checked = true; upstreamCb.dispatchEvent(new Event('change')); }
+          if (localCb) localCb.checked = false;
+        }
       });
     });
 
@@ -2594,17 +2614,25 @@
         const fieldIndex = parseInt(row.dataset.fieldIndex);
         const change = changes[fieldIndex];
 
-        const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
-        if (!resultInput) return;
+        if (mergeType === 'alias_list') {
+          const checkedAliases = [];
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]:checked').forEach(cb => {
+            checkedAliases.push(cb.value);
+          });
+          fields[fieldKey] = checkedAliases;
+        } else {
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (!resultInput) return;
 
-        // Use raw value if available (e.g. parent_studio stores UUID, displays name)
-        const resultVal = (resultInput.dataset.rawValue !== undefined ? resultInput.dataset.rawValue : resultInput.value).trim();
-        const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+          // Use raw value if available (e.g. parent_studio stores UUID, displays name)
+          const resultVal = (resultInput.dataset.rawValue !== undefined ? resultInput.dataset.rawValue : resultInput.value).trim();
+          const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
 
-        // Skip if result equals local (no change)
-        if (resultVal === localStr) return;
+          // Skip if result equals local (no change)
+          if (resultVal === localStr) return;
 
-        fields[fieldKey] = resultVal;
+          fields[fieldKey] = resultVal;
+        }
       });
 
       const hasChanges = Object.keys(fields).length > 0;
@@ -3265,18 +3293,27 @@
       const fields = {};
       wrapper.querySelectorAll('.ss-upstream-field-row').forEach(row => {
         const fieldKey = row.dataset.fieldKey;
+        const mergeType = row.dataset.mergeType;
         const fieldIndex = parseInt(row.dataset.fieldIndex);
         const change = simpleChanges[fieldIndex];
         if (!change) return;
 
-        const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
-        if (!resultInput) return;
+        if (mergeType === 'alias_list') {
+          const checkedAliases = [];
+          row.querySelectorAll('.ss-upstream-alias-item input[type="checkbox"]:checked').forEach(cb => {
+            checkedAliases.push(cb.value);
+          });
+          fields[fieldKey] = checkedAliases;
+        } else {
+          const resultInput = row.querySelector('.ss-upstream-result-input, .ss-upstream-textarea');
+          if (!resultInput) return;
 
-        const resultVal = resultInput.value.trim();
-        const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
-        if (resultVal === localStr) return;
+          const resultVal = resultInput.value.trim();
+          const localStr = formatFieldValue(change.local_value) === '(empty)' ? '' : String(change.local_value || '');
+          if (resultVal === localStr) return;
 
-        fields[fieldKey] = resultVal;
+          fields[fieldKey] = resultVal;
+        }
       });
 
       // 2. Validate checked entities are created, collect performer IDs
@@ -3920,9 +3957,10 @@
   function buildAliasList(localAliases, upstreamAliases) {
     const localArr = (localAliases || []).map(String);
     const upstreamArr = (upstreamAliases || []).map(String);
-    // Case-insensitive lookup maps (lowercase -> original value)
-    const localLower = new Map(localArr.map(a => [a.toLowerCase(), a]));
-    const upstreamLower = new Map(upstreamArr.map(a => [a.toLowerCase(), a]));
+    // Case-insensitive lookup maps with trailing slash normalization (lowercase -> original value)
+    const normalize = s => s.toLowerCase().replace(/\/+$/, '');
+    const localLower = new Map(localArr.map(a => [normalize(a), a]));
+    const upstreamLower = new Map(upstreamArr.map(a => [normalize(a), a]));
     // Merge keys (deduplicated by lowercase)
     const allKeys = new Set([...localLower.keys(), ...upstreamLower.keys()]);
     const result = [];

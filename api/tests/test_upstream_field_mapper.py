@@ -220,6 +220,13 @@ class TestValuesEqual:
     def test_alias_list_case_insensitive(self):
         assert _values_equal(["Jane", "JD"], ["jane", "jd"], "alias_list") is True
 
+    def test_alias_list_trailing_slash_normalized(self):
+        assert _values_equal(
+            ["https://www.kink.com/"],
+            ["https://www.kink.com"],
+            "alias_list",
+        ) is True
+
     def test_alias_list_different_sets(self):
         assert _values_equal(["Jane"], ["Jane", "JD"], "alias_list") is False
 

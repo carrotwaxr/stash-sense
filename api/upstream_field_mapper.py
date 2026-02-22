@@ -471,11 +471,11 @@ def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
         return True
     if merge_type == "alias_list":
         local_set = {
-            v.lower() if isinstance(v, str) else v
+            v.lower().rstrip("/") if isinstance(v, str) else v
             for v in (local_value or [])
         }
         upstream_set = {
-            v.lower() if isinstance(v, str) else v
+            v.lower().rstrip("/") if isinstance(v, str) else v
             for v in (upstream_value or [])
         }
         return local_set == upstream_set
