@@ -44,7 +44,7 @@ class TestUpstreamStudioAnalyzer:
     async def test_creates_recommendation_for_changed_name(self, mock_stash, rec_db):
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "10", "name": "Brazzrs", "url": "https://brazzers.com",
+            {"id": "10", "name": "Brazzrs", "urls": ["https://brazzers.com"],
              "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-1"}]}
         ])
@@ -70,7 +70,7 @@ class TestUpstreamStudioAnalyzer:
     async def test_creates_recommendation_for_url_change(self, mock_stash, rec_db):
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "10", "name": "Brazzers", "url": "https://old.com",
+            {"id": "10", "name": "Brazzers", "urls": ["https://old.com"],
              "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-1"}]}
         ])
@@ -87,13 +87,13 @@ class TestUpstreamStudioAnalyzer:
             result = await analyzer.run()
         assert result.recommendations_created == 1
         changes = rec_db.get_recommendations(type="upstream_studio_changes")[0].details["changes"]
-        assert any(c["field"] == "url" for c in changes)
+        assert any(c["field"] == "urls" for c in changes)
 
     @pytest.mark.asyncio
     async def test_creates_recommendation_for_parent_change(self, mock_stash, rec_db):
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "20", "name": "Brazzers Exxtra", "url": None,
+            {"id": "20", "name": "Brazzers Exxtra", "urls": [],
              "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-2"}]}
         ])
@@ -116,7 +116,7 @@ class TestUpstreamStudioAnalyzer:
     async def test_no_recommendation_when_in_sync(self, mock_stash, rec_db):
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "10", "name": "Brazzers", "url": "https://brazzers.com",
+            {"id": "10", "name": "Brazzers", "urls": ["https://brazzers.com"],
              "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-1"}]}
         ])
@@ -142,7 +142,7 @@ class TestUpstreamStudioAnalyzer:
                 ("upstream_studio_changes", "studio", "10", 1),
             )
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "10", "name": "Brazzers", "url": None, "parent_studio": None,
+            {"id": "10", "name": "Brazzers", "urls": [], "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-1"}]}
         ])
         upstream = {
@@ -162,7 +162,7 @@ class TestUpstreamStudioAnalyzer:
     async def test_skips_deleted_upstream_studios(self, mock_stash, rec_db):
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "10", "name": "Brazzers", "url": None, "parent_studio": None,
+            {"id": "10", "name": "Brazzers", "urls": [], "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-1"}]}
         ])
         upstream = {
@@ -182,7 +182,7 @@ class TestUpstreamStudioAnalyzer:
         """Regression: parent_studio should compare stashbox UUIDs, not local ID vs UUID."""
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "20", "name": "Brazzers Exxtra", "url": None,
+            {"id": "20", "name": "Brazzers Exxtra", "urls": [],
              "parent_studio": {
                  "id": "10", "name": "Brazzers",
                  "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "parent-uuid-1"}],
@@ -208,7 +208,7 @@ class TestUpstreamStudioAnalyzer:
         """Display names should be included in parent_studio change details."""
         from analyzers.upstream_studio import UpstreamStudioAnalyzer
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "20", "name": "Sub Studio", "url": None,
+            {"id": "20", "name": "Sub Studio", "urls": [],
              "parent_studio": {
                  "id": "10", "name": "Old Parent",
                  "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "old-parent-uuid"}],
@@ -240,11 +240,11 @@ class TestUpstreamStudioAnalyzer:
         rec_db.upsert_upstream_snapshot(
             entity_type="studio", local_entity_id="10",
             endpoint="https://stashdb.org/graphql", stash_box_id="studio-uuid-1",
-            upstream_data={"name": "Brazzers", "url": "https://brazzers.com", "parent_studio": None},
+            upstream_data={"name": "Brazzers", "urls": ["https://brazzers.com"], "parent_studio": None},
             upstream_updated_at="2026-01-14T10:00:00Z",
         )
         mock_stash.get_studios_for_endpoint = AsyncMock(return_value=[
-            {"id": "10", "name": "My Custom Studio Name", "url": "https://brazzers.com",
+            {"id": "10", "name": "My Custom Studio Name", "urls": ["https://brazzers.com"],
              "parent_studio": None,
              "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "studio-uuid-1"}]}
         ])

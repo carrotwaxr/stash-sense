@@ -204,19 +204,19 @@ def diff_tag_fields(
 
 DEFAULT_STUDIO_FIELDS: set[str] = {
     "name",
-    "url",
+    "urls",
     "parent_studio",
 }
 
 STUDIO_FIELD_MERGE_TYPES: dict[str, str] = {
     "name": "name",
-    "url": "simple",
+    "urls": "alias_list",
     "parent_studio": "simple",
 }
 
 STUDIO_FIELD_LABELS: dict[str, str] = {
     "name": "Name",
-    "url": "URL",
+    "urls": "URLs",
     "parent_studio": "Parent Studio",
 }
 
@@ -233,7 +233,7 @@ def normalize_upstream_studio(upstream: dict) -> dict:
 
     Handles:
     - Direct name mapping
-    - URL list flattened to first URL string (StashBox has list, Stash has single url)
+    - URLs extracted from [{url, type}] objects to plain string list
     - Parent studio extracted as StashBox UUID (resolved to local ID at action time)
     """
     result = {}
@@ -241,13 +241,16 @@ def normalize_upstream_studio(upstream: dict) -> dict:
     if "name" in upstream:
         result["name"] = upstream["name"]
 
-    # URLs: take first from list, or None
+    # URLs: extract url strings from [{url, ...}] objects, same as performers
     if "urls" in upstream:
-        urls = upstream["urls"]
-        if urls and len(urls) > 0:
-            result["url"] = urls[0].get("url") if isinstance(urls[0], dict) else urls[0]
+        raw_urls = upstream["urls"]
+        if raw_urls is None:
+            result["urls"] = []
         else:
-            result["url"] = None
+            result["urls"] = [
+                u.get("url") if isinstance(u, dict) else u
+                for u in raw_urls
+            ]
 
     # Parent: extract StashBox UUID and name
     if "parent" in upstream:

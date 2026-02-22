@@ -658,6 +658,7 @@ class StashClientUnified:
             studios {
               id
               name
+              aliases
               stash_ids {
                 endpoint
                 stash_id
@@ -744,6 +745,7 @@ class StashClientUnified:
             studios {
               id
               name
+              aliases
             }
           }
         }
@@ -759,7 +761,7 @@ class StashClientUnified:
             studios {
               id
               name
-              url
+              urls
               parent_studio {
                 id
                 name
@@ -804,6 +806,7 @@ class StashClientUnified:
         self,
         name: str,
         stash_ids: list[dict],
+        urls: list[str] | None = None,
         url: str | None = None,
         parent_id: str | None = None,
     ) -> dict:
@@ -817,7 +820,9 @@ class StashClientUnified:
         }
         """
         input_dict: dict = {"name": name, "stash_ids": stash_ids}
-        if url:
+        if urls:
+            input_dict["urls"] = urls
+        elif url:
             input_dict["url"] = url
         if parent_id:
             input_dict["parent_id"] = parent_id

@@ -868,7 +868,61 @@ async def update_performer_fields(request: UpdatePerformerRequest, entity_type: 
         _invalidate_entity_name_cache("performers")
         return {"success": True, "performer": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        # Detect name conflict: "Name X already used by performer Y"
+        if "name" in fields and "already used by performer" in error_msg:
+            merged = await _auto_merge_conflicting_performer(
+                stash, performer_id, fields["name"]
+            )
+            if merged:
+                # Retry the update after merging the conflicting performer
+                try:
+                    result = await stash.update_performer(performer_id, **fields)
+                    _invalidate_entity_name_cache("performers")
+                    return {
+                        "success": True,
+                        "performer": result,
+                        "auto_merged": True,
+                        "merged_performer_id": merged["merged_id"],
+                        "merged_performer_name": merged["merged_name"],
+                    }
+                except Exception as retry_err:
+                    raise HTTPException(status_code=500, detail=str(retry_err))
+
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+async def _auto_merge_conflicting_performer(
+    stash: StashClientUnified,
+    destination_id: str,
+    conflicting_name: str,
+) -> dict | None:
+    """Find and merge a performer that conflicts with the given name.
+
+    Searches for performers with the conflicting name, finds the one that
+    isn't the destination, and merges it into the destination.
+
+    Returns dict with merged_id and merged_name, or None if no match found.
+    """
+    matches = await stash.search_performers(conflicting_name, limit=10)
+    conflicting = None
+    name_lower = conflicting_name.strip().lower()
+    for match in matches:
+        if str(match["id"]) == str(destination_id):
+            continue
+        if (match.get("name") or "").strip().lower() == name_lower:
+            conflicting = match
+            break
+
+    if not conflicting:
+        return None
+
+    logger.warning(
+        f"Auto-merging conflicting performer '{conflicting['name']}' "
+        f"(ID: {conflicting['id']}) into performer {destination_id}"
+    )
+    await stash.merge_performers([conflicting["id"]], destination_id)
+    return {"merged_id": conflicting["id"], "merged_name": conflicting["name"]}
 
 
 class UpdateTagRequest(BaseModel):
@@ -1012,12 +1066,14 @@ async def _resolve_stashbox_studio_to_local(
             detail=f"Parent studio {stashbox_id} not found on StashBox"
         )
 
-    # Try to find locally by exact name match before creating
+    # Try to find locally by exact name or alias match before creating
     local_matches = await stash.search_studios(upstream["name"], limit=10)
     upstream_name_lower = upstream["name"].strip().lower()
     for match in local_matches:
-        if (match.get("name") or "").strip().lower() == upstream_name_lower:
-            # Exact name match — link the stash_id to the existing studio
+        match_name = (match.get("name") or "").strip().lower()
+        match_aliases = {a.strip().lower() for a in (match.get("aliases") or [])}
+        if match_name == upstream_name_lower or upstream_name_lower in match_aliases:
+            # Name or alias match — link the stash_id to the existing studio
             existing_stash_ids = match.get("stash_ids") or []
             existing_stash_ids.append({"endpoint": endpoint, "stash_id": stashbox_id})
             await stash.update_studio(match["id"], stash_ids=existing_stash_ids)
@@ -1028,13 +1084,13 @@ async def _resolve_stashbox_studio_to_local(
             return match["id"]
 
     # No local match by name — auto-import from StashBox
-    url = None
-    if upstream.get("urls") and len(upstream["urls"]) > 0:
-        url = upstream["urls"][0].get("url") if isinstance(upstream["urls"][0], dict) else upstream["urls"][0]
+    urls = []
+    for u in (upstream.get("urls") or []):
+        urls.append(u.get("url") if isinstance(u, dict) else u)
 
     new_studio = await stash.create_studio(
         name=upstream["name"],
-        url=url,
+        urls=urls if urls else None,
         stash_ids=[{"endpoint": endpoint, "stash_id": stashbox_id}],
     )
     logger.warning(
@@ -1152,10 +1208,14 @@ async def create_tag_action(request: CreateTagRequest):
 async def create_studio_action(request: CreateStudioRequest):
     """Create a new local studio from StashBox data."""
     stash = get_stash_client()
+    urls = [
+        u.get("url") if isinstance(u, dict) else u
+        for u in (request.stashbox_data.get("urls") or [])
+    ]
     result = await stash.create_studio(
         name=request.stashbox_data.get("name", ""),
         stash_ids=[{"endpoint": request.endpoint, "stash_id": request.stashbox_id}],
-        url=(request.stashbox_data.get("urls") or [{}])[0].get("url") if request.stashbox_data.get("urls") else None,
+        urls=urls if urls else None,
     )
     return {"success": True, "studio": result}
 

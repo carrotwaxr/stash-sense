@@ -75,13 +75,18 @@ class UpstreamSceneAnalyzer(BaseUpstreamAnalyzer):
             if name:
                 self._tag_name_lookup[name] = str(t["id"])
 
-        # Studios: name only
+        # Studios: name + aliases
         self._studio_name_lookup = {}
         all_studios = await self.stash.get_all_studios()
         for s in all_studios:
+            sid = str(s["id"])
             name = (s.get("name") or "").strip().lower()
             if name:
-                self._studio_name_lookup[name] = str(s["id"])
+                self._studio_name_lookup[name] = sid
+            for alias in (s.get("aliases") or []):
+                alias_lower = alias.strip().lower()
+                if alias_lower:
+                    self._studio_name_lookup.setdefault(alias_lower, sid)
 
         logger.info(
             f"Name lookups built: {len(self._performer_name_lookup)} performer names, "

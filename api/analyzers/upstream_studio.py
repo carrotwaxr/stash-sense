@@ -39,9 +39,13 @@ def _build_local_studio_data(studio: dict, endpoint: str = "") -> dict:
                 parent_studio_val = sid["stash_id"]
                 break
 
+    urls = studio.get("urls") or []
+    if isinstance(urls, str):
+        urls = [urls] if urls else []
+
     return {
         "name": studio.get("name"),
-        "url": studio.get("url") or None,
+        "urls": urls,
         "parent_studio": parent_studio_val,
         "_parent_studio_name": parent_studio_name,
     }
@@ -56,7 +60,7 @@ class UpstreamStudioAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_studio_changes"
-    logic_version = 4  # v4: suppress false parent_studio diffs when names match
+    logic_version = 5  # v5: url (singular) → urls (array) field
 
     @property
     def entity_type(self) -> str:
