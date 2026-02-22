@@ -123,6 +123,10 @@ class SceneFingerprintMatchAnalyzer(BaseAnalyzer):
 
         # Batch query stash-box
         stashbox = StashBoxClient(endpoint, api_key)
+        logger.warning(
+            "[%s] Starting scan of %d scenes with fingerprints",
+            endpoint_name, len(scenes_needing_match),
+        )
         created = 0
 
         for batch_start in range(0, len(scenes_needing_match), BATCH_SIZE):
@@ -211,8 +215,19 @@ class SceneFingerprintMatchAnalyzer(BaseAnalyzer):
                     if rec_id:
                         created += 1
 
+            batch_end = min(batch_start + BATCH_SIZE, len(scenes_needing_match))
+            logger.warning(
+                "[%s] Processed %d/%d scenes, %d matches found",
+                endpoint_name, batch_end, len(scenes_needing_match), created,
+            )
+            self.update_progress(batch_end, created)
+
         processed = len(scenes_needing_match)
-        self.update_progress(processed, created)
+
+        logger.warning(
+            "[%s] Complete: %d matches found from %d scenes",
+            endpoint_name, created, len(scenes_needing_match),
+        )
 
         if latest_updated:
             self.rec_db.set_watermark(watermark_key, last_stash_updated_at=latest_updated)
