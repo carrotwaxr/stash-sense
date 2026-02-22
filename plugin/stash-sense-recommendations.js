@@ -3914,6 +3914,7 @@
       // Create floating container as last resort
       console.warn('[Stash Sense] No container found, creating overlay');
       mainContainer = document.createElement('div');
+      mainContainer.className = 'ss-floating-overlay';
       mainContainer.style.cssText = 'position: fixed; top: 60px; left: 0; right: 0; bottom: 0; overflow-y: auto; background: var(--bs-body-bg, #1a1a1a); z-index: 100;';
       document.body.appendChild(mainContainer);
     }
@@ -3943,6 +3944,30 @@
 
   // ==================== Initialization ====================
 
+  function cleanup() {
+    // Remove the main dashboard container
+    const dashboard = document.getElementById('ss-recommendations');
+    if (dashboard) dashboard.remove();
+
+    // Remove floating overlay fallback container (if created as last-resort)
+    document.querySelectorAll('.ss-floating-overlay').forEach(el => el.remove());
+
+    // Remove any modal overlays appended to document.body
+    document.querySelectorAll('.ss-modal-overlay').forEach(el => el.remove());
+
+    // Reset state
+    currentState = {
+      view: 'dashboard',
+      type: null,
+      status: 'pending',
+      page: 0,
+      selectedRec: null,
+      counts: null,
+    };
+
+    entityCache.clear();
+  }
+
   function init() {
     // Try to inject if we're already on the plugin page
     setTimeout(injectPluginPage, 300);
@@ -3953,6 +3978,9 @@
         setTimeout(injectPluginPage, 300);
       }
     });
+
+    // Clean up when leaving plugin page
+    SS.onLeavePlugin(cleanup);
 
     console.log(`[${SS.PLUGIN_NAME}] Recommendations module loaded`);
   }

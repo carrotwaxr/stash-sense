@@ -1125,6 +1125,25 @@
 
   // ==================== Initialization ====================
 
+  function cleanup() {
+    const settings = document.getElementById('ss-settings');
+    if (settings) settings.remove();
+
+    // Clear pending save timeouts
+    for (const key of Object.keys(saveTimeouts)) {
+      clearTimeout(saveTimeouts[key]);
+    }
+    saveTimeouts = {};
+
+    for (const key of Object.keys(scheduleTimeouts)) {
+      clearTimeout(scheduleTimeouts[key]);
+    }
+    scheduleTimeouts = {};
+
+    settingsData = null;
+    systemInfo = null;
+  }
+
   function init() {
     // Try to inject after recommendations module
     const tryInject = () => {
@@ -1140,6 +1159,9 @@
         setTimeout(injectSettingsTab, 600);
       }
     });
+
+    // Clean up when leaving plugin page
+    SS.onLeavePlugin(cleanup);
 
     console.log(`[${SS.PLUGIN_NAME}] Settings module loaded`);
   }

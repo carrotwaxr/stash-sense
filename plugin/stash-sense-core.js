@@ -474,18 +474,37 @@
   // ==================== SPA Navigation ====================
 
   const navigationCallbacks = [];
+  const leavePluginCallbacks = [];
 
   function onNavigate(callback) {
     navigationCallbacks.push(callback);
   }
 
+  function onLeavePlugin(callback) {
+    leavePluginCallbacks.push(callback);
+  }
+
   function initNavigationWatcher() {
     let lastUrl = window.location.href;
+    let lastRouteType = getRoute().type;
 
     const observer = new MutationObserver(() => {
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
         const route = getRoute();
+
+        // Fire leave-plugin callbacks when navigating away from plugin page
+        if (lastRouteType === 'plugin' && route.type !== 'plugin') {
+          for (const callback of leavePluginCallbacks) {
+            try {
+              callback();
+            } catch (e) {
+              console.error(`[${PLUGIN_NAME}] Leave plugin callback error:`, e);
+            }
+          }
+        }
+        lastRouteType = route.type;
+
         for (const callback of navigationCallbacks) {
           try {
             callback(route);
@@ -529,6 +548,7 @@
     // Routing
     getRoute,
     onNavigate,
+    onLeavePlugin,
     initNavigationWatcher,
     getTabFromUrl,
     setTabInUrl,

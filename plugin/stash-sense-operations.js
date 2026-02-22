@@ -40,6 +40,7 @@
 
   let pollInterval = null;
   let jobTypes = null;
+  let historyExpanded = true;
 
   // ==================== Rendering ====================
 
@@ -314,13 +315,16 @@
       className: 'ss-collapsible-header',
       events: {
         click: () => {
-          list.style.display = list.style.display === 'none' ? '' : 'none';
+          historyExpanded = !historyExpanded;
+          list.style.display = historyExpanded ? '' : 'none';
           toggle.classList.toggle('ss-collapsed');
         },
       },
     });
     toggle.textContent = `History (${jobs.length})`;
-    toggle.classList.add('ss-collapsed');
+    if (!historyExpanded) {
+      toggle.classList.add('ss-collapsed');
+    }
     headerRow.appendChild(toggle);
 
     const clearBtn = SS.createElement('button', {
@@ -349,7 +353,9 @@
     const list = SS.createElement('div', {
       className: 'ss-job-list',
     });
-    list.style.display = 'none';
+    if (!historyExpanded) {
+      list.style.display = 'none';
+    }
     for (const job of jobs.slice(0, 20)) {
       list.appendChild(renderJobCard(job, false));
     }
@@ -487,6 +493,13 @@
 
   // ==================== Initialization ====================
 
+  function cleanup() {
+    stopPolling();
+    const operations = document.getElementById('ss-operations');
+    if (operations) operations.remove();
+    jobTypes = null;
+  }
+
   function init() {
     const tryInject = () => {
       if (SS.getRoute().type === 'plugin') {
@@ -503,6 +516,9 @@
         stopPolling();
       }
     });
+
+    // Clean up when leaving plugin page
+    SS.onLeavePlugin(cleanup);
 
     console.log(`[${SS.PLUGIN_NAME}] Operations module loaded`);
   }
