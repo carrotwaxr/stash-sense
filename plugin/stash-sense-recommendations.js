@@ -412,9 +412,9 @@
           description: 'Scene fields and relationships updated on StashDB since last sync',
         },
         scene_fingerprint_match: {
-          title: 'Scene Fingerprint Matches',
+          title: 'Scene Stash-Box Tagger',
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
-          description: 'Local scenes matched to stash-box entries via file fingerprints',
+          description: 'Searches untagged Scenes on all Stash-Box endpoints',
         },
       };
 
@@ -756,7 +756,7 @@
       upstream_tag_changes: 'Upstream Tag Changes',
       upstream_studio_changes: 'Upstream Studio Changes',
       upstream_scene_changes: 'Upstream Scene Changes',
-      scene_fingerprint_match: 'Scene Fingerprint Matches',
+      scene_fingerprint_match: 'Scene Stash-Box Tagger',
     };
 
     container.innerHTML = `
@@ -3591,7 +3591,7 @@
     }
   }
 
-  // ==================== Fingerprint Match Detail ====================
+  // ==================== Scene Stash-Box Tagger Detail ====================
 
   function formatDuration(seconds) {
     if (!seconds && seconds !== 0) return 'N/A';
@@ -3607,7 +3607,7 @@
     container.innerHTML = `
       <div class="ss-fp-detail">
         <div class="ss-fp-detail-header">
-          <h2>Scene Fingerprint Match</h2>
+          <h2>Scene Stash-Box Tagger</h2>
           <span class="ss-badge ${d.high_confidence ? 'ss-badge-success' : 'ss-badge-warning'}">
             ${d.high_confidence ? 'High Confidence' : 'Review Recommended'}
           </span>
