@@ -2731,8 +2731,10 @@
       const quickActions = document.createElement('div');
       quickActions.className = 'ss-upstream-quick-actions';
       const keepAllBtn = document.createElement('button');
+      keepAllBtn.className = 'ss-btn ss-btn-sm ss-btn-secondary';
       keepAllBtn.textContent = 'Keep All Local';
       const acceptAllBtn = document.createElement('button');
+      acceptAllBtn.className = 'ss-btn ss-btn-sm ss-btn-primary';
       acceptAllBtn.textContent = 'Accept All Upstream';
       quickActions.appendChild(keepAllBtn);
       quickActions.appendChild(acceptAllBtn);
@@ -3193,14 +3195,14 @@
     actionBar.className = 'ss-upstream-action-bar';
 
     const applyBtn = document.createElement('button');
-    applyBtn.className = 'ss-btn ss-upstream-apply-btn';
+    applyBtn.className = 'ss-btn ss-btn-primary ss-upstream-apply-btn';
     applyBtn.textContent = 'Apply Changes';
 
     // Dismiss dropdown
     const dismissDropdown = document.createElement('div');
     dismissDropdown.style.cssText = 'position:relative;';
     const dismissToggle = document.createElement('button');
-    dismissToggle.className = 'ss-btn ss-upstream-dismiss-btn';
+    dismissToggle.className = 'ss-btn ss-btn-danger ss-upstream-dismiss-btn';
     dismissToggle.textContent = 'Dismiss';
     const dismissMenu = document.createElement('div');
     dismissMenu.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px 0;min-width:220px;z-index:10;';
