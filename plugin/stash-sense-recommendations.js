@@ -2702,6 +2702,27 @@
     `;
     wrapper.appendChild(headerDiv);
 
+    // Local context summary
+    const localPerformers = details.current_performers || [];
+    const localTags = details.current_tags || [];
+    const localStudio = details.current_studio;
+    const contextParts = [];
+    if (localPerformers.length > 0) {
+      contextParts.push(localPerformers.map(p => escapeHtml(p.name)).join(', '));
+    }
+    if (localTags.length > 0) {
+      contextParts.push('Tags: ' + localTags.map(t => escapeHtml(t.name)).join(', '));
+    }
+    if (localStudio) {
+      contextParts.push('Studio: ' + escapeHtml(localStudio.name));
+    }
+    if (contextParts.length > 0) {
+      const contextDiv = document.createElement('div');
+      contextDiv.className = 'ss-scene-local-context';
+      contextDiv.innerHTML = `<span class="ss-scene-local-context-label">Local:</span> ${contextParts.join(' &middot; ')}`;
+      wrapper.appendChild(contextDiv);
+    }
+
     // ===== Simple field diffs =====
     if (hasSimple) {
       const simpleSection = document.createElement('div');
