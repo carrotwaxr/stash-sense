@@ -3211,6 +3211,7 @@ a.ss-upstream-endpoint-badge:hover {
 .ss-entity-search-loading, .ss-entity-search-empty { font-size: 11px; color: #888; padding: 6px 8px; }
 .ss-entity-search-disambig { color: #999; font-size: 11px; }
 .ss-entity-search-linked-badge { font-size: 10px; background: #444; color: #aaa; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+.ss-entity-search-preselected { background: rgba(33,150,243,0.15); border: 1px solid rgba(33,150,243,0.3); }
 .ss-scene-tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .ss-scene-tag-chip { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); font-size: 12px; }
 .ss-scene-tag-chip.ss-scene-tag-removed { opacity: 0.6; text-decoration: line-through; background: rgba(244,67,54,0.1); }

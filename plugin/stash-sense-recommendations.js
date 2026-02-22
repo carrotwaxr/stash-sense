@@ -2875,7 +2875,7 @@
             dropdown.replaceWith(linked);
             const btn = studioRow.querySelector('.ss-scene-create-btn');
             if (btn) btn.remove();
-          });
+          }, upstreamStudio.name);
           studioRow.appendChild(dropdown);
 
           const createBtn = document.createElement('button');
@@ -2980,7 +2980,7 @@
               dropdown.replaceWith(linked);
               const btn = row.querySelector('.ss-scene-create-btn');
               if (btn) btn.remove();
-            });
+            }, perf.name);
             row.appendChild(dropdown);
 
             const createBtn = document.createElement('button');
@@ -3122,7 +3122,7 @@
               dropdown.replaceWith(linked);
               const btn = chip.querySelector('.ss-scene-create-btn');
               if (btn) btn.remove();
-            });
+            }, tag.name);
             chip.appendChild(dropdown);
 
             const createBtn = document.createElement('button');
@@ -3751,7 +3751,7 @@
    * @param {function} onMatch - callback(localId, localName) when linked
    * @returns {HTMLElement} the dropdown container element
    */
-  function createEntitySearchDropdown(entityType, endpoint, stashboxId, onMatch) {
+  function createEntitySearchDropdown(entityType, endpoint, stashboxId, onMatch, initialSearch) {
     const container = document.createElement('div');
     container.className = 'ss-entity-search-dropdown';
 
@@ -3775,6 +3775,67 @@
     panel.appendChild(resultsList);
 
     container.appendChild(panel);
+
+    // Auto-expand and search if initialSearch provided
+    if (initialSearch) {
+      trigger.style.display = 'none'; // Hide "Link" button
+      panel.style.display = ''; // Show panel immediately
+      input.value = initialSearch;
+
+      // Auto-trigger search
+      setTimeout(async () => {
+        resultsList.innerHTML = '<div class="ss-entity-search-loading">Searching...</div>';
+        try {
+          const resp = await RecommendationsAPI.searchEntities(entityType, initialSearch, endpoint);
+          const results = resp.results || [];
+          if (results.length === 0) {
+            resultsList.innerHTML = '<div class="ss-entity-search-empty">No results</div>';
+            trigger.style.display = ''; // Show Link button as fallback
+            return;
+          }
+          resultsList.innerHTML = '';
+          results.forEach(r => {
+            const item = document.createElement('div');
+            item.className = 'ss-entity-search-result-item';
+            if (r.linked) item.classList.add('ss-entity-already-linked');
+
+            let label = escapeHtml(r.name);
+            if (r.disambiguation) label += ` <span class="ss-entity-search-disambig">(${escapeHtml(r.disambiguation)})</span>`;
+            if (r.linked) label += ' <span class="ss-entity-search-linked-badge">linked</span>';
+
+            item.innerHTML = label;
+            item.addEventListener('click', async () => {
+              item.textContent = 'Linking...';
+              try {
+                await RecommendationsAPI.linkEntity(entityType, r.id, endpoint, stashboxId);
+                panel.style.display = 'none';
+                onMatch(r.id, r.name);
+              } catch (err) {
+                item.textContent = `Failed: ${err.message}`;
+              }
+            });
+            resultsList.appendChild(item);
+          });
+
+          // Pre-select if exactly one non-linked result with exact name match
+          const nonLinked = results.filter(r => !r.linked);
+          if (nonLinked.length === 1 && nonLinked[0].name.toLowerCase() === initialSearch.toLowerCase()) {
+            const r = nonLinked[0];
+            // Auto-link the exact match
+            try {
+              await RecommendationsAPI.linkEntity(entityType, r.id, endpoint, stashboxId);
+              panel.style.display = 'none';
+              onMatch(r.id, r.name);
+            } catch (err) {
+              // If auto-link fails, leave results visible for manual selection
+            }
+          }
+        } catch (err) {
+          resultsList.innerHTML = `<div class="ss-entity-search-empty">Error: ${escapeHtml(err.message)}</div>`;
+          trigger.style.display = ''; // Show Link button as fallback
+        }
+      }, 0);
+    }
 
     let debounceTimer = null;
 
