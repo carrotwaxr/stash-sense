@@ -877,8 +877,12 @@ async def update_performer_fields(request: UpdatePerformerRequest, entity_type: 
         error_msg = str(e)
         # Detect name conflict: "Name X already used by performer Y"
         if "name" in fields and "already used by performer" in error_msg:
+            # Get current performer's disambiguation for merge safety check
+            current = await get_current()
+            dest_disambig = fields.get("disambiguation") or current.get("disambiguation") or ""
             merged = await _auto_merge_conflicting_performer(
-                stash, performer_id, fields["name"]
+                stash, performer_id, fields["name"],
+                destination_disambiguation=dest_disambig,
             )
             if merged:
                 # Retry the update after merging the conflicting performer
@@ -902,21 +906,30 @@ async def _auto_merge_conflicting_performer(
     stash: StashClientUnified,
     destination_id: str,
     conflicting_name: str,
+    destination_disambiguation: str = "",
 ) -> dict | None:
     """Find and merge a performer that conflicts with the given name.
 
     Searches for performers with the conflicting name, finds the one that
     isn't the destination, and merges it into the destination.
 
+    Skips merge when the conflicting performer has a different disambiguation
+    than the destination — they're different people who happen to share a name.
+
     Returns dict with merged_id and merged_name, or None if no match found.
     """
     matches = await stash.search_performers(conflicting_name, limit=10)
     conflicting = None
     name_lower = conflicting_name.strip().lower()
+    dest_disambig = (destination_disambiguation or "").strip().lower()
     for match in matches:
         if str(match["id"]) == str(destination_id):
             continue
         if (match.get("name") or "").strip().lower() == name_lower:
+            # Don't merge if they have different disambiguations — they're different people
+            match_disambig = (match.get("disambiguation") or "").strip().lower()
+            if match_disambig and dest_disambig and match_disambig != dest_disambig:
+                continue
             conflicting = match
             break
 

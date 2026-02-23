@@ -1808,7 +1808,7 @@
   }
 
 
-  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel, currentPerformer) {
+  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel, currentPerformer, onUpdateOnly) {
     const overlay = document.createElement('div');
     overlay.className = 'ss-modal-overlay';
     overlay.style.zIndex = '10001';
@@ -1824,8 +1824,9 @@
         </div>
         <div class="ss-modal-body" style="padding: 16px;">
           <p style="margin: 0 0 12px; color: var(--ss-text-muted);">
-            A performer with this name already exists. You can merge the duplicate into this performer
-            (scenes will be reassigned and the duplicate deleted), or skip this conflict.
+            A performer with this name already exists. You can update fields without merging,
+            merge the duplicate into this performer (scenes will be reassigned and the duplicate deleted),
+            or skip this conflict.
           </p>
           <div class="ss-conflict-comparison">
             <div class="ss-conflict-card">
@@ -1847,7 +1848,8 @@
           </div>
           <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
             <button class="ss-btn" data-action="skip">Skip</button>
-            <button class="ss-btn ss-btn-primary" data-action="merge">Merge &amp; Continue</button>
+            <button class="ss-btn" data-action="merge">Merge &amp; Continue</button>
+            <button class="ss-btn ss-btn-primary" data-action="update-only">Update Fields Only</button>
           </div>
         </div>
       </div>
@@ -1866,6 +1868,9 @@
       } else if (action === 'merge') {
         closeDialog();
         onMerge(c.id);
+      } else if (action === 'update-only') {
+        closeDialog();
+        if (onUpdateOnly) onUpdateOnly();
       } else if (e.target === overlay) {
         closeDialog();
         onCancel();
@@ -2189,11 +2194,14 @@
       applyBtn.textContent = 'Validating...';
 
       const proposedName = fields.name || details.performer_name;
-      // Get disambiguation: from accepted fields first, then from the current local value in changes
+      // Get disambiguation: from accepted fields first, then from changes, then from stored details
       let proposedDisambig = fields.disambiguation || null;
       if (!proposedDisambig) {
         const disambigChange = changes.find(c => c.field === 'disambiguation');
         if (disambigChange) proposedDisambig = disambigChange.local_value || null;
+      }
+      if (!proposedDisambig) {
+        proposedDisambig = details.performer_disambiguation || null;
       }
       const proposedAliases = fields.aliases || fields._alias_add || [];
 
@@ -2252,7 +2260,32 @@
             }
           },
           () => { /* User chose skip */ },
-          { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig }
+          { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig },
+          async () => {
+            // User chose "Update Fields Only" — apply without merging
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying...';
+            errorDiv.style.display = 'none';
+            try {
+              // Remove name from fields to avoid the conflict, apply other fields only
+              const fieldsWithoutName = Object.assign({}, fields);
+              delete fieldsWithoutName.name;
+              await RecommendationsAPI.updatePerformer(performerId, fieldsWithoutName);
+              await RecommendationsAPI.resolve(rec.id, 'applied', { fields: fieldsWithoutName, skipped_name: true });
+              applyBtn.textContent = 'Applied!';
+              applyBtn.classList.add('ss-btn-success');
+              setTimeout(() => {
+                currentState.view = 'list';
+                currentState.selectedRec = null;
+                renderCurrentView(document.getElementById('ss-recommendations'));
+              }, 1500);
+            } catch (updateErr) {
+              errorDiv.innerHTML = `<div>${escapeHtml(updateErr.message)}</div>`;
+              errorDiv.style.display = 'block';
+              applyBtn.textContent = 'Apply Selected Changes';
+              applyBtn.disabled = false;
+            }
+          }
         );
         return;
       }

@@ -49,7 +49,6 @@ def _build_local_performer_data(performer: dict) -> dict:
         "career_start_year": career["career_start_year"],
         "career_end_year": career["career_end_year"],
         "urls": performer.get("urls") or [],
-        "details": performer.get("details") or "",
     }
 
 
@@ -62,7 +61,7 @@ class UpstreamPerformerAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_performer_changes"
-    logic_version = 3  # v3: date normalization, alias self-reference filtering
+    logic_version = 4  # v4: removed details (not in StashBox schema, local-only field)
 
     @property
     def entity_type(self) -> str:
@@ -114,4 +113,5 @@ class UpstreamPerformerAnalyzer(BaseUpstreamAnalyzer):
         )
         # Add performer-specific fields
         details["performer_image_path"] = local_entity.get("image_path")
+        details["performer_disambiguation"] = local_entity.get("disambiguation") or ""
         return details

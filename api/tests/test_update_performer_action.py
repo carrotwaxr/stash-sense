@@ -197,3 +197,107 @@ class TestPerformerNameConflictAutoMerge:
             })
 
             assert resp.status_code == 500
+
+    def test_skips_merge_when_disambiguations_differ(self, app):
+        """Two performers with the same name but different disambiguations
+        should NOT be merged — they are different people."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = MagicMock()
+
+            mock_stash.update_performer = AsyncMock(
+                side_effect=RuntimeError(
+                    'GraphQL error: Name "Hazel Grace" already used by performer "Hazel Grace"'
+                )
+            )
+
+            # The conflicting performer has disambiguation "Russian"
+            mock_stash.search_performers = AsyncMock(return_value=[
+                {
+                    "id": "99",
+                    "name": "Hazel Grace",
+                    "disambiguation": "Russian",
+                    "alias_list": [],
+                    "stash_ids": [],
+                },
+            ])
+
+            # The destination performer has disambiguation "US"
+            mock_stash.get_performer = AsyncMock(return_value={
+                "id": "50",
+                "name": "Hazel Grace",
+                "disambiguation": "US",
+                "alias_list": [],
+                "stash_ids": [],
+            })
+
+            mock_get_stash.return_value = mock_stash
+
+            import recommendations_router
+            recommendations_router._entity_name_cache_loaded.clear()
+            recommendations_router._entity_name_cache.clear()
+
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"name": "Hazel Grace"},
+            })
+
+            # Should NOT merge, should fail with the original error
+            assert resp.status_code == 500
+            mock_stash.merge_performers.assert_not_called()
+
+    def test_allows_merge_when_no_disambiguation(self, app):
+        """When neither performer has disambiguation, merge should proceed normally."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = MagicMock()
+
+            call_count = 0
+
+            async def mock_update_performer(performer_id, **fields):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1 and "name" in fields:
+                    raise RuntimeError(
+                        'GraphQL error: Name "Hazel Grace" already used by performer "Hazel Grace"'
+                    )
+                return {"id": performer_id}
+
+            mock_stash.update_performer = AsyncMock(side_effect=mock_update_performer)
+
+            # Conflicting performer has no disambiguation
+            mock_stash.search_performers = AsyncMock(return_value=[
+                {
+                    "id": "99",
+                    "name": "Hazel Grace",
+                    "disambiguation": "",
+                    "alias_list": [],
+                    "stash_ids": [],
+                },
+            ])
+
+            mock_stash.merge_performers = AsyncMock(return_value={"id": "50"})
+            mock_stash.get_performer = AsyncMock(return_value={
+                "id": "50",
+                "name": "Old Name",
+                "disambiguation": "",
+                "alias_list": [],
+                "stash_ids": [],
+            })
+
+            mock_get_stash.return_value = mock_stash
+
+            import recommendations_router
+            recommendations_router._entity_name_cache_loaded.clear()
+            recommendations_router._entity_name_cache.clear()
+
+            client = TestClient(app)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"name": "Hazel Grace"},
+            })
+
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["success"] is True
+            assert data.get("auto_merged") is True
+            mock_stash.merge_performers.assert_called_once()

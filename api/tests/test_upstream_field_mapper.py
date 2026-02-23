@@ -22,7 +22,6 @@ class TestNormalizeUpstreamPerformer:
             "eye_color": "BROWN",
             "hair_color": "BLACK",
             "height": 165,
-            "details": "Some bio text",
         }
         result = normalize_upstream_performer(upstream)
         assert result["name"] == "Jane Doe"
@@ -32,7 +31,8 @@ class TestNormalizeUpstreamPerformer:
         assert result["eye_color"] == "BROWN"
         assert result["hair_color"] == "BLACK"
         assert result["height"] == 165
-        assert result["details"] == "Some bio text"
+        # details is not in StashBox schema — local-only field, not normalized
+        assert "details" not in result
 
     def test_maps_birth_date_field_name(self):
         upstream = {"birth_date": "1990-05-15"}
