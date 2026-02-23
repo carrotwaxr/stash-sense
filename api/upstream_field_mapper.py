@@ -12,7 +12,7 @@ import re
 from typing import Optional
 
 # Fields that contain date values and need date normalization
-_DATE_FIELDS = {"birthdate", "death_date"}
+_DATE_FIELDS = {"birthdate", "death_date", "date"}
 
 
 # All default monitored performer field names (using local Stash field names)
@@ -192,7 +192,11 @@ def diff_tag_fields(
     snapshot: Optional[dict],
     enabled_fields: set[str],
 ) -> list[dict]:
-    """Convenience wrapper: 3-way diff using tag field config."""
+    """Convenience wrapper: 3-way diff using tag field config.
+
+    Uses local tag name for alias self-reference filtering.
+    """
+    entity_name = local.get("name") or upstream.get("name") or ""
     return diff_fields(
         local=local,
         upstream=upstream,
@@ -200,6 +204,7 @@ def diff_tag_fields(
         enabled_fields=enabled_fields,
         merge_types=TAG_FIELD_MERGE_TYPES,
         labels=TAG_FIELD_LABELS,
+        entity_name=entity_name,
     )
 
 
@@ -275,6 +280,7 @@ def diff_studio_fields(
     Enriches parent_studio changes with display-friendly names so the UI
     can show "Studio Name" instead of raw stashbox UUIDs.
     """
+    entity_name = local.get("name") or upstream.get("name") or ""
     changes = diff_fields(
         local=local,
         upstream=upstream,
@@ -282,6 +288,7 @@ def diff_studio_fields(
         enabled_fields=enabled_fields,
         merge_types=STUDIO_FIELD_MERGE_TYPES,
         labels=STUDIO_FIELD_LABELS,
+        entity_name=entity_name,
     )
 
     # Enrich parent_studio changes with display names
@@ -453,7 +460,7 @@ def _normalize_date(value: Optional[str]) -> Optional[str]:
 
     Handles:
     - Time components stripped: "1978-01-01 00:00:00" -> "1978-01-01"
-    - Year-only expanded: "2007" -> "2007-01-01"
+    - Year-only expanded: "2007" -> "2007-01-01" (treated as "unknown beyond year")
     - Year-month expanded: "2007-06" -> "2007-06-01"
     - ISO 8601 T-separated: "2007-06-15T00:00:00Z" -> "2007-06-15"
     """

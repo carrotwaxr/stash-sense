@@ -6,6 +6,8 @@ from upstream_field_mapper import (
     _normalize_date,
     _values_equal,
     diff_performer_fields,
+    diff_tag_fields,
+    diff_scene_fields,
     normalize_upstream_performer,
 )
 
@@ -356,6 +358,68 @@ class TestAliasSelfReferenceFiltering:
         # Self-ref alias filtered out, but "Janet" is a real addition
         assert "Janet" in changes[0]["upstream_value"]
         assert "Jane Doe" not in changes[0]["upstream_value"]
+
+
+class TestTagAliasSelfReferenceFiltering:
+    def test_tag_alias_matching_name_filtered(self):
+        """Tag alias matching its own name should be filtered out."""
+        local = {"name": "Brunette", "aliases": []}
+        upstream = {"name": "Brunette", "aliases": ["Brunette", "Brown Hair"]}
+        changes = diff_tag_fields(local, upstream, None, {"aliases"})
+        # "Brunette" filtered, only "Brown Hair" remains as real difference
+        assert len(changes) == 1
+        assert "Brunette" not in changes[0]["upstream_value"]
+        assert "Brown Hair" in changes[0]["upstream_value"]
+
+    def test_tag_no_false_positive_self_ref_only(self):
+        """Tag with only self-referencing alias should not flag a change."""
+        local = {"name": "Anal", "aliases": []}
+        upstream = {"name": "Anal", "aliases": ["Anal"]}
+        changes = diff_tag_fields(local, upstream, None, {"aliases"})
+        assert len(changes) == 0
+
+
+class TestSceneDateNormalization:
+    def test_scene_date_time_stripped(self):
+        """Scene date with time component should match date-only."""
+        local = {"title": "Test", "date": "2024-01-15"}
+        upstream = {"title": "Test", "date": "2024-01-15 00:00:00"}
+        result = diff_scene_fields(local, upstream, None, {"date"})
+        assert len(result["changes"]) == 0
+
+    def test_scene_date_partial_year_expanded(self):
+        """Scene date year-only should match padded date."""
+        local = {"title": "Test", "date": "2024-01-01"}
+        upstream = {"title": "Test", "date": "2024"}
+        result = diff_scene_fields(local, upstream, None, {"date"})
+        assert len(result["changes"]) == 0
+
+    def test_scene_date_real_difference_flagged(self):
+        """Genuine scene date difference should be flagged."""
+        local = {"title": "Test", "date": "2024-01-15"}
+        upstream = {"title": "Test", "date": "2024-06-01"}
+        result = diff_scene_fields(local, upstream, None, {"date"})
+        assert len(result["changes"]) == 1
+
+
+class TestDateComparisonWithSnapshot:
+    def test_normalized_dates_match_snapshot_skips_change(self):
+        """If upstream date matches snapshot after normalization, skip (user set local differently)."""
+        local = {"name": "Test", "birthdate": "1990-06-15"}
+        upstream = {"name": "Test", "birthdate": "1978-01-01 00:00:00"}
+        snapshot = {"name": "Test", "birthdate": "1978-01-01 00:00:00"}
+        changes = diff_performer_fields(local, upstream, snapshot, {"birthdate"})
+        # upstream == snapshot (both normalize to 1978-01-01), so no change flagged
+        assert len(changes) == 0
+
+    def test_upstream_changed_from_snapshot_flags_change(self):
+        """If upstream date differs from snapshot, flag it."""
+        local = {"name": "Test", "birthdate": "1978-01-01"}
+        upstream = {"name": "Test", "birthdate": "1978-06-15"}
+        snapshot = {"name": "Test", "birthdate": "1978-01-01 00:00:00"}
+        changes = diff_performer_fields(local, upstream, snapshot, {"birthdate"})
+        assert len(changes) == 1
+        assert changes[0]["field"] == "birthdate"
 
 
 class TestFieldMergeTypes:

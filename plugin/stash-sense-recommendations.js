@@ -1721,11 +1721,11 @@
     }
 
     // 2. Alias can't match performer's own name (filtered in diff engine now, but keep as safety net)
+    // Note: intentionally mutates proposedAliases in-place to clean up the caller's field data
     if (proposedName && proposedAliases) {
       const nameLower = proposedName.toLowerCase();
       const filtered = proposedAliases.filter(a => a.toLowerCase() !== nameLower);
       if (filtered.length < proposedAliases.length) {
-        // Silently filter self-referencing aliases instead of erroring
         proposedAliases.length = 0;
         proposedAliases.push(...filtered);
       }
