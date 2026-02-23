@@ -290,3 +290,186 @@ class TestPriorityIntegration:
         recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
         assert len(recs) == 1
         assert recs[0].details["endpoint"] == "https://fansdb.cc/graphql"
+
+
+class TestDisabledEndpoints:
+    """Tests for endpoint enable/disable functionality."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        return RecommendationsDB(tmp_path / "test.db")
+
+    def test_get_disabled_returns_empty_when_unset(self, db):
+        assert db.get_disabled_endpoints() == []
+
+    def test_set_and_get_disabled(self, db):
+        db.set_disabled_endpoints(["https://fansdb.cc/graphql"])
+        assert db.get_disabled_endpoints() == ["https://fansdb.cc/graphql"]
+
+    def test_is_endpoint_enabled_default(self, db):
+        assert db.is_endpoint_enabled("https://stashdb.org/graphql") is True
+
+    def test_is_endpoint_enabled_when_disabled(self, db):
+        db.set_disabled_endpoints(["https://stashdb.org/graphql"])
+        assert db.is_endpoint_enabled("https://stashdb.org/graphql") is False
+        assert db.is_endpoint_enabled("https://fansdb.cc/graphql") is True
+
+
+class TestDisabledEndpointsAPI:
+    """Tests for the disable/enable API endpoints."""
+
+    @pytest.fixture
+    def rec_db(self, tmp_path):
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.fixture
+    def mock_rec_db(self, rec_db):
+        with patch("settings_router.get_rec_db", return_value=rec_db):
+            yield rec_db
+
+    @pytest.fixture
+    def mock_connection_manager(self):
+        mgr = MagicMock()
+        mgr.get_connections.return_value = [
+            {"endpoint": "https://stashdb.org/graphql", "name": "StashDB", "domain": "stashdb.org"},
+            {"endpoint": "https://fansdb.cc/graphql", "name": "FansDB", "domain": "fansdb.cc"},
+        ]
+        with patch("settings_router.get_connection_manager", return_value=mgr):
+            yield mgr
+
+    @pytest.fixture
+    async def client(self, mock_rec_db, mock_connection_manager):
+        from main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+
+    @pytest.mark.asyncio
+    async def test_disable_endpoint(self, client, mock_rec_db):
+        resp = await client.post("/settings/endpoint-disable", json={
+            "endpoint": "https://fansdb.cc/graphql",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        assert "https://fansdb.cc/graphql" in mock_rec_db.get_disabled_endpoints()
+
+    @pytest.mark.asyncio
+    async def test_disable_removes_from_priorities(self, client, mock_rec_db):
+        mock_rec_db.set_endpoint_priorities([
+            "https://stashdb.org/graphql",
+            "https://fansdb.cc/graphql",
+        ])
+        await client.post("/settings/endpoint-disable", json={
+            "endpoint": "https://fansdb.cc/graphql",
+        })
+        assert "https://fansdb.cc/graphql" not in mock_rec_db.get_endpoint_priorities()
+
+    @pytest.mark.asyncio
+    async def test_enable_endpoint(self, client, mock_rec_db):
+        mock_rec_db.set_disabled_endpoints(["https://fansdb.cc/graphql"])
+        resp = await client.post("/settings/endpoint-enable", json={
+            "endpoint": "https://fansdb.cc/graphql",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        assert "https://fansdb.cc/graphql" not in mock_rec_db.get_disabled_endpoints()
+
+    @pytest.mark.asyncio
+    async def test_enable_appends_to_priorities(self, client, mock_rec_db):
+        mock_rec_db.set_endpoint_priorities(["https://stashdb.org/graphql"])
+        mock_rec_db.set_disabled_endpoints(["https://fansdb.cc/graphql"])
+        await client.post("/settings/endpoint-enable", json={
+            "endpoint": "https://fansdb.cc/graphql",
+        })
+        priorities = mock_rec_db.get_endpoint_priorities()
+        assert priorities[-1] == "https://fansdb.cc/graphql"
+
+    @pytest.mark.asyncio
+    async def test_get_priorities_excludes_disabled(self, client, mock_rec_db):
+        mock_rec_db.set_disabled_endpoints(["https://fansdb.cc/graphql"])
+        resp = await client.get("/settings/endpoint-priorities")
+        data = resp.json()
+        enabled_urls = [ep["endpoint"] for ep in data["endpoints"]]
+        disabled_urls = [ep["endpoint"] for ep in data["disabled"]]
+        assert "https://fansdb.cc/graphql" not in enabled_urls
+        assert "https://fansdb.cc/graphql" in disabled_urls
+
+    @pytest.mark.asyncio
+    async def test_disable_idempotent(self, client, mock_rec_db):
+        """Disabling an already-disabled endpoint should not duplicate."""
+        await client.post("/settings/endpoint-disable", json={"endpoint": "https://fansdb.cc/graphql"})
+        await client.post("/settings/endpoint-disable", json={"endpoint": "https://fansdb.cc/graphql"})
+        assert mock_rec_db.get_disabled_endpoints().count("https://fansdb.cc/graphql") == 1
+
+
+class TestDisabledEndpointFiltering:
+    """Test that BaseUpstreamAnalyzer filters disabled endpoints."""
+
+    @pytest.fixture
+    def rec_db(self, tmp_path):
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.mark.asyncio
+    async def test_disabled_endpoint_not_processed(self, rec_db):
+        """A disabled endpoint should be skipped entirely."""
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1"},
+            {"endpoint": "https://fansdb.cc/graphql", "api_key": "key2"},
+        ])
+
+        stash.get_test_entities_for_endpoint = AsyncMock(return_value=[{
+            "id": "42",
+            "name": "Local Name",
+            "description": "Local desc",
+            "stash_ids": [
+                {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-1"},
+                {"endpoint": "https://fansdb.cc/graphql", "stash_id": "fb-1"},
+            ],
+        }])
+
+        rec_db.set_disabled_endpoints(["https://fansdb.cc/graphql"])
+
+        upstream_data = {"name": "Upstream Name", "description": "desc", "updated": "2026-01-01T00:00:00Z"}
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_test_entity = AsyncMock(return_value=upstream_data)
+            MockSBC.return_value = mock_sbc
+
+            analyzer = ConcreteUpstreamAnalyzer(stash, rec_db)
+            result = await analyzer.run()
+
+        recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
+        assert len(recs) == 1
+        assert recs[0].details["endpoint"] == "https://stashdb.org/graphql"
+
+    @pytest.mark.asyncio
+    async def test_all_endpoints_disabled_produces_no_recs(self, rec_db):
+        """If all endpoints are disabled, no recommendations should be generated."""
+        stash = MagicMock()
+        stash.get_stashbox_connections = AsyncMock(return_value=[
+            {"endpoint": "https://stashdb.org/graphql", "api_key": "key1"},
+        ])
+
+        stash.get_test_entities_for_endpoint = AsyncMock(return_value=[{
+            "id": "42",
+            "name": "Local Name",
+            "description": "Local desc",
+            "stash_ids": [
+                {"endpoint": "https://stashdb.org/graphql", "stash_id": "sb-1"},
+            ],
+        }])
+
+        rec_db.set_disabled_endpoints(["https://stashdb.org/graphql"])
+
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_test_entity = AsyncMock(return_value={"name": "X", "description": "Y", "updated": "2026-01-01"})
+            MockSBC.return_value = mock_sbc
+
+            analyzer = ConcreteUpstreamAnalyzer(stash, rec_db)
+            result = await analyzer.run()
+
+        recs = rec_db.get_recommendations(type="upstream_test_entity_changes", status="pending")
+        assert len(recs) == 0

@@ -196,6 +196,11 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
                 key=lambda c: priority_map.get(c["endpoint"], len(priority_order))
             )
 
+        # Filter out disabled endpoints
+        disabled = set(self.rec_db.get_disabled_endpoints())
+        if disabled:
+            connections = [c for c in connections if c["endpoint"] not in disabled]
+
         settings = self.rec_db.get_settings(self.type)
         endpoint_config = {}
         if settings and settings.config:

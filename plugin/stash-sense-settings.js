@@ -530,15 +530,16 @@
 
     const desc = SS.createElement('div', {
       className: 'ss-setting-row ss-setting-hint',
-      textContent: 'Set the priority order for stash-box endpoints. Higher priority endpoints are checked first for upstream changes. When an entity is linked to multiple endpoints, only the highest-priority one generates recommendations.',
+      textContent: 'Set the priority order for stash-box endpoints. Higher priority endpoints are checked first for upstream changes. Disabled endpoints are excluded from all upstream analysis.',
     });
     body.appendChild(desc);
 
     try {
       const result = await apiCall('endpoint_priorities_get');
       const endpoints = result.endpoints || [];
+      const disabledEndpoints = result.disabled || [];
 
-      if (endpoints.length === 0) {
+      if (endpoints.length === 0 && disabledEndpoints.length === 0) {
         const emptyRow = SS.createElement('div', {
           className: 'ss-setting-row ss-setting-hint',
           textContent: 'No stash-box endpoints configured.',
@@ -548,11 +549,28 @@
         return section;
       }
 
+      // === Enabled section ===
+      const enabledLabel = SS.createElement('div', {
+        className: 'ss-setting-row ss-setting-hint',
+        textContent: 'Enabled',
+        attrs: { style: 'font-weight:600;margin-top:0.5rem;' },
+      });
+      body.appendChild(enabledLabel);
+
       const list = SS.createElement('div', { className: 'ss-priority-list' });
       const saveStatus = SS.createElement('span', { className: 'ss-setting-hint' });
 
-      function renderList() {
+      function renderEnabledList() {
         list.innerHTML = '';
+        if (endpoints.length === 0) {
+          const emptyHint = SS.createElement('div', {
+            className: 'ss-setting-row ss-setting-hint',
+            textContent: 'All endpoints are disabled.',
+          });
+          emptyHint.style.color = '#888';
+          list.appendChild(emptyHint);
+          return;
+        }
         endpoints.forEach((ep, i) => {
           const row = SS.createElement('div', { className: 'ss-priority-row' });
 
@@ -566,7 +584,7 @@
             textContent: ep.name || ep.domain || ep.endpoint,
           });
 
-          const arrows = SS.createElement('div', { className: 'ss-priority-arrows' });
+          const actions = SS.createElement('div', { className: 'ss-priority-arrows' });
 
           const upBtn = SS.createElement('button', {
             className: 'ss-btn ss-btn-sm ss-priority-arrow',
@@ -576,7 +594,7 @@
           upBtn.addEventListener('click', () => {
             if (i > 0) {
               [endpoints[i - 1], endpoints[i]] = [endpoints[i], endpoints[i - 1]];
-              renderList();
+              renderEnabledList();
               savePriorities();
             }
           });
@@ -589,16 +607,25 @@
           downBtn.addEventListener('click', () => {
             if (i < endpoints.length - 1) {
               [endpoints[i], endpoints[i + 1]] = [endpoints[i + 1], endpoints[i]];
-              renderList();
+              renderEnabledList();
               savePriorities();
             }
           });
 
-          arrows.appendChild(upBtn);
-          arrows.appendChild(downBtn);
+          const disableBtn = SS.createElement('button', {
+            className: 'ss-btn ss-btn-sm',
+            textContent: 'Disable',
+            attrs: { title: 'Disable this endpoint' },
+          });
+          disableBtn.style.cssText = 'color:#999;border:1px solid #555;background:transparent;margin-left:0.5rem;';
+          disableBtn.addEventListener('click', () => showDisableConfirmation(ep));
+
+          actions.appendChild(upBtn);
+          actions.appendChild(downBtn);
+          actions.appendChild(disableBtn);
           row.appendChild(rank);
           row.appendChild(name);
-          row.appendChild(arrows);
+          row.appendChild(actions);
           list.appendChild(row);
         });
       }
@@ -621,9 +648,114 @@
         }, 300);
       }
 
-      renderList();
+      async function showDisableConfirmation(ep) {
+        const displayName = ep.name || ep.domain || ep.endpoint;
+        const overlay = document.createElement('div');
+        overlay.className = 'ss-modal-overlay';
+        overlay.innerHTML = `
+          <div class="ss-modal" style="max-width:420px;">
+            <h3>Disable ${SS.escapeHtml(displayName)}</h3>
+            <p style="margin:0.75rem 0;color:#aaa;">This endpoint will be excluded from all upstream analysis until re-enabled.</p>
+            <p style="margin:0.75rem 0;color:#aaa;">Clear existing recommendations and snapshots from this endpoint?</p>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:1rem;">
+              <button class="ss-btn ss-btn-danger" id="ss-disable-clear">Disable & Clear Data</button>
+              <button class="ss-btn ss-btn-secondary" id="ss-disable-keep">Disable & Keep Data</button>
+              <button class="ss-btn" id="ss-disable-cancel" style="margin-top:0.25rem;">Cancel</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const handleDisable = async (clearRecs) => {
+          overlay.querySelector('.ss-modal').innerHTML = '<div class="ss-loading-inline"><div class="ss-spinner"></div></div><p style="text-align:center;margin-top:0.5rem;">Disabling...</p>';
+          try {
+            await apiCall('endpoint_disable', { endpoint: ep.endpoint, clear_recommendations: clearRecs });
+            // Move from enabled to disabled locally
+            const idx = endpoints.findIndex(e => e.endpoint === ep.endpoint);
+            if (idx !== -1) {
+              disabledEndpoints.push(endpoints.splice(idx, 1)[0]);
+            }
+            overlay.remove();
+            renderEnabledList();
+            renderDisabledList();
+          } catch (e) {
+            overlay.remove();
+            saveStatus.textContent = `Failed: ${e.message}`;
+            saveStatus.style.color = '#ef4444';
+          }
+        };
+
+        overlay.querySelector('#ss-disable-clear').addEventListener('click', () => handleDisable(true));
+        overlay.querySelector('#ss-disable-keep').addEventListener('click', () => handleDisable(false));
+        overlay.querySelector('#ss-disable-cancel').addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      }
+
+      renderEnabledList();
       body.appendChild(list);
       body.appendChild(saveStatus);
+
+      // === Disabled section ===
+      const disabledLabel = SS.createElement('div', {
+        className: 'ss-setting-row ss-setting-hint',
+        textContent: 'Disabled',
+        attrs: { style: 'font-weight:600;margin-top:1.5rem;' },
+      });
+      body.appendChild(disabledLabel);
+
+      const disabledList = SS.createElement('div', { className: 'ss-priority-list ss-disabled-list' });
+
+      function renderDisabledList() {
+        disabledList.innerHTML = '';
+        if (disabledEndpoints.length === 0) {
+          const emptyHint = SS.createElement('div', {
+            className: 'ss-setting-row ss-setting-hint',
+            textContent: 'No disabled endpoints.',
+          });
+          emptyHint.style.color = '#888';
+          disabledList.appendChild(emptyHint);
+          return;
+        }
+        disabledEndpoints.forEach((ep) => {
+          const row = SS.createElement('div', { className: 'ss-priority-row ss-priority-row-disabled' });
+
+          const name = SS.createElement('span', {
+            className: 'ss-priority-name',
+            textContent: ep.name || ep.domain || ep.endpoint,
+          });
+          name.style.color = '#666';
+
+          const enableBtn = SS.createElement('button', {
+            className: 'ss-btn ss-btn-sm ss-btn-primary',
+            textContent: 'Enable',
+            attrs: { title: 'Re-enable this endpoint' },
+          });
+          enableBtn.addEventListener('click', async () => {
+            enableBtn.disabled = true;
+            enableBtn.textContent = 'Enabling...';
+            try {
+              await apiCall('endpoint_enable', { endpoint: ep.endpoint });
+              // Move from disabled to enabled locally
+              const idx = disabledEndpoints.findIndex(e => e.endpoint === ep.endpoint);
+              if (idx !== -1) {
+                endpoints.push(disabledEndpoints.splice(idx, 1)[0]);
+              }
+              renderEnabledList();
+              renderDisabledList();
+            } catch (e) {
+              enableBtn.textContent = 'Failed';
+              enableBtn.disabled = false;
+            }
+          });
+
+          row.appendChild(name);
+          row.appendChild(enableBtn);
+          disabledList.appendChild(row);
+        });
+      }
+
+      renderDisabledList();
+      body.appendChild(disabledList);
     } catch (e) {
       const errorRow = SS.createElement('div', {
         className: 'ss-setting-row ss-setting-hint',
@@ -714,23 +846,34 @@
 
     // Load endpoints asynchronously
     try {
-      const configResult = await SS.stashQuery(`
-        query { configuration { general { stashBoxes { endpoint name } } } }
-      `);
-      const endpoints = configResult?.configuration?.general?.stashBoxes || [];
+      const [configResult, priorityResult] = await Promise.all([
+        SS.stashQuery(`
+          query { configuration { general { stashBoxes { endpoint name } } } }
+        `),
+        apiCall('endpoint_priorities_get'),
+      ]);
+      const allEndpoints = configResult?.configuration?.general?.stashBoxes || [];
+      const disabledUrls = new Set((priorityResult.disabled || []).map(d => d.endpoint));
+      const endpoints = allEndpoints.filter(ep => !disabledUrls.has(ep.endpoint));
 
       body.removeChild(loadingRow);
 
-      if (endpoints.length === 0) {
+      if (allEndpoints.length === 0) {
         const emptyRow = SS.createElement('div', {
           className: 'ss-setting-row ss-setting-hint',
           textContent: 'No stash-box endpoints configured. Configure them in Stash Settings \u2192 Metadata Providers.',
         });
         body.appendChild(emptyRow);
+      } else if (endpoints.length === 0) {
+        const emptyRow = SS.createElement('div', {
+          className: 'ss-setting-row ss-setting-hint',
+          textContent: 'All endpoints are disabled. Enable endpoints in the Endpoint Priority section above.',
+        });
+        body.appendChild(emptyRow);
       } else {
         const helpRow = SS.createElement('div', {
           className: 'ss-setting-row ss-setting-hint',
-          textContent: 'Configure which fields are monitored for upstream changes per endpoint.',
+          textContent: 'Configure which fields are monitored for upstream changes per endpoint. Disabled endpoints are hidden.',
         });
         body.appendChild(helpRow);
 
