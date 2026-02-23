@@ -602,7 +602,8 @@
           const localCount = (change.local_value || []).length;
           const newCount = merged.length - localCount;
           if (newCount > 0) {
-            fieldSummaries.push({ field: change.field_label || fieldKey, desc: `+${newCount} aliases merged` });
+            const itemLabel = fieldKey === 'urls' ? 'URLs' : 'aliases';
+            fieldSummaries.push({ field: change.field_label || fieldKey, desc: `+${newCount} ${itemLabel} merged` });
           }
         } else {
           const choice = smartDefault(change.local_value, change.upstream_value);
@@ -3694,13 +3695,14 @@
 
     itemsCol.appendChild(aliasList);
 
-    // Add custom alias button
+    // Add custom alias/URL button
+    const isUrlField = change.field === 'urls';
     const addBtn = document.createElement('button');
     addBtn.className = 'ss-btn ss-btn-secondary';
     addBtn.style.cssText = 'margin-top:0.5rem;padding:4px 10px;font-size:0.8rem;';
-    addBtn.textContent = '+ Add custom alias';
+    addBtn.textContent = isUrlField ? '+ Add custom URL' : '+ Add custom alias';
     addBtn.addEventListener('click', () => {
-      const newAlias = prompt('Enter new alias:');
+      const newAlias = prompt(isUrlField ? 'Enter new URL:' : 'Enter new alias:');
       if (!newAlias || !newAlias.trim()) return;
       const existingCount = aliasList.querySelectorAll('.ss-upstream-alias-item').length;
       const item = document.createElement('label');
