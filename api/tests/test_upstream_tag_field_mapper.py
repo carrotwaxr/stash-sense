@@ -138,7 +138,7 @@ class TestDiffTagFields:
 
     def test_first_run_no_snapshot_flags_all_differences(self):
         local = {"name": "BJ", "description": "Short", "aliases": []}
-        upstream = {"name": "Blowjob", "description": "Long desc", "aliases": ["BJ"]}
+        upstream = {"name": "Blowjob", "description": "Long desc", "aliases": ["Oral"]}
         enabled = {"name", "description", "aliases"}
 
         changes = diff_tag_fields(local, upstream, None, enabled)

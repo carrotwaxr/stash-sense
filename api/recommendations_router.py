@@ -527,10 +527,16 @@ class MergePerformersRequest(BaseModel):
 
 @router.post("/actions/merge-performers")
 async def merge_performers(request: MergePerformersRequest):
-    """Execute a performer merge."""
+    """Execute a performer merge. Deletes source performers after merge."""
     stash = get_stash_client()
     try:
         result = await stash.merge_performers(request.source_ids, request.destination_id)
+        # Delete orphaned source performers after merge
+        for source_id in request.source_ids:
+            try:
+                await stash.destroy_performer(source_id)
+            except Exception as del_err:
+                logger.warning(f"Failed to delete performer {source_id} after merge: {del_err}")
         return {"success": True, "merged_into": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -922,6 +928,14 @@ async def _auto_merge_conflicting_performer(
         f"(ID: {conflicting['id']}) into performer {destination_id}"
     )
     await stash.merge_performers([conflicting["id"]], destination_id)
+
+    # Delete the now-orphaned source performer
+    try:
+        await stash.destroy_performer(conflicting["id"])
+        logger.warning(f"Deleted orphaned performer {conflicting['id']} after merge")
+    except Exception as e:
+        logger.warning(f"Failed to delete performer {conflicting['id']} after merge: {e}")
+
     return {"merged_id": conflicting["id"], "merged_name": conflicting["name"]}
 
 

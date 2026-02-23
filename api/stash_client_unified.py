@@ -164,6 +164,16 @@ class StashClientUnified:
         data = await self._execute(query, {"id": performer_id})
         return data["findPerformer"]
 
+    async def destroy_performer(self, performer_id: str) -> bool:
+        """Delete a performer by ID. Returns True if successful."""
+        query = """
+        mutation PerformerDestroy($id: ID!) {
+          performerDestroy(input: { id: $id })
+        }
+        """
+        data = await self._execute(query, {"id": performer_id})
+        return data.get("performerDestroy", False)
+
     async def merge_performers(self, source_ids: list[str], destination_id: str) -> dict:
         """
         Merge source performers into destination performer.

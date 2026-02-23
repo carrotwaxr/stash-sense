@@ -11,6 +11,9 @@ field configurations alongside performers.
 import re
 from typing import Optional
 
+# Fields that contain date values and need date normalization
+_DATE_FIELDS = {"birthdate", "death_date", "date"}
+
 
 # All default monitored performer field names (using local Stash field names)
 DEFAULT_PERFORMER_FIELDS: set[str] = {
@@ -189,7 +192,11 @@ def diff_tag_fields(
     snapshot: Optional[dict],
     enabled_fields: set[str],
 ) -> list[dict]:
-    """Convenience wrapper: 3-way diff using tag field config."""
+    """Convenience wrapper: 3-way diff using tag field config.
+
+    Uses local tag name for alias self-reference filtering.
+    """
+    entity_name = local.get("name") or upstream.get("name") or ""
     return diff_fields(
         local=local,
         upstream=upstream,
@@ -197,6 +204,7 @@ def diff_tag_fields(
         enabled_fields=enabled_fields,
         merge_types=TAG_FIELD_MERGE_TYPES,
         labels=TAG_FIELD_LABELS,
+        entity_name=entity_name,
     )
 
 
@@ -272,6 +280,7 @@ def diff_studio_fields(
     Enriches parent_studio changes with display-friendly names so the UI
     can show "Studio Name" instead of raw stashbox UUIDs.
     """
+    entity_name = local.get("name") or upstream.get("name") or ""
     changes = diff_fields(
         local=local,
         upstream=upstream,
@@ -279,6 +288,7 @@ def diff_studio_fields(
         enabled_fields=enabled_fields,
         merge_types=STUDIO_FIELD_MERGE_TYPES,
         labels=STUDIO_FIELD_LABELS,
+        entity_name=entity_name,
     )
 
     # Enrich parent_studio changes with display names
@@ -445,6 +455,34 @@ def normalize_upstream_performer(upstream: dict) -> dict:
     return result
 
 
+def _normalize_date(value: Optional[str]) -> Optional[str]:
+    """Normalize a date string for comparison.
+
+    Handles:
+    - Time components stripped: "1978-01-01 00:00:00" -> "1978-01-01"
+    - Year-only expanded: "2007" -> "2007-01-01" (treated as "unknown beyond year")
+    - Year-month expanded: "2007-06" -> "2007-06-01"
+    - ISO 8601 T-separated: "2007-06-15T00:00:00Z" -> "2007-06-15"
+    """
+    if not value or not isinstance(value, str):
+        return value
+    # Strip whitespace
+    s = value.strip()
+    # Remove time portion (space-separated or T-separated)
+    if "T" in s:
+        s = s.split("T")[0]
+    if " " in s:
+        s = s.split(" ")[0]
+    # Expand partial dates
+    # Year only: "2007" -> "2007-01-01"
+    if re.fullmatch(r"\d{4}", s):
+        return f"{s}-01-01"
+    # Year-month: "2007-06" -> "2007-06-01"
+    if re.fullmatch(r"\d{4}-\d{2}", s):
+        return f"{s}-01"
+    return s
+
+
 def _is_empty(value) -> bool:
     """Check if a value is semantically empty (None, empty string, 0, empty list)."""
     if value is None:
@@ -458,10 +496,14 @@ def _is_empty(value) -> bool:
     return False
 
 
-def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
+def _values_equal(
+    local_value, upstream_value, merge_type: str,
+    field_name: str = "", entity_name: str = "",
+) -> bool:
     """Compare two field values for equality.
 
-    - alias_list: case-insensitive set comparison
+    - alias_list: case-insensitive set comparison (filters self-referencing aliases)
+    - date fields: normalizes partial dates and strips time components
     - strings: case-insensitive comparison (eliminates BROWN vs Brown false positives)
     - both empty: treats None, "", 0, and [] as equivalent empty values
     - all other types: standard equality
@@ -470,15 +512,27 @@ def _values_equal(local_value, upstream_value, merge_type: str) -> bool:
     if _is_empty(local_value) and _is_empty(upstream_value):
         return True
     if merge_type == "alias_list":
+        entity_name_lower = entity_name.lower() if entity_name else ""
         local_set = {
             v.lower().rstrip("/") if isinstance(v, str) else v
             for v in (local_value or [])
+            if not (entity_name_lower and isinstance(v, str) and v.lower() == entity_name_lower)
         }
         upstream_set = {
             v.lower().rstrip("/") if isinstance(v, str) else v
             for v in (upstream_value or [])
+            if not (entity_name_lower and isinstance(v, str) and v.lower() == entity_name_lower)
         }
         return local_set == upstream_set
+    # Date fields: normalize before comparison
+    if field_name in _DATE_FIELDS:
+        local_norm = _normalize_date(local_value) if isinstance(local_value, str) else local_value
+        upstream_norm = _normalize_date(upstream_value) if isinstance(upstream_value, str) else upstream_value
+        if _is_empty(local_norm) and _is_empty(upstream_norm):
+            return True
+        if isinstance(local_norm, str) and isinstance(upstream_norm, str):
+            return local_norm == upstream_norm
+        return local_norm == upstream_norm
     if isinstance(local_value, str) and isinstance(upstream_value, str):
         return local_value.lower() == upstream_value.lower()
     return local_value == upstream_value
@@ -491,6 +545,7 @@ def diff_fields(
     enabled_fields: set[str],
     merge_types: dict[str, str],
     labels: dict[str, str],
+    entity_name: str = "",
 ) -> list[dict]:
     """Generic 3-way diff between local, upstream, and previous snapshot.
 
@@ -507,6 +562,7 @@ def diff_fields(
         enabled_fields: Set of field names to compare.
         merge_types: Dict mapping field name to merge type string.
         labels: Dict mapping field name to human-readable label.
+        entity_name: Name of the entity (used to filter self-referencing aliases).
 
     Returns a list of change dicts with keys:
         field, field_label, local_value, upstream_value,
@@ -521,17 +577,38 @@ def diff_fields(
         upstream_value = upstream.get(field_name)
 
         # Skip if already in sync
-        if _values_equal(local_value, upstream_value, merge_type):
+        if _values_equal(local_value, upstream_value, merge_type,
+                         field_name=field_name, entity_name=entity_name):
             continue
 
         # If we have a snapshot, check if upstream actually changed
         if snapshot is not None:
             previous_upstream_value = snapshot.get(field_name)
-            if _values_equal(upstream_value, previous_upstream_value, merge_type):
+            if _values_equal(upstream_value, previous_upstream_value, merge_type,
+                             field_name=field_name, entity_name=entity_name):
                 # Upstream hasn't changed since snapshot; user set local differently on purpose
                 continue
         else:
             previous_upstream_value = None
+
+        # For alias_list fields, filter self-referencing aliases from the output values
+        if merge_type == "alias_list" and entity_name:
+            entity_name_lower = entity_name.lower()
+            if isinstance(upstream_value, list):
+                upstream_value = [
+                    v for v in upstream_value
+                    if not (isinstance(v, str) and v.lower() == entity_name_lower)
+                ]
+            if isinstance(local_value, list):
+                local_value = [
+                    v for v in local_value
+                    if not (isinstance(v, str) and v.lower() == entity_name_lower)
+                ]
+            if isinstance(previous_upstream_value, list):
+                previous_upstream_value = [
+                    v for v in previous_upstream_value
+                    if not (isinstance(v, str) and v.lower() == entity_name_lower)
+                ]
 
         changes.append({
             "field": field_name,
@@ -554,8 +631,11 @@ def diff_performer_fields(
     """Convenience wrapper: 3-way diff using performer field config.
 
     Delegates to the generic diff_fields() with performer-specific
-    merge types and labels.
+    merge types and labels. Uses local performer name for alias
+    self-reference filtering.
     """
+    # Use the local name (or upstream name as fallback) for alias filtering
+    entity_name = local.get("name") or upstream.get("name") or ""
     return diff_fields(
         local=local,
         upstream=upstream,
@@ -563,6 +643,7 @@ def diff_performer_fields(
         enabled_fields=enabled_fields,
         merge_types=FIELD_MERGE_TYPES,
         labels=FIELD_LABELS,
+        entity_name=entity_name,
     )
 
 
