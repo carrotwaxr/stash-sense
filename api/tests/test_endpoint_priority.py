@@ -401,6 +401,66 @@ class TestDisabledEndpointsAPI:
         await client.post("/settings/endpoint-disable", json={"endpoint": "https://fansdb.cc/graphql"})
         assert mock_rec_db.get_disabled_endpoints().count("https://fansdb.cc/graphql") == 1
 
+    @pytest.mark.asyncio
+    async def test_disable_clear_recommendations(self, client, mock_rec_db):
+        """Disabling with clear_recommendations should dismiss recs, delete snapshots and watermarks."""
+        ep = "https://fansdb.cc/graphql"
+
+        # Create a recommendation from this endpoint
+        import json
+        mock_rec_db.create_recommendation(
+            type="upstream_performer_changes",
+            target_type="performer",
+            target_id="1",
+            details={"endpoint": ep, "changes": []},
+        )
+        # Create a recommendation from a different endpoint (should not be affected)
+        mock_rec_db.create_recommendation(
+            type="upstream_performer_changes",
+            target_type="performer",
+            target_id="2",
+            details={"endpoint": "https://stashdb.org/graphql", "changes": []},
+        )
+
+        # Create a snapshot for this endpoint
+        mock_rec_db.upsert_upstream_snapshot(
+            entity_type="performer", local_entity_id="1",
+            endpoint=ep, stash_box_id="sb-1",
+            upstream_data={"name": "Test"}, upstream_updated_at="2026-01-01",
+        )
+
+        # Create a watermark for this endpoint
+        mock_rec_db.set_watermark(
+            f"upstream_performer_changes:{ep}",
+            last_cursor="2026-01-01T00:00:00Z",
+        )
+
+        resp = await client.post("/settings/endpoint-disable", json={
+            "endpoint": ep,
+            "clear_recommendations": True,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["cleared_count"] == 1
+
+        # Rec from this endpoint should be dismissed
+        recs = mock_rec_db.get_recommendations(
+            type="upstream_performer_changes", status="pending"
+        )
+        assert len(recs) == 1
+        assert recs[0].details["endpoint"] == "https://stashdb.org/graphql"
+
+        # Snapshot should be deleted
+        snap = mock_rec_db.get_upstream_snapshot(
+            entity_type="performer", endpoint=ep, stash_box_id="sb-1"
+        )
+        assert snap is None
+
+        # Watermark should be deleted
+        wm = mock_rec_db.get_watermark(f"upstream_performer_changes:{ep}")
+        assert wm is None
+
 
 class TestDisabledEndpointFiltering:
     """Test that BaseUpstreamAnalyzer filters disabled endpoints."""

@@ -4,6 +4,7 @@ Endpoints for reading, updating, and resetting sidecar settings.
 Also provides system info (hardware profile, version, uptime).
 """
 
+import json
 import time
 from typing import Any, Optional
 
@@ -134,7 +135,6 @@ async def disable_endpoint(request: EndpointDisableRequest):
             rows = conn.execute(
                 "SELECT id, details FROM recommendations WHERE status = 'pending'"
             ).fetchall()
-            import json
             for row in rows:
                 try:
                     details = json.loads(row['details']) if isinstance(row['details'], str) else row['details']
@@ -154,9 +154,10 @@ async def disable_endpoint(request: EndpointDisableRequest):
             )
 
             # Clear watermarks for this endpoint
+            # Watermark keys are stored as "{analyzer_type}:{endpoint}"
             conn.execute(
-                "DELETE FROM analysis_watermarks WHERE endpoint = ?",
-                (request.endpoint,)
+                "DELETE FROM analysis_watermarks WHERE type LIKE ?",
+                (f"%:{request.endpoint}",)
             )
 
     return {"success": True, "cleared_count": cleared_count}
