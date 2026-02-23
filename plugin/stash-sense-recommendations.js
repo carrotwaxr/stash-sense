@@ -1713,7 +1713,14 @@
         const conflicts = (nameCheck?.findPerformers?.performers || [])
           .filter(p => p.id !== performerId);
         if (conflicts.length > 0) {
-          nameConflict = conflicts[0];
+          const candidate = conflicts[0];
+          // Different disambiguation values mean different people — not a conflict
+          const candidateDisambig = (candidate.disambiguation || '').trim();
+          const proposedDisambigVal = (proposedDisambig || '').trim();
+          const isDistinctPerson = candidateDisambig && proposedDisambigVal && candidateDisambig !== proposedDisambigVal;
+          if (!isDistinctPerson) {
+            nameConflict = candidate;
+          }
         }
       } catch (e) {
         console.warn('[Stash Sense] Name uniqueness check failed:', e);
@@ -1747,31 +1754,45 @@
   }
 
 
-  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel) {
+  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel, currentPerformer) {
     const overlay = document.createElement('div');
     overlay.className = 'ss-modal-overlay';
     overlay.style.zIndex = '10001';
 
     const c = conflictingPerformer;
-    const disambigText = c.disambiguation ? ` (${c.disambiguation})` : '';
+    const cur = currentPerformer || {};
 
     overlay.innerHTML = `
-      <div class="ss-modal" style="max-width: 480px;">
+      <div class="ss-modal" style="max-width: 600px;">
         <div class="ss-modal-header">
           <h3>Name Conflict</h3>
           <button class="ss-modal-close" data-action="close">&times;</button>
         </div>
         <div class="ss-modal-body" style="padding: 16px;">
-          <p style="margin: 0 0 12px;">
-            A performer named <strong>${escapeHtml(c.name)}${escapeHtml(disambigText)}</strong> already exists
-            (ID: ${escapeHtml(c.id)}, ${c.scene_count || 0} scenes).
+          <p style="margin: 0 0 12px; color: var(--ss-text-muted);">
+            A performer with this name already exists. You can merge the duplicate into this performer
+            (scenes will be reassigned and the duplicate deleted), or skip this conflict.
           </p>
-          <p style="margin: 0 0 16px; color: var(--ss-text-muted);">
-            You can merge the duplicate into this performer (content will be reassigned and the duplicate deleted),
-            or open both performers to resolve manually.
-          </p>
-          <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button class="ss-btn" data-action="open-both">Open Both</button>
+          <div class="ss-conflict-comparison">
+            <div class="ss-conflict-card">
+              <div class="ss-conflict-card-label">This Performer</div>
+              <img src="${escapeHtml(cur.image_path || '')}" class="ss-conflict-thumb" onerror="this.style.display='none'" />
+              <div class="ss-conflict-name">${escapeHtml(cur.name || 'Unknown')}</div>
+              ${cur.disambiguation ? `<div class="ss-conflict-disambig">${escapeHtml(cur.disambiguation)}</div>` : ''}
+              <div class="ss-conflict-meta">ID: ${escapeHtml(String(performerId))}</div>
+              <a href="/performers/${performerId}" target="_blank" class="ss-conflict-link">View in Stash</a>
+            </div>
+            <div class="ss-conflict-card">
+              <div class="ss-conflict-card-label">Conflicting Performer</div>
+              <img src="${escapeHtml(c.image_path || '')}" class="ss-conflict-thumb" onerror="this.style.display='none'" />
+              <div class="ss-conflict-name">${escapeHtml(c.name)}</div>
+              ${c.disambiguation ? `<div class="ss-conflict-disambig">${escapeHtml(c.disambiguation)}</div>` : ''}
+              <div class="ss-conflict-meta">ID: ${escapeHtml(c.id)} &middot; ${c.scene_count || 0} scenes</div>
+              <a href="/performers/${c.id}" target="_blank" class="ss-conflict-link">View in Stash</a>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+            <button class="ss-btn" data-action="skip">Skip</button>
             <button class="ss-btn ss-btn-primary" data-action="merge">Merge &amp; Continue</button>
           </div>
         </div>
@@ -1785,12 +1806,7 @@
 
     overlay.addEventListener('click', (e) => {
       const action = e.target.dataset?.action || e.target.closest('[data-action]')?.dataset?.action;
-      if (action === 'close') {
-        closeDialog();
-        onCancel();
-      } else if (action === 'open-both') {
-        window.open(`/performers/${performerId}`, '_blank');
-        window.open(`/performers/${c.id}`, '_blank');
+      if (action === 'close' || action === 'skip') {
         closeDialog();
         onCancel();
       } else if (action === 'merge') {
@@ -2119,7 +2135,12 @@
       applyBtn.textContent = 'Validating...';
 
       const proposedName = fields.name || details.performer_name;
-      const proposedDisambig = fields.disambiguation || null;
+      // Get disambiguation: from accepted fields first, then from the current local value in changes
+      let proposedDisambig = fields.disambiguation || null;
+      if (!proposedDisambig) {
+        const disambigChange = changes.find(c => c.field === 'disambiguation');
+        if (disambigChange) proposedDisambig = disambigChange.local_value || null;
+      }
       const proposedAliases = fields.aliases || fields._alias_add || [];
 
       const { errors: validationErrors, nameConflict } = await validatePerformerMerge(
@@ -2146,6 +2167,20 @@
             errorDiv.style.display = 'none';
             try {
               await RecommendationsAPI.mergePerformers(performerId, [conflictId]);
+            } catch (mergeErr) {
+              const msg = String(mergeErr.message || mergeErr);
+              // If the conflicting performer was already deleted, the merge is unnecessary — proceed
+              if (msg.includes('not found') || msg.includes('does not exist') || msg.includes('404')) {
+                console.warn('[Stash Sense] Conflicting performer already deleted, skipping merge');
+              } else {
+                errorDiv.innerHTML = `<div>Merge failed: ${escapeHtml(msg)}</div>`;
+                errorDiv.style.display = 'block';
+                applyBtn.textContent = 'Apply Selected Changes';
+                applyBtn.disabled = false;
+                return;
+              }
+            }
+            try {
               await RecommendationsAPI.updatePerformer(performerId, fields);
               await RecommendationsAPI.resolve(rec.id, 'applied', { fields, auto_merged: conflictId });
               applyBtn.textContent = 'Merged & Applied!';
@@ -2155,14 +2190,15 @@
                 currentState.selectedRec = null;
                 renderCurrentView(document.getElementById('ss-recommendations'));
               }, 1500);
-            } catch (mergeErr) {
-              errorDiv.innerHTML = `<div>${escapeHtml(mergeErr.message)}</div>`;
+            } catch (updateErr) {
+              errorDiv.innerHTML = `<div>${escapeHtml(updateErr.message)}</div>`;
               errorDiv.style.display = 'block';
               applyBtn.textContent = 'Apply Selected Changes';
               applyBtn.disabled = false;
             }
           },
-          () => { /* User chose cancel/open-both */ }
+          () => { /* User chose skip */ },
+          { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig }
         );
         return;
       }

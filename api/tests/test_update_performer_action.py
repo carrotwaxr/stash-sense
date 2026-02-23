@@ -110,3 +110,90 @@ class TestPerformerNameConflictAutoMerge:
             })
 
             assert resp.status_code == 500
+
+    def test_deleted_conflicting_performer_skips_merge(self, app):
+        """If the conflicting performer was deleted, skip merge and proceed."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = MagicMock()
+
+            call_count = 0
+
+            async def mock_update_performer(performer_id, **fields):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1 and "name" in fields:
+                    raise RuntimeError(
+                        'GraphQL error: Name "Test" already used by performer "Test"'
+                    )
+                return {"id": performer_id}
+
+            mock_stash.update_performer = AsyncMock(side_effect=mock_update_performer)
+
+            # search_performers finds the conflicting performer
+            mock_stash.search_performers = AsyncMock(return_value=[
+                {"id": "99", "name": "Test", "disambiguation": "", "alias_list": [], "stash_ids": []},
+            ])
+
+            # merge_performers fails because the performer was deleted
+            mock_stash.merge_performers = AsyncMock(
+                side_effect=RuntimeError("performer not found")
+            )
+
+            mock_stash.get_performer = AsyncMock(return_value={
+                "id": "50", "name": "Old Name", "alias_list": [], "stash_ids": [],
+            })
+
+            mock_get_stash.return_value = mock_stash
+
+            import recommendations_router
+            recommendations_router._entity_name_cache_loaded.clear()
+            recommendations_router._entity_name_cache.clear()
+
+            client = TestClient(app)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"name": "Test"},
+            })
+
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["success"] is True
+            assert data.get("auto_merged") is True
+
+    def test_merge_raises_on_non_deleted_error(self, app):
+        """If merge fails for a reason other than 'not found', the error should propagate."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = MagicMock()
+
+            mock_stash.update_performer = AsyncMock(
+                side_effect=RuntimeError(
+                    'GraphQL error: Name "Test" already used by performer "Test"'
+                )
+            )
+
+            mock_stash.search_performers = AsyncMock(return_value=[
+                {"id": "99", "name": "Test", "disambiguation": "", "alias_list": [], "stash_ids": []},
+            ])
+
+            # merge_performers fails with a different error
+            mock_stash.merge_performers = AsyncMock(
+                side_effect=RuntimeError("internal server error")
+            )
+
+            mock_stash.get_performer = AsyncMock(return_value={
+                "id": "50", "name": "Old Name", "alias_list": [], "stash_ids": [],
+            })
+
+            mock_get_stash.return_value = mock_stash
+
+            import recommendations_router
+            recommendations_router._entity_name_cache_loaded.clear()
+            recommendations_router._entity_name_cache.clear()
+
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"name": "Test"},
+            })
+
+            assert resp.status_code == 500

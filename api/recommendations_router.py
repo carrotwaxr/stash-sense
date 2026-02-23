@@ -927,7 +927,15 @@ async def _auto_merge_conflicting_performer(
         f"Auto-merging conflicting performer '{conflicting['name']}' "
         f"(ID: {conflicting['id']}) into performer {destination_id}"
     )
-    await stash.merge_performers([conflicting["id"]], destination_id)
+
+    try:
+        await stash.merge_performers([conflicting["id"]], destination_id)
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "not found" in err_msg or "does not exist" in err_msg:
+            logger.warning(f"Conflicting performer {conflicting['id']} already deleted, skipping merge")
+            return {"merged_id": conflicting["id"], "merged_name": conflicting["name"]}
+        raise
 
     # Delete the now-orphaned source performer
     try:
