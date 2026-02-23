@@ -712,6 +712,21 @@ def handle_recommendations(mode, args, sidecar_url):
         endpoints = args.get("endpoints", [])
         return sidecar_post(sidecar_url, "/settings/endpoint-priorities", {"endpoints": endpoints})
 
+    elif mode == "endpoint_disable":
+        endpoint = args.get("endpoint")
+        if not endpoint:
+            return {"error": "No endpoint provided"}
+        return sidecar_post(sidecar_url, "/settings/endpoint-disable", {
+            "endpoint": endpoint,
+            "clear_recommendations": args.get("clear_recommendations", False),
+        })
+
+    elif mode == "endpoint_enable":
+        endpoint = args.get("endpoint")
+        if not endpoint:
+            return {"error": "No endpoint provided"}
+        return sidecar_post(sidecar_url, "/settings/endpoint-enable", {"endpoint": endpoint})
+
     # Fingerprint operations
     elif mode == "fp_status":
         return fp_status(sidecar_url)

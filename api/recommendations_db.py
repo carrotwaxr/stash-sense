@@ -1194,6 +1194,23 @@ class RecommendationsDB:
         """Set the endpoint priority order. Index 0 = highest priority."""
         self.set_user_setting("endpoint_priorities", endpoints)
 
+    # ==================== Disabled Endpoints ====================
+
+    def get_disabled_endpoints(self) -> list[str]:
+        """Get the list of disabled endpoint URLs."""
+        result = self.get_user_setting("disabled_endpoints")
+        if isinstance(result, list):
+            return result
+        return []
+
+    def set_disabled_endpoints(self, endpoints: list[str]):
+        """Set the list of disabled endpoint URLs."""
+        self.set_user_setting("disabled_endpoints", endpoints)
+
+    def is_endpoint_enabled(self, endpoint: str) -> bool:
+        """Check if an endpoint is enabled (not in disabled list)."""
+        return endpoint not in self.get_disabled_endpoints()
+
     # ==================== Scene Fingerprints ====================
 
     def create_scene_fingerprint(

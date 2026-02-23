@@ -4,6 +4,7 @@ Endpoints for reading, updating, and resetting sidecar settings.
 Also provides system info (hardware profile, version, uptime).
 """
 
+import json
 import time
 from typing import Any, Optional
 
@@ -57,29 +58,34 @@ class EndpointPriorityRequest(BaseModel):
 
 @router.get("/settings/endpoint-priorities")
 async def get_endpoint_priorities():
-    """Get stash-box endpoints in priority order.
+    """Get stash-box endpoints in priority order, plus disabled list.
 
     Returns all configured endpoints with their names, ordered by priority.
     Endpoints without explicit priority are appended in their default order.
+    Disabled endpoints are returned separately.
     """
     mgr = get_connection_manager()
     connections = {c["endpoint"]: c for c in mgr.get_connections()}
 
     db = get_rec_db()
     priority_order = db.get_endpoint_priorities()
+    disabled_list = set(db.get_disabled_endpoints())
 
-    # Build ordered result: prioritized endpoints first, then any remaining
+    # Build ordered result: prioritized endpoints first, then any remaining (exclude disabled)
     result = []
     seen = set()
     for ep in priority_order:
-        if ep in connections:
+        if ep in connections and ep not in disabled_list:
             result.append(connections[ep])
             seen.add(ep)
     for ep, conn in connections.items():
-        if ep not in seen:
+        if ep not in seen and ep not in disabled_list:
             result.append(conn)
 
-    return {"endpoints": result}
+    # Build disabled list with connection info
+    disabled_result = [connections[ep] for ep in disabled_list if ep in connections]
+
+    return {"endpoints": result, "disabled": disabled_result}
 
 
 @router.post("/settings/endpoint-priorities")
@@ -92,6 +98,88 @@ async def set_endpoint_priorities(request: EndpointPriorityRequest):
     """
     db = get_rec_db()
     db.set_endpoint_priorities(request.endpoints)
+    return {"success": True}
+
+
+class EndpointDisableRequest(BaseModel):
+    endpoint: str
+    clear_recommendations: bool = False
+
+
+class EndpointEnableRequest(BaseModel):
+    endpoint: str
+
+
+@router.post("/settings/endpoint-disable")
+async def disable_endpoint(request: EndpointDisableRequest):
+    """Disable a stash-box endpoint from upstream analysis."""
+    db = get_rec_db()
+
+    # Add to disabled list
+    disabled = db.get_disabled_endpoints()
+    if request.endpoint not in disabled:
+        disabled.append(request.endpoint)
+        db.set_disabled_endpoints(disabled)
+
+    # Remove from priority list
+    priorities = db.get_endpoint_priorities()
+    if request.endpoint in priorities:
+        priorities.remove(request.endpoint)
+        db.set_endpoint_priorities(priorities)
+
+    # Optionally clear recommendations and snapshots for this endpoint
+    cleared_count = 0
+    if request.clear_recommendations:
+        with db._connection() as conn:
+            # Dismiss pending recs that came from this endpoint
+            rows = conn.execute(
+                "SELECT id, details FROM recommendations WHERE status = 'pending'"
+            ).fetchall()
+            for row in rows:
+                try:
+                    details = json.loads(row['details']) if isinstance(row['details'], str) else row['details']
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if details.get('endpoint') == request.endpoint:
+                    conn.execute(
+                        "UPDATE recommendations SET status = 'dismissed', updated_at = datetime('now') WHERE id = ?",
+                        (row['id'],)
+                    )
+                    cleared_count += 1
+
+            # Clear snapshots for this endpoint
+            conn.execute(
+                "DELETE FROM upstream_snapshots WHERE endpoint = ?",
+                (request.endpoint,)
+            )
+
+            # Clear watermarks for this endpoint
+            # Watermark keys are stored as "{analyzer_type}:{endpoint}"
+            conn.execute(
+                "DELETE FROM analysis_watermarks WHERE type LIKE ?",
+                (f"%:{request.endpoint}",)
+            )
+
+    return {"success": True, "cleared_count": cleared_count}
+
+
+@router.post("/settings/endpoint-enable")
+async def enable_endpoint(request: EndpointEnableRequest):
+    """Re-enable a disabled stash-box endpoint."""
+    db = get_rec_db()
+
+    # Remove from disabled list
+    disabled = db.get_disabled_endpoints()
+    if request.endpoint in disabled:
+        disabled.remove(request.endpoint)
+        db.set_disabled_endpoints(disabled)
+
+    # Append to end of priority list
+    priorities = db.get_endpoint_priorities()
+    if request.endpoint not in priorities:
+        priorities.append(request.endpoint)
+        db.set_endpoint_priorities(priorities)
+
     return {"success": True}
 
 

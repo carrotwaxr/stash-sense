@@ -3230,8 +3230,8 @@ a.ss-upstream-endpoint-badge:hover {
 
 .ss-priority-arrows {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
 }
 
 .ss-priority-arrow {
@@ -3244,6 +3244,16 @@ a.ss-upstream-endpoint-badge:hover {
 .ss-priority-arrow:disabled {
   opacity: 0.2;
   cursor: default;
+}
+
+.ss-priority-row-disabled {
+  opacity: 0.6;
+  justify-content: space-between;
+}
+
+.ss-disabled-list {
+  border-left: 2px solid rgba(255, 255, 255, 0.05);
+  padding-left: 12px;
 }
 
 /* Scene upstream sync */
