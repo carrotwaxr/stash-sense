@@ -62,7 +62,7 @@ class UpstreamPerformerAnalyzer(BaseUpstreamAnalyzer):
     """
 
     type = "upstream_performer_changes"
-    logic_version = 2  # v2: removed favorite field from comparison
+    logic_version = 3  # v3: date normalization, alias self-reference filtering
 
     @property
     def entity_type(self) -> str:

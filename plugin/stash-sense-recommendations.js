@@ -1698,6 +1698,7 @@
 
   async function validatePerformerMerge(performerId, proposedName, proposedDisambig, proposedAliases) {
     const errors = [];
+    let nameConflict = null;
 
     // 1. Name uniqueness - query all performers with this name
     if (proposedName) {
@@ -1705,30 +1706,28 @@
         const nameCheck = await SS.stashQuery(`
           query FindPerformersByName($name: String!) {
             findPerformers(performer_filter: { name: { value: $name, modifier: EQUALS } }) {
-              performers { id name disambiguation }
+              performers { id name disambiguation image_path scene_count }
             }
           }
         `, { name: proposedName });
         const conflicts = (nameCheck?.findPerformers?.performers || [])
           .filter(p => p.id !== performerId);
         if (conflicts.length > 0) {
-          const c = conflicts[0];
-          const disambigNote = proposedDisambig ? '' : ' (add a disambiguation to make it unique)';
-          errors.push(`Name "${proposedName}" already used by performer "${c.name}"${disambigNote}`);
+          nameConflict = conflicts[0];
         }
       } catch (e) {
-        // Name check failed - don't block, just warn
         console.warn('[Stash Sense] Name uniqueness check failed:', e);
       }
     }
 
-    // 2. Alias can't match performer's own name
+    // 2. Alias can't match performer's own name (filtered in diff engine now, but keep as safety net)
     if (proposedName && proposedAliases) {
       const nameLower = proposedName.toLowerCase();
-      for (const alias of proposedAliases) {
-        if (alias.toLowerCase() === nameLower) {
-          errors.push(`Alias "${alias}" matches the performer's name`);
-        }
+      const filtered = proposedAliases.filter(a => a.toLowerCase() !== nameLower);
+      if (filtered.length < proposedAliases.length) {
+        // Silently filter self-referencing aliases instead of erroring
+        proposedAliases.length = 0;
+        proposedAliases.push(...filtered);
       }
     }
 
@@ -1744,7 +1743,74 @@
       }
     }
 
-    return errors;
+    return { errors, nameConflict };
+  }
+
+
+  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel) {
+    const overlay = document.createElement('div');
+    overlay.className = 'ss-modal-overlay';
+    overlay.style.zIndex = '10001';
+
+    const c = conflictingPerformer;
+    const disambigText = c.disambiguation ? ` (${c.disambiguation})` : '';
+
+    overlay.innerHTML = `
+      <div class="ss-modal" style="max-width: 480px;">
+        <div class="ss-modal-header">
+          <h3>Name Conflict</h3>
+          <button class="ss-modal-close" data-action="close">&times;</button>
+        </div>
+        <div class="ss-modal-body" style="padding: 16px;">
+          <p style="margin: 0 0 12px;">
+            A performer named <strong>${escapeHtml(c.name)}${escapeHtml(disambigText)}</strong> already exists
+            (ID: ${escapeHtml(c.id)}, ${c.scene_count || 0} scenes).
+          </p>
+          <p style="margin: 0 0 16px; color: var(--ss-text-muted);">
+            You can merge the duplicate into this performer (content will be reassigned and the duplicate deleted),
+            or open both performers to resolve manually.
+          </p>
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="ss-btn" data-action="open-both">Open Both</button>
+            <button class="ss-btn ss-btn-primary" data-action="merge">Merge &amp; Continue</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    function closeDialog() {
+      overlay.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+
+    overlay.addEventListener('click', (e) => {
+      const action = e.target.dataset?.action || e.target.closest('[data-action]')?.dataset?.action;
+      if (action === 'close') {
+        closeDialog();
+        onCancel();
+      } else if (action === 'open-both') {
+        window.open(`/performers/${performerId}`, '_blank');
+        window.open(`/performers/${c.id}`, '_blank');
+        closeDialog();
+        onCancel();
+      } else if (action === 'merge') {
+        closeDialog();
+        onMerge(c.id);
+      } else if (e.target === overlay) {
+        closeDialog();
+        onCancel();
+      }
+    });
+
+    document.body.appendChild(overlay);
+
+    function escHandler(e) {
+      if (e.key === 'Escape') {
+        closeDialog();
+        onCancel();
+      }
+    }
+    document.addEventListener('keydown', escHandler);
   }
 
   // ==================== Upstream Performer Detail ====================
@@ -2056,7 +2122,7 @@
       const proposedDisambig = fields.disambiguation || null;
       const proposedAliases = fields.aliases || fields._alias_add || [];
 
-      const validationErrors = await validatePerformerMerge(
+      const { errors: validationErrors, nameConflict } = await validatePerformerMerge(
         performerId, proposedName, proposedDisambig, proposedAliases
       );
 
@@ -2068,12 +2134,49 @@
         return;
       }
 
+      // Handle name conflict with a dialog instead of blocking
+      if (nameConflict) {
+        applyBtn.textContent = 'Apply Selected Changes';
+        applyBtn.disabled = false;
+        showNameConflictDialog(performerId, nameConflict,
+          async (conflictId) => {
+            // User chose "Merge & Continue"
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Merging & Applying...';
+            errorDiv.style.display = 'none';
+            try {
+              await RecommendationsAPI.mergePerformers(performerId, [conflictId]);
+              await RecommendationsAPI.updatePerformer(performerId, fields);
+              await RecommendationsAPI.resolve(rec.id, 'applied', { fields, auto_merged: conflictId });
+              applyBtn.textContent = 'Merged & Applied!';
+              applyBtn.classList.add('ss-btn-success');
+              setTimeout(() => {
+                currentState.view = 'list';
+                currentState.selectedRec = null;
+                renderCurrentView(document.getElementById('ss-recommendations'));
+              }, 1500);
+            } catch (mergeErr) {
+              errorDiv.innerHTML = `<div>${escapeHtml(mergeErr.message)}</div>`;
+              errorDiv.style.display = 'block';
+              applyBtn.textContent = 'Apply Selected Changes';
+              applyBtn.disabled = false;
+            }
+          },
+          () => { /* User chose cancel/open-both */ }
+        );
+        return;
+      }
+
       try {
         applyBtn.textContent = 'Applying...';
-        await RecommendationsAPI.updatePerformer(performerId, fields);
+        const result = await RecommendationsAPI.updatePerformer(performerId, fields);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
-        applyBtn.textContent = 'Applied!';
+        if (result?.auto_merged) {
+          applyBtn.textContent = `Merged & Applied!`;
+        } else {
+          applyBtn.textContent = 'Applied!';
+        }
         applyBtn.classList.add('ss-btn-success');
 
         setTimeout(() => {
@@ -2083,9 +2186,7 @@
         }, 1500);
       } catch (e) {
         let errorMsg = e.message;
-        if (errorMsg.includes('already exists') || errorMsg.includes('name')) {
-          errorMsg = `Name conflict: ${errorMsg}. Try adding a disambiguation.`;
-        } else if (errorMsg.includes('duplicate') || errorMsg.includes('alias')) {
+        if (errorMsg.includes('duplicate') || errorMsg.includes('alias')) {
           errorMsg = `Alias conflict: ${errorMsg}. Try removing duplicate aliases.`;
         }
         errorDiv.innerHTML = `<div>${escapeHtml(errorMsg)}</div>`;

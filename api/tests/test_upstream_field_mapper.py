@@ -3,6 +3,7 @@
 from upstream_field_mapper import (
     DEFAULT_PERFORMER_FIELDS,
     FIELD_MERGE_TYPES,
+    _normalize_date,
     _values_equal,
     diff_performer_fields,
     normalize_upstream_performer,
@@ -252,6 +253,109 @@ class TestDiffCaseInsensitiveStrings:
         changes = diff_performer_fields(local, upstream, snapshot, enabled)
         assert len(changes) == 1
         assert changes[0]["field"] == "eye_color"
+
+
+class TestDateNormalization:
+    def test_strips_time_component_space_separated(self):
+        assert _normalize_date("1978-01-01 00:00:00") == "1978-01-01"
+
+    def test_strips_time_component_t_separated(self):
+        assert _normalize_date("2007-06-15T00:00:00Z") == "2007-06-15"
+
+    def test_expands_year_only(self):
+        assert _normalize_date("2007") == "2007-01-01"
+
+    def test_expands_year_month(self):
+        assert _normalize_date("2007-06") == "2007-06-01"
+
+    def test_full_date_unchanged(self):
+        assert _normalize_date("1990-05-15") == "1990-05-15"
+
+    def test_none_passthrough(self):
+        assert _normalize_date(None) is None
+
+    def test_empty_string_passthrough(self):
+        assert _normalize_date("") == ""
+
+
+class TestDateComparisonInDiff:
+    def test_partial_year_matches_padded_local(self):
+        """StashDB '2007' should match Stash's padded '2007-01-01'."""
+        local = {"name": "Test", "birthdate": "2007-01-01"}
+        upstream = {"name": "Test", "birthdate": "2007"}
+        changes = diff_performer_fields(local, upstream, None, {"birthdate"})
+        assert len(changes) == 0
+
+    def test_partial_year_differs_from_real_date(self):
+        """StashDB '2007' should NOT match '2007-06-15'."""
+        local = {"name": "Test", "birthdate": "2007-06-15"}
+        upstream = {"name": "Test", "birthdate": "2007"}
+        changes = diff_performer_fields(local, upstream, None, {"birthdate"})
+        assert len(changes) == 1
+
+    def test_time_component_stripped_for_comparison(self):
+        """ThePornDB '1978-01-01 00:00:00' should match '1978-01-01'."""
+        local = {"name": "Test", "birthdate": "1978-01-01"}
+        upstream = {"name": "Test", "birthdate": "1978-01-01 00:00:00"}
+        changes = diff_performer_fields(local, upstream, None, {"birthdate"})
+        assert len(changes) == 0
+
+    def test_real_date_difference_still_flagged(self):
+        """Genuine date differences should still be flagged."""
+        local = {"name": "Test", "birthdate": "1978-08-10"}
+        upstream = {"name": "Test", "birthdate": "1978-01-01 00:00:00"}
+        changes = diff_performer_fields(local, upstream, None, {"birthdate"})
+        assert len(changes) == 1
+        assert changes[0]["field"] == "birthdate"
+
+    def test_death_date_also_normalized(self):
+        local = {"name": "Test", "death_date": "2017-12-05"}
+        upstream = {"name": "Test", "death_date": "2017-12-05 00:00:00"}
+        changes = diff_performer_fields(local, upstream, None, {"death_date"})
+        assert len(changes) == 0
+
+    def test_both_none_dates_equal(self):
+        local = {"name": "Test", "birthdate": None}
+        upstream = {"name": "Test", "birthdate": None}
+        changes = diff_performer_fields(local, upstream, None, {"birthdate"})
+        assert len(changes) == 0
+
+
+class TestAliasSelfReferenceFiltering:
+    def test_upstream_alias_matching_name_ignored(self):
+        """Upstream alias 'JAMIE BARRY' should be ignored when name is 'Jamie Barry'."""
+        local = {"name": "Jamie Barry", "aliases": ["Ed Wood", "Jamie"]}
+        upstream = {"name": "Jamie Barry", "aliases": ["JAMIE BARRY"]}
+        changes = diff_performer_fields(local, upstream, None, {"aliases"})
+        # After filtering "JAMIE BARRY", upstream aliases is empty set
+        # Local has {"ed wood", "jamie"} - these differ, so change IS flagged
+        assert len(changes) == 1
+        # The output should not contain the self-referencing alias
+        assert "JAMIE BARRY" not in changes[0]["upstream_value"]
+
+    def test_no_false_positive_when_only_self_ref_alias(self):
+        """If upstream only has self-referencing alias, it equals empty local aliases."""
+        local = {"name": "Jamie Barry", "aliases": []}
+        upstream = {"name": "Jamie Barry", "aliases": ["JAMIE BARRY"]}
+        changes = diff_performer_fields(local, upstream, None, {"aliases"})
+        assert len(changes) == 0
+
+    def test_self_ref_in_both_sides_ignored(self):
+        """Self-referencing aliases filtered from both sides."""
+        local = {"name": "Jane Doe", "aliases": ["Jane Doe", "JD"]}
+        upstream = {"name": "Jane Doe", "aliases": ["jane doe", "JD"]}
+        changes = diff_performer_fields(local, upstream, None, {"aliases"})
+        assert len(changes) == 0
+
+    def test_real_alias_differences_still_flagged(self):
+        """Non-self-referencing alias differences should still be detected."""
+        local = {"name": "Jane Doe", "aliases": ["JD"]}
+        upstream = {"name": "Jane Doe", "aliases": ["Jane Doe", "JD", "Janet"]}
+        changes = diff_performer_fields(local, upstream, None, {"aliases"})
+        assert len(changes) == 1
+        # Self-ref alias filtered out, but "Janet" is a real addition
+        assert "Janet" in changes[0]["upstream_value"]
+        assert "Jane Doe" not in changes[0]["upstream_value"]
 
 
 class TestFieldMergeTypes:
