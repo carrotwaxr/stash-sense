@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="AI-powered performer identification for Stash">
+        <meta name="description" content="ML-powered performer identification for Stash">
       
       
       
@@ -14,7 +14,7 @@
         <link rel="prev" href="../installation/">
       
       
-        <link rel="next" href="../plugin/">
+        <link rel="next" href="../features/performer-identification/">
       
       
         
@@ -413,22 +413,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#essential-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
+        Essential Configuration
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Environment Variables">
+    <nav class="md-nav" aria-label="Essential Configuration">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#stash-box-api-keys" class="md-nav__link">
+  <a href="#1-sidecar-environment-variables" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stash-Box API Keys
+        1. Sidecar Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-plugin-sidecar-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Plugin Sidecar URL
       
     </span>
   </a>
@@ -441,49 +452,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#volume-mounts" class="md-nav__link">
+  <a href="#networking" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Volume Mounts
+        Networking
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Volume Mounts">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#database-files" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Database Files
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#model-cache" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Model Cache
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#ports" class="md-nav__link">
+  <a href="#stash-box-endpoints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Ports
+        Stash-Box Endpoints
       
     </span>
   </a>
@@ -499,22 +482,60 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Runtime Settings">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#migrated-environment-variables" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#volume-mounts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Migrated Environment Variables
+        Volume Mounts
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variable-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variable Migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Checklist
+      
+    </span>
+  </a>
   
 </li>
       
@@ -522,34 +543,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../plugin/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Plugin Setup
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -594,7 +587,7 @@
   <span class="md-ellipsis">
     
   
-    User Guide
+    Features
   
 
     
@@ -607,6 +600,179 @@
         
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/performer-identification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performer Identification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/scene-tagger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Tagger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/upstream-changes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upstream Changes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/duplicate-detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Duplicate Detection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -623,14 +789,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/" class="md-nav__link">
+      <a href="../plugin/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Features
+    Plugin Usage
   
 
     
@@ -700,34 +866,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stash-box-endpoints/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    StashBox Endpoints
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -757,10 +895,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -778,8 +916,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -874,10 +1012,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -895,8 +1033,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -996,22 +1134,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#essential-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
+        Essential Configuration
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Environment Variables">
+    <nav class="md-nav" aria-label="Essential Configuration">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#stash-box-api-keys" class="md-nav__link">
+  <a href="#1-sidecar-environment-variables" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stash-Box API Keys
+        1. Sidecar Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-plugin-sidecar-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Plugin Sidecar URL
       
     </span>
   </a>
@@ -1024,49 +1173,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#volume-mounts" class="md-nav__link">
+  <a href="#networking" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Volume Mounts
+        Networking
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Volume Mounts">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#database-files" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Database Files
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#model-cache" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Model Cache
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#ports" class="md-nav__link">
+  <a href="#stash-box-endpoints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Ports
+        Stash-Box Endpoints
       
     </span>
   </a>
@@ -1082,22 +1203,60 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Runtime Settings">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#migrated-environment-variables" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#volume-mounts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Migrated Environment Variables
+        Volume Mounts
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variable-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variable Migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Checklist
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1122,13 +1281,15 @@
 
 
 <h1 id="configuration">Configuration</h1>
-<h2 id="environment-variables">Environment Variables</h2>
+<h2 id="essential-configuration">Essential Configuration</h2>
+<p>Two things must be configured for Stash Sense to work:</p>
+<h3 id="1-sidecar-environment-variables">1. Sidecar Environment Variables</h3>
+<p>Set these when starting the Docker container:</p>
 <table>
 <thead>
 <tr>
 <th>Variable</th>
 <th>Required</th>
-<th>Default</th>
 <th>Description</th>
 </tr>
 </thead>
@@ -1136,26 +1297,78 @@
 <tr>
 <td><code>STASH_URL</code></td>
 <td>Yes</td>
-<td>—</td>
-<td>URL to your Stash instance (e.g., <code>http://stash:9999</code>)</td>
+<td>URL to your Stash instance (e.g., <code>http://10.0.0.4:9999</code>)</td>
 </tr>
 <tr>
 <td><code>STASH_API_KEY</code></td>
 <td>Yes</td>
-<td>—</td>
-<td>Stash API key (Settings &gt; Security &gt; API Key)</td>
-</tr>
-<tr>
-<td><code>DATA_DIR</code></td>
-<td>No</td>
-<td><code>/data</code></td>
-<td>Path to database files inside the container</td>
+<td>Stash API key from <strong>Settings &gt; Security &gt; API Key</strong></td>
 </tr>
 </tbody>
 </table>
-<h3 id="stash-box-api-keys">Stash-Box API Keys</h3>
-<p>Stash-box endpoint API keys are <strong>not</strong> configured as environment variables. The sidecar auto-discovers all configured stash-box endpoints from your Stash instance's <strong>Settings &gt; Metadata Providers</strong> at startup. Any endpoints you've added there (StashDB, FansDB, ThePornDB, etc.) are automatically available for upstream sync.</p>
-<p>To add a new endpoint, configure it in Stash's Metadata Providers settings, then restart the sidecar (or use the <strong>Refresh</strong> button in the plugin's Settings tab).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-e<span class="w"> </span><span class="nv">STASH_URL</span><span class="o">=</span>http://your-stash-host:9999<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>-e<span class="w"> </span><span class="nv">STASH_API_KEY</span><span class="o">=</span>your-api-key
+</code></pre></div>
+<h3 id="2-plugin-sidecar-url">2. Plugin Sidecar URL</h3>
+<p>In Stash, go to <strong>Settings &gt; Plugins &gt; Stash Sense</strong> and set the <strong>Sidecar URL</strong> to the address of your Stash Sense container (e.g., <code>http://10.0.0.4:6960</code>).</p>
+<p>This tells the plugin backend where to forward requests. The right URL depends on your setup — see <a href="#networking">Networking</a> below.</p>
+<hr />
+<h2 id="networking">Networking</h2>
+<p>The sidecar runs inside a Docker container, so <code>localhost</code> means different things depending on where you are. Here's what to use for <code>STASH_URL</code> (sidecar connecting to Stash) and the <strong>Sidecar URL</strong> plugin setting (Stash connecting to sidecar):</p>
+<table>
+<thead>
+<tr>
+<th>Your Setup</th>
+<th><code>STASH_URL</code></th>
+<th>Sidecar URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Same machine, both in Docker (shared network)</td>
+<td>Container name (e.g., <code>http://stash:9999</code>)</td>
+<td>Container name (e.g., <code>http://stash-sense:5000</code>)</td>
+</tr>
+<tr>
+<td>Same machine, both in Docker (no shared network)</td>
+<td>Host LAN IP (e.g., <code>http://10.0.0.4:9999</code>)</td>
+<td>Host LAN IP (e.g., <code>http://10.0.0.4:6960</code>)</td>
+</tr>
+<tr>
+<td>Same machine, Stash runs natively (not in Docker)</td>
+<td><code>http://host.docker.internal:9999</code></td>
+<td><code>http://127.0.0.1:6960</code></td>
+</tr>
+<tr>
+<td>Different machines</td>
+<td>Stash machine's LAN IP</td>
+<td>Sidecar machine's LAN IP</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key points:</strong></p>
+<ul>
+<li><strong>Don't use <code>localhost</code> in <code>STASH_URL</code></strong> — inside the container, <code>localhost</code> refers to the container itself, not the host machine.</li>
+<li><strong><code>host.docker.internal</code></strong> resolves to the host machine's IP from inside a container. This is how the sidecar reaches Stash when Stash runs natively on the host (e.g., as a Windows binary). It works automatically on Docker Desktop (Windows/Mac). On Linux, add <code>--add-host=host.docker.internal:host-gateway</code> to your <code>docker run</code> command.</li>
+<li><strong>Use <code>127.0.0.1</code> instead of <code>localhost</code></strong> for the Sidecar URL when Stash runs natively. On Windows, <code>localhost</code> can resolve to <code>::1</code> (IPv6) on recent Docker Desktop versions, causing "connection refused" errors. Using <code>127.0.0.1</code> explicitly avoids this.</li>
+<li><strong>When both are in Docker</strong> on separate networks, use the host's LAN IP for both. Docker container names only resolve on shared Docker networks.</li>
+</ul>
+<hr />
+<h2 id="stash-box-endpoints">Stash-Box Endpoints</h2>
+<p>Stash-Box endpoint credentials are <strong>not</strong> configured as environment variables. The sidecar auto-discovers all configured Stash-Box endpoints from your Stash instance's <strong>Settings &gt; Metadata Providers</strong> at startup.</p>
+<p>Any endpoints you've added there (StashDB, FansDB, ThePornDB, etc.) are automatically available for upstream sync and scene tagging.</p>
+<p>To add a new endpoint, configure it in Stash's Metadata Providers settings, then restart the sidecar or use the <strong>Refresh</strong> button in the plugin's Settings tab.</p>
+<hr />
+<h2 id="runtime-settings">Runtime Settings</h2>
+<p>Most performance and recognition settings are configured via the plugin's <strong>Settings</strong> tab rather than environment variables. The sidecar auto-detects your hardware and sets sensible defaults.</p>
+<p>Settings you can adjust include:</p>
+<ul>
+<li><strong>Frames per scene</strong> — How many frames to sample for face recognition</li>
+<li><strong>Embedding batch size</strong> — Faces processed per GPU call</li>
+<li><strong>Rate limits</strong> — Requests/second to local Stash API</li>
+<li><strong>Signal toggles</strong> — Enable/disable body proportion and tattoo detection signals</li>
+</ul>
+<p>See <a href="../settings-system/">Settings Reference</a> for the full list of adjustable options.</p>
 <hr />
 <h2 id="volume-mounts">Volume Mounts</h2>
 <table>
@@ -1183,36 +1396,32 @@
 <p class="admonition-title">Warning</p>
 <p>The <code>/data</code> volume <strong>must</strong> be read-write. The sidecar writes <code>stash_sense.db</code> (recommendations, settings, analysis history) here, and in-app database updates download files to this directory.</p>
 </div>
-<h3 id="database-files">Database Files</h3>
-<p>The <code>/data</code> volume should contain the files from a <a href="https://github.com/carrotwaxr/stash-sense-data/releases">stash-sense-data release</a>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── performers.db        # Performer metadata (SQLite)
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── face_facenet.voy     # FaceNet512 embedding index
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── face_arcface.voy     # ArcFace embedding index
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── faces.json           # Face-to-performer mapping
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── performers.json      # Performer lookup data
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── manifest.json        # Version and checksums
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── models/              # (auto-created) ONNX models downloaded via Settings UI
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── facenet512.onnx  # FaceNet512 embedding model (~90 MB)
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   └── arcface.onnx     # ArcFace embedding model (~130 MB)
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>└── stash_sense.db       # (auto-created) Your local data — do not delete
-</code></pre></div>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p><code>stash_sense.db</code> and the <code>models/</code> directory are created automatically by the sidecar. They are <strong>not</strong> part of the database release and should not be deleted during updates. The database files and models can both be downloaded from the plugin's <strong>Settings</strong> tab after startup.</p>
-</div>
-<h3 id="model-cache">Model Cache</h3>
-<p>The <code>/root/.insightface</code> volume caches the RetinaFace face detection model weights. Without this mount, the model is re-downloaded on every container start (~500 MB download).</p>
 <hr />
 <h2 id="ports">Ports</h2>
 <p>The sidecar listens on port <strong>5000</strong> inside the container. The recommended host port is <strong>6960</strong>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>-p 6960:5000
 </code></pre></div>
 <hr />
-<h2 id="runtime-settings">Runtime Settings</h2>
-<p>Most performance and recognition settings are configured via the plugin's <strong>Settings</strong> tab rather than environment variables. The sidecar auto-detects your hardware and sets sensible defaults.</p>
-<p>See <a href="../settings-system/">Settings Reference</a> for the full list of adjustable options.</p>
-<h3 id="migrated-environment-variables">Migrated Environment Variables</h3>
+<h2 id="database-files">Database Files</h2>
+<p>The <code>/data</code> volume should contain the files from a <a href="https://github.com/carrotwaxr/stash-sense-data/releases">stash-sense-data release</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>/data/
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── performers.db        # Performer metadata (SQLite)
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>├── face_facenet.voy     # FaceNet512 embedding index
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>├── face_arcface.voy     # ArcFace embedding index
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>├── faces.json           # Face-to-performer mapping
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>├── performers.json      # Performer lookup data
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>├── manifest.json        # Version and checksums
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>├── models/              # (auto-created) ONNX models downloaded via Settings UI
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>│   ├── facenet512.onnx  # FaceNet512 embedding model (~90 MB)
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>│   └── arcface.onnx     # ArcFace embedding model (~130 MB)
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>└── stash_sense.db       # (auto-created) Your local data — do not delete
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>stash_sense.db</code> and the <code>models/</code> directory are created automatically by the sidecar. They are <strong>not</strong> part of the database release and should not be deleted during updates. Both the database and models can be downloaded from the plugin's <strong>Settings</strong> tab after startup.</p>
+</div>
+<hr />
+<h2 id="environment-variable-migration">Environment Variable Migration</h2>
 <p>The following environment variables have been replaced by runtime settings. If detected at startup, they are automatically migrated to the settings database:</p>
 <table>
 <thead>
@@ -1240,6 +1449,19 @@
 </tr>
 </tbody>
 </table>
+<p>Environment variables that remain (connection strings):</p>
+<ul>
+<li><code>STASH_URL</code>, <code>STASH_API_KEY</code>, <code>DATA_DIR</code>, <code>LOG_LEVEL</code></li>
+</ul>
+<hr />
+<h2 id="configuration-checklist">Configuration Checklist</h2>
+<ul>
+<li>[ ] <code>STASH_URL</code> and <code>STASH_API_KEY</code> set as container environment variables</li>
+<li>[ ] Sidecar URL configured in Stash plugin settings</li>
+<li>[ ] Stash-Box endpoints configured in Stash's <strong>Settings &gt; Metadata Providers</strong> (for upstream sync and scene tagging)</li>
+<li>[ ] <code>/data</code> volume mounted read-write</li>
+<li>[ ] <code>/root/.insightface</code> volume mounted (prevents re-downloading detection model on restart)</li>
+</ul>
 
 
 

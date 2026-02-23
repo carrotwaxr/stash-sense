@@ -11,6 +11,10 @@
       
       
       
+        <link rel="prev" href="../upstream-changes/">
+      
+      
+        <link rel="next" href="../../plugin/">
       
       
         
@@ -21,7 +25,7 @@
     
     
       
-        <title>Face Recognition Re-evaluation Results (2026-02-12) - Stash Sense</title>
+        <title>Duplicate Detection - Stash Sense</title>
       
     
     
@@ -72,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#face-recognition-re-evaluation-results-2026-02-12" class="md-skip">
+        <a href="#duplicate-detection" class="md-skip">
           Skip to content
         </a>
       
@@ -108,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Face Recognition Re-evaluation Results (2026-02-12)
+              Duplicate Detection
             
           </span>
         </div>
@@ -381,8 +385,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -393,13 +399,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
@@ -420,7 +424,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -438,7 +442,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/performer-identification/" class="md-nav__link">
+      <a href="../performer-identification/" class="md-nav__link">
         
   
   
@@ -466,7 +470,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/scene-tagger/" class="md-nav__link">
+      <a href="../scene-tagger/" class="md-nav__link">
         
   
   
@@ -494,7 +498,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/upstream-changes/" class="md-nav__link">
+      <a href="../upstream-changes/" class="md-nav__link">
         
   
   
@@ -519,10 +523,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../features/duplicate-detection/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Duplicate Detection
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -538,6 +569,98 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#detection-signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detection Signals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How It Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#candidate-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate Generation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#face-fingerprints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Face Fingerprints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reviewing-duplicates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reviewing Duplicates
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -956,10 +1079,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
+  <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Context
+        Prerequisites
       
     </span>
   </a>
@@ -967,10 +1090,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#test-setup" class="md-nav__link">
+  <a href="#detection-signals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Test Setup
+        Detection Signals
       
     </span>
   </a>
@@ -978,33 +1101,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#phase-1-baseline-current-defaults" class="md-nav__link">
+  <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 1: Baseline (Current Defaults)
+        How It Works
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-2-parameter-sweeps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 2: Parameter Sweeps
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Phase 2: Parameter Sweeps">
+    <nav class="md-nav" aria-label="How It Works">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#max_distance-no-impact-above-05" class="md-nav__link">
+  <a href="#candidate-generation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        max_distance - No impact above 0.5
+        Candidate Generation
       
     </span>
   </a>
@@ -1012,76 +1124,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#min_face_size-no-impact-below-80" class="md-nav__link">
+  <a href="#face-fingerprints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        min_face_size - No impact below 80
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#fusion_weights-arcface-now-pulling-its-weight" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        fusion_weights - ArcFace now pulling its weight
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#matching_mode-frequency-wins" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        matching_mode - Frequency wins
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#min_appearances-no-meaningful-impact" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        min_appearances - No meaningful impact
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#min_unique_frames-the-biggest-lever-tied-with-num_frames" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        min_unique_frames - THE biggest lever (tied with num_frames)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#min_confidence-zero-impact" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        min_confidence - Zero impact
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#num_frames-strong-positive-correlation-with-accuracy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        num_frames - Strong positive correlation with accuracy
+        Face Fingerprints
       
     </span>
   </a>
@@ -1094,137 +1140,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#phase-3-best-of-combination" class="md-nav__link">
+  <a href="#reviewing-duplicates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 3: Best-of Combination
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-4-original-scene-re-validation-8-scenes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 4: Original Scene Re-validation (8 scenes)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-5-gallery-benchmark" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 5: Gallery Benchmark
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-6-image-benchmark" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 6: Image Benchmark
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#applied-parameter-changes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Applied Parameter Changes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#post-benchmark-clustering-ui-improvements-same-day" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Post-Benchmark: Clustering &amp; UI Improvements (same day)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Post-Benchmark: Clustering &amp; UI Improvements (same day)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#problem-flat-frequency-matching-produces-too-many-persons" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Problem: Flat Frequency Matching Produces Too Many "Persons"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#root-cause-l2-distance-on-concatenated-embeddings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Root Cause: L2 Distance on Concatenated Embeddings
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#fix-clustered-frequency-matching" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fix: Clustered Frequency Matching
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#additional-improvements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Additional Improvements
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#future-investigation-areas" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Future Investigation Areas
+        Reviewing Duplicates
       
     </span>
   </a>
@@ -1251,678 +1170,69 @@
   
 
 
-<h1 id="face-recognition-re-evaluation-results-2026-02-12">Face Recognition Re-evaluation Results (2026-02-12)</h1>
-<h2 id="context">Context</h2>
-<p>New face recognition database imported from stash-sense-trainer with:
-- <strong>107,759 performers</strong>, <strong>277,097 faces</strong> from 5 sources (stashdb, fansdb, theporndb, pmvstash, javstash)
-- Proper face alignment (insightface_norm_crop_5point) - previously raw bbox crops
-- Correct ArcFace normalization ((x-127.5)/128) - previously /255
-- Flip averaging for embeddings</p>
-<p>Previous testing (Feb 4-6) used garbage data and yielded ~44% accuracy, ~31% precision at best.</p>
-<h2 id="test-setup">Test Setup</h2>
+<h1 id="duplicate-detection">Duplicate Detection</h1>
+<p>Stash Sense finds duplicate scenes that Stash's built-in phash matching misses — different intros/outros, trimming, aspect ratio changes, or watermarks.</p>
+<h2 id="prerequisites">Prerequisites</h2>
 <ul>
-<li>20 stratified test scenes (15x 1080p, 5x 720p)</li>
-<li>48 expected performers across all scenes</li>
-<li>All scenes classified as "sparse" coverage tier</li>
-<li>Benchmark script: <code>api/benchmark/reeval.py</code></li>
-<li>Full JSON results: <code>api/benchmark_results/reeval_20260212_064023.json</code></li>
-<li>Runtime: 166 minutes</li>
+<li><strong>Face recognition results</strong> for scenes (run performer identification first, which requires sprite sheets)</li>
+<li>More face recognition coverage across your library means better duplicate detection accuracy</li>
 </ul>
-<h2 id="phase-1-baseline-current-defaults">Phase 1: Baseline (Current Defaults)</h2>
+<p>Duplicate detection relies on face fingerprints — per-scene records of which performers appeared, how often, and in what proportions. Scenes without face recognition results can still be detected as duplicates via Stash-Box ID matching or metadata overlap, but face fingerprints are the strongest non-authoritative signal.</p>
+<hr />
+<h2 id="detection-signals">Detection Signals</h2>
+<p>Stash Sense uses multiple signals to identify duplicates, each with a confidence cap:</p>
 <table>
 <thead>
 <tr>
-<th>Metric</th>
-<th>Value</th>
+<th>Signal</th>
+<th>Max Confidence</th>
+<th>How It Works</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Accuracy</td>
-<td>41.7%</td>
+<td>Stash-Box ID match</td>
+<td>100%</td>
+<td>Authoritative — same scene on a Stash-Box endpoint</td>
 </tr>
 <tr>
-<td>Precision</td>
-<td>32.8%</td>
+<td>Face fingerprint similarity</td>
+<td>85%</td>
+<td>Same performers in same ratios (robust to trimming)</td>
 </tr>
 <tr>
-<td>TP / Expected</td>
-<td>20 / 48</td>
-</tr>
-<tr>
-<td>False Positives</td>
-<td>41</td>
-</tr>
-<tr>
-<td>1080p accuracy</td>
-<td>39.5%</td>
-</tr>
-<tr>
-<td>720p accuracy</td>
-<td>50.0%</td>
+<td>Metadata overlap</td>
+<td>60%</td>
+<td>Same studio + same performers</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Key finding:</strong> Accuracy is roughly the same as old DB (~44%). The alignment/normalization fixes didn't meaningfully improve scene identification. The bottleneck is elsewhere in the pipeline.</p>
-<h2 id="phase-2-parameter-sweeps">Phase 2: Parameter Sweeps</h2>
-<h3 id="max_distance-no-impact-above-05">max_distance - No impact above 0.5</h3>
-<table>
-<thead>
-<tr>
-<th>max_distance</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0.3</td>
-<td>4.2%</td>
-<td>100.0%</td>
-<td>2</td>
-<td>0</td>
-<td>46</td>
-</tr>
-<tr>
-<td>0.4</td>
-<td>33.3%</td>
-<td>43.2%</td>
-<td>16</td>
-<td>21</td>
-<td>32</td>
-</tr>
-<tr>
-<td><strong>0.5</strong></td>
-<td><strong>41.7%</strong></td>
-<td><strong>32.8%</strong></td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>0.6</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>0.7</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>0.8</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>0.9</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> Matches either land below 0.5 or don't land at all. Anything above 0.5 is noise. Can safely tighten to 0.5.</p>
-<h3 id="min_face_size-no-impact-below-80">min_face_size - No impact below 80</h3>
-<table>
-<thead>
-<tr>
-<th>min_face_size</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>30</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>40</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>60</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>80</td>
-<td>37.5%</td>
-<td>36.7%</td>
-<td>18</td>
-<td>31</td>
-<td>30</td>
-</tr>
-<tr>
-<td>100</td>
-<td>29.2%</td>
-<td>32.6%</td>
-<td>14</td>
-<td>29</td>
-<td>34</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> Below 80px there are no additional small faces being matched. Above 80 loses faces.</p>
-<h3 id="fusion_weights-arcface-now-pulling-its-weight">fusion_weights - ArcFace now pulling its weight</h3>
-<table>
-<thead>
-<tr>
-<th>Weights (fn/af)</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0.7/0.3</td>
-<td>39.6%</td>
-<td>30.6%</td>
-<td>19</td>
-<td>43</td>
-<td>29</td>
-</tr>
-<tr>
-<td>0.6/0.4 (old default)</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td><strong>0.5/0.5</strong></td>
-<td><strong>43.8%</strong></td>
-<td><strong>33.9%</strong></td>
-<td><strong>21</strong></td>
-<td>41</td>
-<td><strong>27</strong></td>
-</tr>
-<tr>
-<td>0.4/0.6</td>
-<td>43.8%</td>
-<td>32.8%</td>
-<td>21</td>
-<td>43</td>
-<td>27</td>
-</tr>
-<tr>
-<td>0.3/0.7</td>
-<td>41.7%</td>
-<td>31.2%</td>
-<td>20</td>
-<td>44</td>
-<td>28</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> Equal weighting is optimal. This confirms the ArcFace normalization fix is working - it's now a reliable signal. The old 0.6/0.4 bias toward FaceNet was compensating for broken ArcFace.</p>
-<h3 id="matching_mode-frequency-wins">matching_mode - Frequency wins</h3>
-<table>
-<thead>
-<tr>
-<th>Mode</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>frequency</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>hybrid</td>
-<td>39.6%</td>
-<td>33.9%</td>
-<td>19</td>
-<td>37</td>
-<td>29</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> Hybrid has marginally better precision (fewer FPs) but loses 1 TP. Frequency is the better default.</p>
-<h3 id="min_appearances-no-meaningful-impact">min_appearances - No meaningful impact</h3>
-<table>
-<thead>
-<tr>
-<th>min_appearances</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>2</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>3</td>
-<td>39.6%</td>
-<td>47.5%</td>
-<td>19</td>
-<td>21</td>
-<td>29</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> 1→2 identical. 3 is a strong precision filter (47.5%) at slight accuracy cost. Could be useful in a "high precision" mode.</p>
-<h3 id="min_unique_frames-the-biggest-lever-tied-with-num_frames">min_unique_frames - THE biggest lever (tied with num_frames)</h3>
-<table>
-<thead>
-<tr>
-<th>min_unique_frames</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>1</strong></td>
-<td><strong>60.4%</strong></td>
-<td>30.5%</td>
-<td><strong>29</strong></td>
-<td>66</td>
-<td><strong>19</strong></td>
-</tr>
-<tr>
-<td>2 (default)</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>3</td>
-<td>31.2%</td>
-<td>55.6%</td>
-<td>15</td>
-<td>12</td>
-<td>33</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> Dropping from 2→1 recovers 9 TPs (+45% relative) but adds 25 FPs. The unique frame requirement is the binding constraint for many performers who only appear clearly in one frame. Setting to 3 gives 55.6% precision but kills recall.</p>
-<h3 id="min_confidence-zero-impact">min_confidence - Zero impact</h3>
-<table>
-<thead>
-<tr>
-<th>min_confidence</th>
-<th>Accuracy</th>
-<th>Precision</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0.2</td>
-<td>41.7%</td>
-<td>32.8%</td>
-</tr>
-<tr>
-<td>0.3</td>
-<td>41.7%</td>
-<td>32.8%</td>
-</tr>
-<tr>
-<td>0.35</td>
-<td>41.7%</td>
-<td>32.8%</td>
-</tr>
-<tr>
-<td>0.4</td>
-<td>41.7%</td>
-<td>32.8%</td>
-</tr>
-<tr>
-<td>0.5</td>
-<td>41.7%</td>
-<td>32.8%</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> The confidence threshold is never the binding constraint. All matches that pass the distance filter also pass any confidence threshold we tested.</p>
-<h3 id="num_frames-strong-positive-correlation-with-accuracy">num_frames - Strong positive correlation with accuracy</h3>
-<table>
-<thead>
-<tr>
-<th>num_frames</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>20</td>
-<td>35.4%</td>
-<td>44.7%</td>
-<td>17</td>
-<td>21</td>
-<td>31</td>
-</tr>
-<tr>
-<td>40 (default)</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td><strong>60</strong></td>
-<td><strong>54.2%</strong></td>
-<td><strong>36.1%</strong></td>
-<td><strong>26</strong></td>
-<td>46</td>
-<td><strong>22</strong></td>
-</tr>
-<tr>
-<td>80</td>
-<td>60.4%</td>
-<td>30.5%</td>
-<td>29</td>
-<td>66</td>
-<td>19</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Insight:</strong> Clear linear relationship. Each 20 extra frames adds ~6% accuracy. 60 is the best accuracy/precision/runtime balance: +12.5% accuracy over baseline, precision actually improves to 36.1%, and only 50% more runtime than 40 frames. 80 frames has diminishing returns and drops precision.</p>
-<h2 id="phase-3-best-of-combination">Phase 3: Best-of Combination</h2>
-<p>Combined best from each sweep:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>max_distance=0.5, min_face_size=30, fn/af=0.5/0.5,
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>matching_mode=frequency, min_appearances=1, min_unique_frames=1,
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>min_confidence=0.2, num_frames=80
-</code></pre></div></p>
-<table>
-<thead>
-<tr>
-<th>Config</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Baseline</td>
-<td>41.7%</td>
-<td>32.8%</td>
-<td>20</td>
-<td>41</td>
-<td>28</td>
-</tr>
-<tr>
-<td>Best combo</td>
-<td>62.5%</td>
-<td>30.0%</td>
-<td>30</td>
-<td>70</td>
-<td>18</td>
-</tr>
-<tr>
-<td><strong>Delta</strong></td>
-<td><strong>+20.8%</strong></td>
-<td><strong>-2.8%</strong></td>
-<td>+10</td>
-<td>+29</td>
-<td>-10</td>
-</tr>
-</tbody>
-</table>
-<p>The gains come primarily from more frames + dropping min_unique_frames to 1.</p>
-<h2 id="phase-4-original-scene-re-validation-8-scenes">Phase 4: Original Scene Re-validation (8 scenes)</h2>
-<table>
-<thead>
-<tr>
-<th>Config</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Default params</td>
-<td>50.0%</td>
-<td>26.7%</td>
-<td>8</td>
-<td>22</td>
-<td>8</td>
-</tr>
-<tr>
-<td>Best params</td>
-<td>56.2%</td>
-<td>22.5%</td>
-<td>9</td>
-<td>31</td>
-<td>7</td>
-</tr>
-</tbody>
-</table>
-<p>Per-scene:
-- Scene 13938 (1080p): 2/2 both configs
-- Scene 16342 (1080p): 2/2 both configs
-- Scene 30835 (1080p): <strong>0/2 both configs</strong> - stubborn failure
-- Scene 3283 (720p): 0/2 → <strong>1/2</strong> (best params recovered one)
-- Others: 1/2 both configs</p>
-<h2 id="phase-5-gallery-benchmark">Phase 5: Gallery Benchmark</h2>
-<p>10 galleries tested, 5 distance thresholds. Results were nearly identical across all thresholds:</p>
-<table>
-<thead>
-<tr>
-<th>max_distance</th>
-<th>Accuracy</th>
-<th>Precision</th>
-<th>TP</th>
-<th>FP</th>
-<th>FN</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>All (0.4-0.8)</td>
-<td>78.3%</td>
-<td>3.6%</td>
-<td>18</td>
-<td>483-488</td>
-<td>5</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Major problem:</strong> Gallery 1062 (1,074 images, 2 expected performers) generated 279-283 FPs alone.
-Excluding it, the other 9 galleries had ~204 FPs for 16 TPs (~7.3% precision).</p>
-<p><strong>Root cause:</strong> The "2+ appearances OR single &lt; 0.4" aggregation filter is far too permissive for galleries. Each face in each image produces a top-1 match, and with hundreds of images, random performers easily get 2+ appearances.</p>
-<p><strong>Suggested fixes for gallery aggregation:</strong>
-1. Require appearances in minimum % of images (e.g., 10%) not just absolute count
-2. Scale minimum appearances with gallery size (e.g., max(2, image_count * 0.05))
-3. Use stricter distance thresholds for gallery mode
-4. Require the performer to be the top-1 match (not just any match) in multiple images</p>
-<h2 id="phase-6-image-benchmark">Phase 6: Image Benchmark</h2>
-<p><strong>Skipped</strong> - no images in the library had tagged performers with StashDB IDs.</p>
-<h2 id="applied-parameter-changes">Applied Parameter Changes</h2>
-<p>Based on these findings, the following "safe" changes were applied:</p>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Old Default</th>
-<th>New Default</th>
-<th>Rationale</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>facenet_weight</td>
-<td>0.6</td>
-<td>0.5</td>
-<td>ArcFace now working correctly, equal weighting optimal</td>
-</tr>
-<tr>
-<td>arcface_weight</td>
-<td>0.4</td>
-<td>0.5</td>
-<td>Same</td>
-</tr>
-<tr>
-<td>max_distance</td>
-<td>0.7</td>
-<td>0.5</td>
-<td>Results plateau at 0.5, tighter = less noise</td>
-</tr>
-<tr>
-<td>num_frames</td>
-<td>40</td>
-<td>60</td>
-<td>+12.5% accuracy, best precision of elevated frame counts</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Not changed (needs further investigation):</strong>
-- min_unique_frames: kept at 2 (dropping to 1 has huge FP cost)
-- min_appearances: kept at 2
-- min_confidence: kept at 0.35 (no impact either way)</p>
-<h2 id="post-benchmark-clustering-ui-improvements-same-day">Post-Benchmark: Clustering &amp; UI Improvements (same day)</h2>
-<h3 id="problem-flat-frequency-matching-produces-too-many-persons">Problem: Flat Frequency Matching Produces Too Many "Persons"</h3>
-<p>The frequency matching mode had no concept of face clustering - it threw all face detections into a flat bag and counted performer appearances. A 2-person scene with 38 face detections would produce 34 "persons" in the UI, one per unique performer match.</p>
-<h3 id="root-cause-l2-distance-on-concatenated-embeddings">Root Cause: L2 Distance on Concatenated Embeddings</h3>
-<p>The existing <code>cluster_faces_by_person</code> used L2 distance on concatenated 1024-dim (FaceNet+ArcFace) embeddings with threshold 0.6. In that high-dimensional space, same-person faces are typically 1.0+ apart in L2 distance, so the 0.6 threshold was far too tight and almost no clustering happened.</p>
-<h3 id="fix-clustered-frequency-matching">Fix: Clustered Frequency Matching</h3>
-<p>Implemented a two-stage approach (<code>clustered_frequency_matching</code>):</p>
+<p>Signals combine with diminishing returns (<code>primary + secondary × 0.3</code>) to prevent false confidence inflation. No single signal other than Stash-Box ID reaches 100%.</p>
+<hr />
+<h2 id="how-it-works">How It Works</h2>
+<h3 id="candidate-generation">Candidate Generation</h3>
+<p>Direct comparison of every scene pair would be O(n²) — impossible for large libraries. Instead, Stash Sense uses a two-phase approach:</p>
 <ol>
-<li><strong>Stage 1 - Clustering</strong>: Group faces by cosine similarity (consistent with Voyager indices) using pre-computed embeddings (avoids recomputing). Threshold 0.6 cosine distance works well.</li>
-<li><strong>Stage 2 - Identification</strong>: Within each cluster, run frequency-style matching to identify who each person is. Alternatives shown per cluster.</li>
+<li><strong>Candidate generation</strong> — SQL joins and inverted indices produce O(n) candidate pairs from three sources:<ul>
+<li>Stash-Box ID grouping (same scene on endpoint)</li>
+<li>Face fingerprint self-join (shared performers)</li>
+<li>Metadata intersection (same studio AND performer)</li>
+</ul>
+</li>
+<li><strong>Scoring</strong> — Each candidate pair is scored using the signal hierarchy above</li>
 </ol>
-<p>Also merged clusters with the same best match (existing <code>merge_clusters_by_match</code>).</p>
-<h3 id="results">Results</h3>
-<table>
-<thead>
-<tr>
-<th>Scene</th>
-<th>Faces</th>
-<th>Old Persons</th>
-<th>New Persons</th>
-<th>Correct Top Matches</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>709</td>
-<td>38</td>
-<td>34</td>
-<td><strong>9</strong> (2 dominant: 22 + 5 frames)</td>
-<td>Rilynn Rae, Keiran Lee</td>
-</tr>
-<tr>
-<td>14650</td>
-<td>34</td>
-<td>~30</td>
-<td><strong>2</strong></td>
-<td>Ella Reese, Tim Gottfrid</td>
-</tr>
-<tr>
-<td>19759</td>
-<td>94</td>
-<td>~80</td>
-<td><strong>6</strong> (4 dominant: 27+24+20+17 frames)</td>
-<td>Karlie Montana, Madison Ivy, Keiran Lee, Voodoo</td>
-</tr>
-</tbody>
-</table>
-<h3 id="additional-improvements">Additional Improvements</h3>
+<p>This handles libraries with 15,000+ scenes efficiently.</p>
+<h3 id="face-fingerprints">Face Fingerprints</h3>
+<p>A face fingerprint records which performers appeared in a scene, how many times each was detected, and what proportion of total faces they represent. Two scenes with the same performers appearing in the same ratios are likely the same scene, even if one is trimmed, has different resolution, or has a watermark.</p>
+<hr />
+<h2 id="reviewing-duplicates">Reviewing Duplicates</h2>
+<p>Duplicate candidates appear on the recommendations dashboard with:</p>
 <ul>
-<li><strong>Tagged-performer awareness</strong>: Plugin sends existing scene performer StashDB IDs to the API. A small confidence boost (+0.03) is applied to already-tagged performers, and <code>already_tagged</code> flag is returned for UI display.</li>
-<li><strong>"Already tagged" UI state</strong>: Shows "Already tagged on scene" with green badge instead of "Add to Scene" button for performers already on the scene.</li>
-<li><strong>Grouped UI</strong>: Multi-frame clusters shown prominently; single-frame detections collapsed in a collapsible section.</li>
-<li><strong>Embedding reuse</strong>: <code>RecognitionResult</code> now stores the pre-computed embedding, eliminating redundant embedding generation during clustering.</li>
+<li><strong>Confidence score</strong> — Combined signal strength</li>
+<li><strong>Signal breakdown</strong> — Which signals contributed and how much</li>
+<li><strong>Scene details</strong> — Thumbnails, titles, studios for both scenes</li>
 </ul>
-<h2 id="future-investigation-areas">Future Investigation Areas</h2>
-<ol>
-<li>
-<p><strong>Why is accuracy still ~42% with good embeddings?</strong> The database quality improvement didn't help scenes. Investigate whether the problem is face detection (faces not being detected), frame selection (wrong moments), or matching (wrong performers winning).</p>
-</li>
-<li>
-<p><strong>Failure analysis on specific performers</strong>: Which of the 28 FN performers are being missed and why? Are they in the database? Are their faces being detected? Are they being matched to wrong performers?</p>
-</li>
-<li>
-<p><strong>Scene 30835</strong>: Consistently 0/2 across all parameter configs. What's special about this scene?</p>
-</li>
-<li>
-<p><strong>Gallery aggregation redesign</strong>: Current "2+ appearances" filter is broken for galleries. Need percentage-based or statistical approach.</p>
-</li>
-<li>
-<p><strong>min_unique_frames=1 with compensating FP filter</strong>: Could we drop to 1 frame but add a stricter distance threshold (e.g., require distance &lt; 0.4 for single-frame matches)?</p>
-</li>
-<li>
-<p><strong>Image benchmark</strong>: Need to tag some images with performers to enable Phase 6.</p>
-</li>
-<li>
-<p><strong>Larger scene sample</strong>: 20 scenes with 48 performers is small. Results can shift by 1-2 TPs. Consider running with 50+ scenes for more statistical power.</p>
-</li>
-</ol>
+<p>You can dismiss false positives (soft or permanent dismiss) or take action on confirmed duplicates.</p>
 
 
 

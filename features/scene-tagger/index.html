@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../setup/">
+        <link rel="prev" href="../performer-identification/">
       
       
-        <link rel="next" href="../../architecture/">
+        <link rel="next" href="../upstream-changes/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>GPU Passthrough - Stash Sense</title>
+        <title>Scene Tagger - Stash Sense</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#gpu-passthrough-for-unraid" class="md-skip">
+        <a href="#scene-tagger" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              GPU Passthrough
+              Scene Tagger
             
           </span>
         </div>
@@ -385,8 +385,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -397,13 +399,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
@@ -424,7 +424,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -442,7 +442,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/performer-identification/" class="md-nav__link">
+      <a href="../performer-identification/" class="md-nav__link">
         
   
   
@@ -467,10 +467,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../features/scene-tagger/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Tagger
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -486,6 +513,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-matched" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Gets Matched
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ux-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UX Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-tagger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Tagger
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -498,7 +600,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/upstream-changes/" class="md-nav__link">
+      <a href="../upstream-changes/" class="md-nav__link">
         
   
   
@@ -526,7 +628,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/duplicate-detection/" class="md-nav__link">
+      <a href="../duplicate-detection/" class="md-nav__link">
         
   
   
@@ -703,8 +805,6 @@
       
   
   
-    
-  
   
   
     
@@ -717,11 +817,13 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -742,7 +844,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -760,7 +862,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../setup/" class="md-nav__link">
+      <a href="../../unraid/setup/" class="md-nav__link">
         
   
   
@@ -785,37 +887,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    GPU Passthrough
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../unraid/gpu-passthrough/" class="md-nav__link">
         
   
   
@@ -831,142 +906,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prerequisites
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-1-install-nvidia-driver-plugin" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Step 1: Install Nvidia Driver Plugin
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-2-verify-gpu-detection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Step 2: Verify GPU Detection
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-3-container-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Step 3: Container Configuration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#nvidia-smi-command-not-found" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "nvidia-smi: command not found"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#no-gpu-detected-in-container" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "No GPU detected in container"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cuda-out-of-memory" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "CUDA out of memory"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#failed-to-initialize-nvml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "Failed to initialize NVML"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#selecting-a-specific-gpu-multi-gpu-systems" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Selecting a Specific GPU (Multi-GPU Systems)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1134,10 +1073,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-1-install-nvidia-driver-plugin" class="md-nav__link">
+  <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 1: Install Nvidia Driver Plugin
+        How It Works
       
     </span>
   </a>
@@ -1145,10 +1084,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-2-verify-gpu-detection" class="md-nav__link">
+  <a href="#what-gets-matched" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 2: Verify GPU Detection
+        What Gets Matched
       
     </span>
   </a>
@@ -1156,10 +1095,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-3-container-configuration" class="md-nav__link">
+  <a href="#ux-features" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 3: Container Configuration
+        UX Features
       
     </span>
   </a>
@@ -1167,74 +1106,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
+  <a href="#running-the-tagger" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting
+        Running the Tagger
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#nvidia-smi-command-not-found" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "nvidia-smi: command not found"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#no-gpu-detected-in-container" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "No GPU detected in container"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cuda-out-of-memory" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "CUDA out of memory"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#failed-to-initialize-nvml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "Failed to initialize NVML"
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#selecting-a-specific-gpu-multi-gpu-systems" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Selecting a Specific GPU (Multi-GPU Systems)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -1258,92 +1136,48 @@
   
 
 
-<h1 id="gpu-passthrough-for-unraid">GPU Passthrough for Unraid</h1>
+<h1 id="scene-tagger">Scene Tagger</h1>
+<p>The Scene Stash-Box Tagger searches your untagged scenes across Stash-Box endpoints using file fingerprints to find matching metadata — title, studio, performers, tags, and more.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
-<li>NVIDIA GPU (GTX 10-series or newer recommended)</li>
-<li>Unraid 6.12+</li>
+<li><strong>Perceptual hashes</strong> generated for scenes (Stash: <strong>Settings &gt; Tasks &gt; Generate &gt; Perceptual Hashes</strong>)</li>
+<li>At least one <strong>Stash-Box endpoint</strong> configured in Stash's <strong>Settings &gt; Metadata Providers</strong></li>
 </ul>
-<h2 id="step-1-install-nvidia-driver-plugin">Step 1: Install Nvidia Driver Plugin</h2>
+<p>File fingerprints (MD5, oshash, phash) are how Stash-Box endpoints identify your scenes. Without them, there's nothing to search with.</p>
+<hr />
+<h2 id="how-it-works">How It Works</h2>
 <ol>
-<li>Go to <strong>Apps</strong> → Search "Nvidia Driver"</li>
-<li>Install <strong>Nvidia-Driver</strong> by ich777</li>
-<li>Reboot Unraid</li>
+<li>Trigger the Scene Stash-Box Tagger from the <strong>Operations</strong> tab or the recommendations dashboard</li>
+<li>Stash Sense queries each configured Stash-Box endpoint with your scenes' file fingerprints</li>
+<li>When a match is found, the upstream metadata is presented for review</li>
+<li>You can accept, modify, or skip each match before it's applied to your library</li>
 </ol>
-<h2 id="step-2-verify-gpu-detection">Step 2: Verify GPU Detection</h2>
-<p>Open Unraid terminal and run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>nvidia-smi
-</code></pre></div>
-<p>You should see your GPU listed:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>+-----------------------------------------------------------------------------+
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>| NVIDIA-SMI 550.xx       Driver Version: 550.xx       CUDA Version: 12.x     |
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>|-------------------------------+----------------------+----------------------+
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>|===============================+======================+======================|
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>|   0  NVIDIA GeForce ...  Off  | 00000000:XX:00.0 Off |                  N/A |
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>+-------------------------------+----------------------+----------------------+
-</code></pre></div>
-<h2 id="step-3-container-configuration">Step 3: Container Configuration</h2>
-<p>The Stash Sense template automatically includes GPU settings.</p>
-<p>If configuring manually, ensure these are set:</p>
-<table>
-<thead>
-<tr>
-<th>Setting</th>
-<th>Value</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Extra Parameters</td>
-<td><code>--runtime=nvidia --gpus all</code></td>
-</tr>
-<tr>
-<td>NVIDIA_VISIBLE_DEVICES</td>
-<td><code>all</code> (or specific GPU UUID)</td>
-</tr>
-</tbody>
-</table>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="nvidia-smi-command-not-found">"nvidia-smi: command not found"</h3>
-<p>Driver plugin not installed or Unraid needs reboot.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Check if plugin is installed</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>ls<span class="w"> </span>/boot/config/plugins/nvidia-driver.plg
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># If missing, reinstall from Apps</span>
-</code></pre></div>
-<h3 id="no-gpu-detected-in-container">"No GPU detected in container"</h3>
-<p>Check container has GPU access:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>stash-sense<span class="w"> </span>nvidia-smi
-</code></pre></div>
-<p>If this fails, verify:</p>
-<ol>
-<li>Extra Parameters includes <code>--runtime=nvidia</code></li>
-<li>Container was recreated after driver install (not just restarted)</li>
-</ol>
-<h3 id="cuda-out-of-memory">"CUDA out of memory"</h3>
-<p>Another process is using the GPU. Check what's using it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nvidia-smi
-</code></pre></div>
-<p>Look at "Processes" section. Common culprits:
-- Plex hardware transcoding
-- Tdarr
-- Frigate
-- Other ML containers</p>
-<h3 id="failed-to-initialize-nvml">"Failed to initialize NVML"</h3>
-<p>The Nvidia container toolkit isn't configured. Re-install the driver plugin and reboot.</p>
-<h3 id="selecting-a-specific-gpu-multi-gpu-systems">Selecting a Specific GPU (Multi-GPU Systems)</h3>
-<p>If you have multiple GPUs, specify which one to use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># List GPU UUIDs</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>nvidia-smi<span class="w"> </span>-L
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Use specific GPU</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nv">NVIDIA_VISIBLE_DEVICES</span><span class="o">=</span>GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-</code></pre></div>
-<p>Or by index:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">NVIDIA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w">  </span><span class="c1"># First GPU</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">NVIDIA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">1</span><span class="w">  </span><span class="c1"># Second GPU</span>
-</code></pre></div></p>
+<hr />
+<h2 id="what-gets-matched">What Gets Matched</h2>
+<p>When a scene's fingerprint matches on a Stash-Box endpoint, the following metadata is available:</p>
+<ul>
+<li><strong>Title and details</strong></li>
+<li><strong>Date, director, and code</strong></li>
+<li><strong>Studio</strong> assignment</li>
+<li><strong>Performer lineup</strong> with aliases</li>
+<li><strong>Tags</strong></li>
+<li><strong>URLs</strong></li>
+</ul>
+<hr />
+<h2 id="ux-features">UX Features</h2>
+<ul>
+<li><strong>Auto-expand search</strong> — Search results are automatically expanded when matches are found, reducing clicks</li>
+<li><strong>Local entity display</strong> — Matched performers and studios show whether they already exist in your local Stash library</li>
+<li><strong>Auto-matching with aliases</strong> — When a Stash-Box performer has aliases that match a local performer's name, the match is made automatically</li>
+</ul>
+<hr />
+<h2 id="running-the-tagger">Running the Tagger</h2>
+<p>The tagger can be run from two places:</p>
+<ul>
+<li><strong>Operations tab</strong> — Trigger a full scan of unmatched scenes</li>
+<li><strong>Recommendations dashboard</strong> — Untagged scenes appear as recommendations; click to tag them</li>
+</ul>
+<p>The tagger runs as a background job in the <a href="../../plugin/#operation-queue">operation queue</a> and supports incremental runs — only scenes modified or added since the last run are processed.</p>
 
 
 
