@@ -155,6 +155,10 @@
       return apiCall('rec_dismiss_upstream', { rec_id: recId, reason, permanent: !!permanent });
     },
 
+    async batchDismiss(type, permanent) {
+      return apiCall('rec_batch_dismiss', { type, permanent: !!permanent });
+    },
+
     async searchEntities(entityType, query, endpoint) {
       return apiCall('rec_search_entities', { entity_type: entityType, query, endpoint });
     },
@@ -783,14 +787,19 @@
             Dismissed
           </button>
         </div>
-        ${currentState.status === 'pending' && (currentState.type === 'upstream_performer_changes' || currentState.type === 'upstream_tag_changes' || currentState.type === 'upstream_studio_changes')
-          ? '<button class="ss-accept-all-btn" id="ss-accept-all-btn">Accept All Changes</button>'
-          : ''
-        }
-        ${currentState.status === 'pending' && currentState.type === 'scene_fingerprint_match'
-          ? '<button class="ss-accept-all-btn" id="ss-accept-all-fp-btn">Accept All High-Confidence</button>'
-          : ''
-        }
+        ${currentState.status === 'pending' ? `
+        <div class="ss-list-actions">
+          ${currentState.type === 'upstream_performer_changes' || currentState.type === 'upstream_tag_changes' || currentState.type === 'upstream_studio_changes'
+            ? '<button class="ss-accept-all-btn" id="ss-accept-all-btn">Accept All Changes</button>'
+            : ''
+          }
+          ${currentState.type === 'scene_fingerprint_match'
+            ? '<button class="ss-accept-all-btn" id="ss-accept-all-fp-btn">Accept All High-Confidence</button>'
+            : ''
+          }
+          <button class="ss-dismiss-all-btn" id="ss-dismiss-all-btn">Dismiss All</button>
+        </div>
+        ` : ''}
       </div>
 
       <div class="ss-list-content">
@@ -888,6 +897,50 @@
           acceptAllFpBtn.classList.add('ss-btn-error');
           acceptAllFpBtn.disabled = false;
         }
+      });
+    }
+
+    // Dismiss All button
+    const dismissAllBtn = container.querySelector('#ss-dismiss-all-btn');
+    if (dismissAllBtn) {
+      dismissAllBtn.addEventListener('click', async () => {
+        // Show confirmation modal with permanent/temporary options
+        const overlay = document.createElement('div');
+        overlay.className = 'ss-modal-overlay';
+        overlay.innerHTML = `
+          <div class="ss-modal" style="max-width:420px;">
+            <h3>Dismiss All</h3>
+            <p style="margin:0.75rem 0;color:#aaa;">How would you like to dismiss all pending ${typeConfigs[currentState.type] || currentState.type} recommendations?</p>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:1rem;">
+              <button class="ss-btn ss-btn-secondary" id="ss-dismiss-temp">Dismiss until next analysis</button>
+              <button class="ss-btn ss-btn-danger" id="ss-dismiss-perm">Never show again</button>
+              <button class="ss-btn" id="ss-dismiss-cancel" style="margin-top:0.25rem;">Cancel</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const handleDismiss = async (permanent) => {
+          overlay.querySelector('.ss-modal').innerHTML = '<div class="ss-loading-inline"><div class="ss-spinner"></div></div><p style="text-align:center;margin-top:0.5rem;">Dismissing...</p>';
+          try {
+            const result = await RecommendationsAPI.batchDismiss(currentState.type, permanent);
+            overlay.remove();
+            dismissAllBtn.textContent = `Dismissed ${result.dismissed_count}!`;
+            dismissAllBtn.disabled = true;
+            setTimeout(() => {
+              renderCurrentView(document.getElementById('ss-recommendations'));
+            }, 1500);
+          } catch (e) {
+            overlay.remove();
+            dismissAllBtn.textContent = `Failed: ${e.message}`;
+            setTimeout(() => { dismissAllBtn.textContent = 'Dismiss All'; dismissAllBtn.disabled = false; }, 2000);
+          }
+        };
+
+        overlay.querySelector('#ss-dismiss-temp').addEventListener('click', () => handleDismiss(false));
+        overlay.querySelector('#ss-dismiss-perm').addEventListener('click', () => handleDismiss(true));
+        overlay.querySelector('#ss-dismiss-cancel').addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
       });
     }
 

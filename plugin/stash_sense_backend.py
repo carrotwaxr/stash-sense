@@ -510,6 +510,15 @@ def handle_recommendations(mode, args, sidecar_url):
             return {"error": "No rec_id provided"}
         return rec_dismiss(sidecar_url, rec_id, args.get("reason"))
 
+    elif mode == "rec_batch_dismiss":
+        rec_type = args.get("type")
+        if not rec_type:
+            return {"error": "No type provided"}
+        return sidecar_post(sidecar_url, "/recommendations/actions/batch-dismiss", {
+            "type": rec_type,
+            "permanent": args.get("permanent", False),
+        })
+
     elif mode == "rec_analysis_types":
         return rec_analysis_types(sidecar_url)
 

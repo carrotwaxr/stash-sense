@@ -1020,6 +1020,12 @@
 }
 
 /* Accept All button + modal styles */
+.ss-list-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .ss-accept-all-btn {
   padding: 8px 20px;
   background: #198754;
@@ -1038,6 +1044,30 @@
 }
 
 .ss-accept-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ss-dismiss-all-btn {
+  padding: 8px 20px;
+  background: transparent;
+  color: #999;
+  border: 1px solid #555;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.ss-dismiss-all-btn:hover:not(:disabled) {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  border-color: #dc3545;
+}
+
+.ss-dismiss-all-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

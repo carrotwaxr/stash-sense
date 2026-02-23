@@ -1523,3 +1523,21 @@ async def accept_all_fingerprint_matches(
     db = get_rec_db()
     accepted = await _accept_all_fingerprint_matches(stash, db, request.endpoint)
     return {"success": True, "accepted_count": accepted}
+
+
+class BatchDismissRequest(BaseModel):
+    """Request to batch dismiss all pending recommendations of a type."""
+    type: str = Field(..., description="Recommendation type to dismiss")
+    permanent: bool = Field(False, description="If true, never show these again")
+
+
+@router.post("/actions/batch-dismiss")
+async def batch_dismiss(request: BatchDismissRequest):
+    """Dismiss all pending recommendations of a given type."""
+    db = get_rec_db()
+    dismissed_count = db.batch_dismiss_by_type(
+        rec_type=request.type,
+        permanent=request.permanent,
+        reason="Batch dismissed by user",
+    )
+    return {"success": True, "dismissed_count": dismissed_count}
