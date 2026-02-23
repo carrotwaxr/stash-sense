@@ -675,6 +675,38 @@ class RecommendationsDB:
 
             return True
 
+    def batch_dismiss_by_type(self, rec_type: str, permanent: bool = False, reason: Optional[str] = None) -> int:
+        """Dismiss all pending recommendations of a given type. Returns count dismissed."""
+        with self._connection() as conn:
+            # Get all pending recs of this type
+            rows = conn.execute(
+                "SELECT id, type, target_type, target_id FROM recommendations WHERE type = ? AND status = 'pending'",
+                (rec_type,)
+            ).fetchall()
+
+            if not rows:
+                return 0
+
+            rec_ids = [row['id'] for row in rows]
+
+            # Mark all as dismissed
+            conn.execute(
+                f"UPDATE recommendations SET status = 'dismissed', updated_at = datetime('now') WHERE id IN ({','.join('?' * len(rec_ids))})",
+                rec_ids
+            )
+
+            # Add to dismissed_targets
+            for row in rows:
+                try:
+                    conn.execute(
+                        "INSERT INTO dismissed_targets (type, target_type, target_id, reason, permanent) VALUES (?, ?, ?, ?, ?)",
+                        (row['type'], row['target_type'], row['target_id'], reason, int(permanent))
+                    )
+                except sqlite3.IntegrityError:
+                    pass  # Already dismissed
+
+            return len(rec_ids)
+
     def is_dismissed(self, type: str, target_type: str, target_id: str) -> bool:
         """Check if a target has been dismissed."""
         with self._connection() as conn:
