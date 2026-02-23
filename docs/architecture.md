@@ -1,6 +1,6 @@
 # Stash Sense Architecture
 
-Reference for how the system works and why key decisions were made.
+Reference for how the system works and why key decisions were made. This page is developer-facing — for end-user docs, see the [Features](features/performer-identification.md) pages.
 
 ---
 
