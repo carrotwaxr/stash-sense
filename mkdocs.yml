@@ -1,5 +1,5 @@
 site_name: Stash Sense
-site_description: AI-powered performer identification for Stash
+site_description: ML-powered performer identification for Stash
 repo_url: https://github.com/carrotwaxr/stash-sense
 repo_name: stash-sense
 
@@ -19,12 +19,15 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Configuration: configuration.md
-    - Plugin Setup: plugin.md
+  - Features:
+    - Performer Identification: features/performer-identification.md
+    - Scene Tagger: features/scene-tagger.md
+    - Upstream Changes: features/upstream-changes.md
+    - Duplicate Detection: features/duplicate-detection.md
   - User Guide:
-    - Features: features.md
+    - Plugin Usage: plugin.md
     - Database & Updates: database.md
     - Settings: settings-system.md
-    - StashBox Endpoints: stash-box-endpoints.md
   - Unraid:
     - Setup: unraid/setup.md
     - GPU Passthrough: unraid/gpu-passthrough.md
@@ -34,6 +37,7 @@ nav:
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences

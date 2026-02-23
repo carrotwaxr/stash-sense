@@ -104,27 +104,93 @@ If GPU is detected but still slow:
 
 **From Stash container, test connectivity:**
 ```bash
-docker exec stash curl http://stash-sense:5000/health
+docker exec stash curl http://stash-sense-host:6960/health
 ```
 
 **Common fixes:**
 
-- Use container name if on same Docker network
-- Use host IP if on different networks
+- Use host IP if containers are on different Docker networks
 - Check firewall isn't blocking port 6960
+- Verify the Sidecar URL in plugin settings matches your container's host and port
 
 ### Sidecar can't reach Stash
 
 **Test from sidecar:**
 ```bash
-docker exec stash-sense curl http://stash:9999/graphql
+docker exec stash-sense curl http://your-stash-host:9999/graphql
 ```
 
 **Common fixes:**
 
-- Verify STASH_URL is correct
-- Verify STASH_API_KEY is valid
+- Verify `STASH_URL` environment variable is correct
+- Verify `STASH_API_KEY` is valid
 - Check Stash is running and accessible
+- Don't use `localhost` in `STASH_URL` — it refers to the container itself, not the host. Use the host's LAN IP.
+
+### Windows: "Connection refused" on localhost
+
+On recent Docker Desktop versions, `localhost` may resolve to `::1` (IPv6) instead of `127.0.0.1`. Try:
+
+- Use `http://127.0.0.1:6960` instead of `http://localhost:6960`
+- Use the machine's LAN IP (e.g., `http://192.168.1.100:6960`)
+
+See the [Windows / WSL](installation.md#windows-wsl) section of the installation guide for more details.
+
+---
+
+## Plugin Issues
+
+### Plugin Python dependencies
+
+The plugin backend requires the `requests` library in Stash's Python environment.
+
+**Symptoms:** Plugin appears installed but all sidecar requests fail silently. Stash logs may show `ModuleNotFoundError: No module named 'requests'`.
+
+**Fix:** Install requests in Stash's Python environment:
+
+```bash
+# If Stash runs in Docker:
+docker exec stash pip install requests
+
+# If Stash runs natively:
+pip install requests
+```
+
+### Plugin backend not working
+
+Check Stash logs for Python errors:
+
+```bash
+docker logs stash 2>&1 | grep -i "stash.sense\|error\|traceback"
+```
+
+Common causes:
+
+- Plugin files not installed correctly — reinstall from the plugin source
+- Python not available in Stash's environment
+- Sidecar URL not configured in plugin settings
+
+### Plugin not appearing
+
+1. Check plugin files are in the correct location
+2. Reload plugins in Stash settings
+3. Check Stash logs for errors
+
+---
+
+## Stash-Box Endpoint Issues
+
+### Credentials not detected
+
+The sidecar reads Stash-Box endpoint credentials from Stash's **Settings > Metadata Providers** at startup. If endpoints aren't showing up:
+
+1. Verify the endpoint is configured in Stash's Metadata Providers
+2. Restart the sidecar, or use the **Refresh** button in the plugin's Settings tab
+3. Check sidecar logs for errors during endpoint discovery
+
+### Endpoint not available for upstream sync
+
+Make sure the endpoint is **enabled** in the plugin's Settings tab. Disabled endpoints are skipped during analysis but their configuration is preserved.
 
 ---
 
@@ -132,23 +198,24 @@ docker exec stash-sense curl http://stash:9999/graphql
 
 ### No faces detected
 
+- **No sprite sheets**: Generate sprite sheets first (Settings > Tasks > Generate > Sprites)
 - **Low quality sprites**: Regenerate with higher quality settings
 - **No clear face shots**: Some scenes don't have good face visibility
-- **Very small faces**: Detection has minimum size threshold
+- **Very small faces**: Detection has a minimum size threshold
 
 ### Wrong matches
 
-- **Low confidence score**: Scores > 0.6 are less reliable
+- **High distance score**: Scores above 0.5 are less reliable
 - **Similar looking performers**: Some faces are genuinely similar
-- **Database coverage**: Performer may not be in StashDB or have poor reference images
+- **Database coverage**: The performer may not be in the database or may have poor reference images
 
 ### Performer matched but not in library
 
-This is expected behavior - the face matched someone in StashDB who you haven't added to your Stash yet. Options:
+This is expected — the face matched a performer in the database who you haven't added to your Stash yet. Options:
 
-1. Click "View on StashDB" to verify the match
+1. Click "View on Stash-Box" to verify the match
 2. Add the performer to your Stash manually
-3. Use Stash's "Identify" feature to import from StashDB
+3. Use Stash's "Identify" feature to import from a Stash-Box endpoint
 
 ---
 
@@ -159,10 +226,9 @@ This is expected behavior - the face matched someone in StashDB who you haven't 
 If you see index errors or crashes on load:
 
 ```bash
-# Remove and re-download
-rm -rf /path/to/data/*
-# Re-extract from release
-tar -xzf stash-sense-db.tar.gz -C /path/to/data/
+# Remove and re-download via Settings UI, or manually:
+rm -rf /path/to/data/*.voy /path/to/data/performers.db /path/to/data/*.json
+# Then download fresh via Settings tab > Database > Update
 ```
 
 ### Outdated database
@@ -172,7 +238,7 @@ Check current version:
 curl http://localhost:6960/database/info
 ```
 
-Compare with latest release on GitHub. New databases include more performers and improved embeddings.
+Compare with the latest release on [GitHub](https://github.com/carrotwaxr/stash-sense-data/releases). New databases include more performers and improved embeddings.
 
 ---
 
@@ -183,7 +249,7 @@ If you're stuck:
 1. Check container logs: `docker logs stash-sense`
 2. Test health endpoint: `curl http://localhost:6960/health`
 3. Verify database files exist and have correct permissions
-4. Open an issue on GitHub with:
+4. Open an issue on [GitHub](https://github.com/carrotwaxr/stash-sense/issues) with:
    - Container logs
    - Health endpoint response
    - Docker/Unraid version

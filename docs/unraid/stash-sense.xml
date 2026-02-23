@@ -11,7 +11,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/carrotwaxr/stash-sense/issues</Support>
   <Project>https://github.com/carrotwaxr/stash-sense</Project>
-  <Overview>AI-powered performer identification for Stash using face recognition against StashDB. Requires NVIDIA GPU with nvidia-container-toolkit for best performance (CPU fallback available).</Overview>
+  <Overview>ML-powered performer identification for Stash using face recognition against multiple Stash-Box endpoints. Requires NVIDIA GPU with nvidia-container-toolkit for best performance (CPU fallback available).</Overview>
   <Category>MediaApp:Other</Category>
   <Icon>https://raw.githubusercontent.com/carrotwaxr/stash-sense/main/docs/assets/icon.png</Icon>
   <ExtraParams>--runtime=nvidia --gpus all</ExtraParams>

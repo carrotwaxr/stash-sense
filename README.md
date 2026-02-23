@@ -1,10 +1,10 @@
 # Stash Sense
 
-AI-powered performer identification and library curation for [Stash](https://github.com/stashapp/stash). Identifies performers in your scenes using face recognition, detects duplicate scenes, syncs upstream metadata changes, and surfaces actionable recommendations — all running locally on your hardware.
+ML-powered performer identification and library curation for [Stash](https://github.com/stashapp/stash). Identifies performers in your scenes using face recognition, detects duplicate scenes, syncs upstream metadata changes, and surfaces actionable recommendations — all running locally on your hardware.
 
 ## What is Stash Sense?
 
-Stash Sense is a sidecar service and Stash plugin that brings AI-powered analysis to your Stash library:
+Stash Sense is a sidecar service and Stash plugin that brings ML-powered analysis to your Stash library:
 
 - **Face Recognition** — Identify performers in scenes using sprite sheets. Matches against a database of 108,000+ performers from StashDB, FansDB, ThePornDB, PMVStash, and JAVStash
 - **Duplicate Scene Detection** — Find duplicate scenes using face fingerprints, stash-box IDs, and metadata overlap — catches duplicates that phash matching misses
@@ -97,7 +97,7 @@ Full documentation: **[https://carrotwaxr.github.io/stash-sense](https://carrotw
 
 - [Installation Guide](https://carrotwaxr.github.io/stash-sense/installation/)
 - [Configuration](https://carrotwaxr.github.io/stash-sense/configuration/)
-- [Features](https://carrotwaxr.github.io/stash-sense/features/)
+- [Features](https://carrotwaxr.github.io/stash-sense/features/performer-identification/)
 - [Plugin Setup](https://carrotwaxr.github.io/stash-sense/plugin)
 - [Database & Updates](https://carrotwaxr.github.io/stash-sense/database/)
 - [Settings](https://carrotwaxr.github.io/stash-sense/settings-system/)
@@ -110,7 +110,7 @@ Full documentation: **[https://carrotwaxr.github.io/stash-sense](https://carrotw
 | Stash | v0.25+ with sprite sheets generated |
 | Docker | With `nvidia-container-toolkit` (for GPU) |
 | GPU | NVIDIA with 4GB+ VRAM (optional — CPU fallback available) |
-| Disk | ~1.5 GB for the face recognition database |
+| Disk | ~2.5 GB for face recognition data, models, and working space |
 
 ## Support
 
