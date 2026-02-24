@@ -1748,11 +1748,14 @@
           .filter(p => p.id !== performerId);
         if (conflicts.length > 0) {
           const candidate = conflicts[0];
-          // If either performer has a disambiguation, they are explicitly marked
-          // as distinct people sharing a name — skip the conflict dialog entirely
-          const candidateDisambig = (candidate.disambiguation || '').trim();
-          const proposedDisambigVal = (proposedDisambig || '').trim();
-          const isDistinctPerson = !!(candidateDisambig || proposedDisambigVal);
+          // Skip conflict dialog when disambiguations differ (distinct people).
+          // Allow conflict dialog when both share the same disambiguation
+          // (likely duplicates) or when neither is disambiguated.
+          const candidateDisambig = (candidate.disambiguation || '').trim().toLowerCase();
+          const proposedDisambigVal = (proposedDisambig || '').trim().toLowerCase();
+          const hasDisambig = !!(candidateDisambig || proposedDisambigVal);
+          const sameDisambig = candidateDisambig === proposedDisambigVal;
+          const isDistinctPerson = hasDisambig && !sameDisambig;
           if (!isDistinctPerson) {
             nameConflict = candidate;
           }
@@ -2278,6 +2281,11 @@
               }
               if (strippedAliases.length > 0) {
                 console.warn('[Stash Sense] Stripped aliases matching existing performers:', strippedAliases);
+                const note = document.createElement('div');
+                note.style.cssText = 'color: #f59e0b; font-size: 0.8rem; margin-top: 4px;';
+                note.textContent = `Skipped alias${strippedAliases.length > 1 ? 'es' : ''} matching existing performer${strippedAliases.length > 1 ? 's' : ''}: ${strippedAliases.join(', ')}`;
+                errorDiv.appendChild(note);
+                errorDiv.style.display = 'block';
               }
               safeFields._alias_add = remaining;
               if (safeFields._alias_add.length === 0) delete safeFields._alias_add;
@@ -3616,6 +3624,7 @@
         applyBtn.disabled = true;
         applyBtn.textContent = 'Applying...';
         await RecommendationsAPI.updateScene(sceneId, fields, performerIds, tagIds, studioId);
+        await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
         showSuccessAndReturn(applyBtn, 'Applied!');
       } catch (e) {
@@ -3952,12 +3961,7 @@
         await RecommendationsAPI.acceptFingerprintMatch(
           rec.id, d.local_scene_id, d.endpoint, d.stashbox_scene_id
         );
-        acceptBtn.textContent = 'Accepted!';
-        acceptBtn.classList.add('ss-btn-success');
-        setTimeout(() => {
-          currentState.view = 'list';
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(acceptBtn, 'Accepted!');
       } catch (e) {
         acceptBtn.textContent = `Failed: ${e.message}`;
         acceptBtn.classList.add('ss-btn-error');
@@ -3972,12 +3976,7 @@
       dismissBtn.textContent = 'Dismissing...';
       try {
         await RecommendationsAPI.dismiss(rec.id);
-        dismissBtn.textContent = 'Dismissed!';
-        dismissBtn.classList.add('ss-btn-success');
-        setTimeout(() => {
-          currentState.view = 'list';
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(dismissBtn, 'Dismissed!');
       } catch (e) {
         dismissBtn.textContent = `Failed: ${e.message}`;
         dismissBtn.classList.add('ss-btn-error');

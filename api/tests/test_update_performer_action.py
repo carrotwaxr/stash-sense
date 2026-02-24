@@ -209,9 +209,9 @@ class TestPerformerNameConflictAutoMerge:
 
 
 class TestDisambiguationMergeSafety:
-    """Disambiguation-aware auto-merge: never merge when either performer
-    has a disambiguation, since disambiguated performers are explicitly
-    marked as distinct people sharing a name."""
+    """Disambiguation-aware auto-merge: block merge when performers have
+    different disambiguations (distinct people). Allow merge when both share
+    the same disambiguation (likely duplicates) or neither is disambiguated."""
 
     def test_skips_merge_when_both_have_different_disambiguations(self, app):
         """'Hazel Grace (US)' and 'Hazel Grace (Russian)' should NOT merge.
@@ -318,6 +318,30 @@ class TestDisambiguationMergeSafety:
             assert data.get("auto_merged") is True
             mock_stash.merge_performers.assert_called_once()
 
+    def test_allows_merge_when_both_have_same_disambiguation(self, app):
+        """'Hazel Grace (US)' and 'Hazel Grace (US)' are likely true duplicates.
+        Same disambiguation should allow merge."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = _make_mock_stash(
+                dest_disambig="US",
+                conflict_name="Hazel Grace",
+                conflict_disambig="US",
+            )
+            mock_get_stash.return_value = mock_stash
+            _clear_caches()
+
+            client = TestClient(app)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"name": "Hazel Grace"},
+            })
+
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["success"] is True
+            assert data.get("auto_merged") is True
+            mock_stash.merge_performers.assert_called_once()
+
     def test_uses_disambiguation_from_fields_over_current(self, app):
         """When fields dict includes disambiguation, it should be used for the
         merge safety check (it's what the performer will become).
@@ -348,3 +372,77 @@ class TestDisambiguationMergeSafety:
             assert resp.status_code == 409
             assert "different disambiguation" in resp.json()["detail"]
             mock_stash.merge_performers.assert_not_called()
+
+
+class TestAliasDeduplication:
+    """Aliases added via _alias_add that match existing performer names
+    should be stripped by deduplicate_aliases in the update pipeline."""
+
+    def test_alias_add_matching_existing_performer_stripped(self, app):
+        """_alias_add entries matching another performer's name are silently dropped."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = MagicMock()
+            mock_stash.update_performer = AsyncMock(return_value={"id": "50"})
+            mock_stash.get_performer = AsyncMock(return_value={
+                "id": "50",
+                "name": "Miss Kenzie Anne",
+                "alias_list": ["KA"],
+                "disambiguation": "",
+                "stash_ids": [],
+            })
+            mock_get_stash.return_value = mock_stash
+            _clear_caches()
+
+            # Pre-populate name cache with an existing performer named "Kenzie Anne"
+            import recommendations_router
+            recommendations_router._entity_name_cache["performers"] = {
+                "kenzie anne", "miss kenzie anne", "other performer",
+            }
+            recommendations_router._entity_name_cache_loaded["performers"] = True
+
+            client = TestClient(app)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"_alias_add": ["Kenzie Anne", "New Alias"]},
+            })
+
+            assert resp.status_code == 200
+            # Check the alias_list passed to update_performer
+            call_kwargs = mock_stash.update_performer.call_args
+            alias_list = call_kwargs.kwargs.get("alias_list") or call_kwargs[1].get("alias_list")
+            assert "Kenzie Anne" not in alias_list, "Alias matching existing performer should be stripped"
+            assert "New Alias" in alias_list
+            assert "KA" in alias_list  # existing alias preserved
+
+    def test_alias_add_no_conflict_passes_through(self, app):
+        """_alias_add entries that don't conflict should be added normally."""
+        with patch("recommendations_router.get_stash_client") as mock_get_stash:
+            mock_stash = MagicMock()
+            mock_stash.update_performer = AsyncMock(return_value={"id": "50"})
+            mock_stash.get_performer = AsyncMock(return_value={
+                "id": "50",
+                "name": "Test Performer",
+                "alias_list": [],
+                "disambiguation": "",
+                "stash_ids": [],
+            })
+            mock_get_stash.return_value = mock_stash
+            _clear_caches()
+
+            import recommendations_router
+            recommendations_router._entity_name_cache["performers"] = {
+                "test performer", "other performer",
+            }
+            recommendations_router._entity_name_cache_loaded["performers"] = True
+
+            client = TestClient(app)
+            resp = client.post("/recommendations/actions/update-performer", json={
+                "performer_id": "50",
+                "fields": {"_alias_add": ["New Alias", "Another Alias"]},
+            })
+
+            assert resp.status_code == 200
+            call_kwargs = mock_stash.update_performer.call_args
+            alias_list = call_kwargs.kwargs.get("alias_list") or call_kwargs[1].get("alias_list")
+            assert "New Alias" in alias_list
+            assert "Another Alias" in alias_list
