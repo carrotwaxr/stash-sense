@@ -223,9 +223,21 @@
       });
       progressBar.appendChild(progressFill);
       progressWrap.appendChild(progressBar);
+      const eta = getETA(job);
+      const etaText = eta ? ` \u00b7 ${eta} remaining` : '';
       progressWrap.appendChild(SS.createElement('span', {
         className: 'ss-ops-progress-text',
-        textContent: `${job.items_processed} / ${job.items_total} (${pct}%)`,
+        textContent: `${job.items_processed} / ${job.items_total} (${pct}%)${etaText}`,
+      }));
+      card.appendChild(progressWrap);
+    } else if (isActive && job.status === 'running') {
+      // Indeterminate state: running but no items_total yet
+      const progressWrap = SS.createElement('div', { className: 'ss-progress-wrap' });
+      const progressBar = SS.createElement('div', { className: 'ss-progress-bar ss-ops-progress-bar ss-progress-indeterminate' });
+      progressWrap.appendChild(progressBar);
+      progressWrap.appendChild(SS.createElement('span', {
+        className: 'ss-ops-progress-text',
+        textContent: 'Analyzing\u2026',
       }));
       card.appendChild(progressWrap);
     }
@@ -371,6 +383,22 @@
     if (secs < 60) return `${secs}s`;
     if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
     return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+  }
+
+  function formatDuration(secs) {
+    if (secs < 60) return `${Math.ceil(secs)}s`;
+    if (secs < 3600) return `~${Math.ceil(secs / 60)}m`;
+    return `~${Math.floor(secs / 3600)}h ${Math.ceil((secs % 3600) / 60)}m`;
+  }
+
+  function getETA(job) {
+    if (!job.started_at || !job.items_total || !job.items_processed || job.items_processed <= 0) return null;
+    const start = new Date(job.started_at + 'Z');
+    const elapsed = (new Date() - start) / 1000;
+    if (elapsed < 3) return null;  // Too early for meaningful estimate
+    const rate = job.items_processed / elapsed;
+    const remaining = job.items_total - job.items_processed;
+    return formatDuration(remaining / rate);
   }
 
   // ==================== Polling ====================

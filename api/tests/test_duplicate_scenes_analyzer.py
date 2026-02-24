@@ -1,7 +1,8 @@
 """Tests for DuplicateScenesAnalyzer."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+import sqlite3
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestDuplicateScenesAnalyzer:
@@ -556,3 +557,256 @@ class TestCandidateGeneration:
         count = await analyzer._generate_candidates(run_id)
 
         assert count == 1
+
+
+class TestAnalysisJobRunId:
+    """Verify AnalysisJob creates a real analysis_runs entry and passes it to the analyzer."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        return stash
+
+    @pytest.mark.asyncio
+    async def test_analysis_job_creates_run_id(self, db, mock_stash):
+        """AnalysisJob should create an analysis_runs entry and pass it to the analyzer."""
+        from jobs.analysis_jobs import AnalysisJob
+        from base_job import JobContext
+
+        # Set up module-level globals used by AnalysisJob
+        with patch("jobs.analysis_jobs.get_rec_db", return_value=db), \
+             patch("jobs.analysis_jobs.get_stash_client", return_value=mock_stash), \
+             patch("jobs.analysis_jobs.ANALYZERS") as mock_analyzers:
+
+            # Track what run_id was passed to the analyzer
+            captured_run_id = None
+
+            class FakeAnalyzer:
+                type = "test_type"
+                _job_progress_callback = None
+
+                def __init__(self, stash, rec_db, run_id=None):
+                    nonlocal captured_run_id
+                    captured_run_id = run_id
+
+                def request_stop(self):
+                    pass
+
+                async def run(self, incremental=True):
+                    from analyzers.base import AnalysisResult
+                    return AnalysisResult(items_processed=5, recommendations_created=2)
+
+            mock_analyzers.get.return_value = FakeAnalyzer
+
+            job = AnalysisJob("test_type")
+            job_id = db.submit_job("test_type", priority=50, triggered_by="test")
+            db.start_job(job_id)
+            ctx = JobContext(job_id, db, None)
+
+            await job.run(ctx)
+
+            # run_id should be a real integer, not None
+            assert captured_run_id is not None
+            assert isinstance(captured_run_id, int)
+
+            # analysis_runs entry should exist and be completed
+            run = db.get_analysis_run(captured_run_id)
+            assert run is not None
+            assert run.status == "completed"
+            assert run.recommendations_created == 2
+
+    @pytest.mark.asyncio
+    async def test_analysis_job_marks_run_failed_on_exception(self, db, mock_stash):
+        """AnalysisJob should mark the analysis_run as failed if the analyzer raises."""
+        from jobs.analysis_jobs import AnalysisJob
+        from base_job import JobContext
+
+        with patch("jobs.analysis_jobs.get_rec_db", return_value=db), \
+             patch("jobs.analysis_jobs.get_stash_client", return_value=mock_stash), \
+             patch("jobs.analysis_jobs.ANALYZERS") as mock_analyzers:
+
+            captured_run_id = None
+
+            class FailingAnalyzer:
+                type = "test_type"
+                _job_progress_callback = None
+
+                def __init__(self, stash, rec_db, run_id=None):
+                    nonlocal captured_run_id
+                    captured_run_id = run_id
+
+                def request_stop(self):
+                    pass
+
+                async def run(self, incremental=True):
+                    raise RuntimeError("Test failure")
+
+            mock_analyzers.get.return_value = FailingAnalyzer
+
+            job = AnalysisJob("test_type")
+            job_id = db.submit_job("test_type", priority=50, triggered_by="test")
+            db.start_job(job_id)
+            ctx = JobContext(job_id, db, None)
+
+            with pytest.raises(RuntimeError):
+                await job.run(ctx)
+
+            # analysis_runs entry should be marked as failed
+            run = db.get_analysis_run(captured_run_id)
+            assert run is not None
+            assert run.status == "failed"
+
+
+class TestOrphanedCandidateCleanup:
+    """Verify NULL-run_id candidates are cleaned up and don't block new inserts."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    def test_clear_orphaned_candidates_removes_null_run_id(self, db):
+        """Candidates with NULL run_id should be deleted."""
+        # Insert orphaned candidates (simulating the old broken behavior)
+        with db._connection() as conn:
+            conn.execute(
+                "INSERT INTO duplicate_candidates (scene_a_id, scene_b_id, source, run_id) VALUES (1, 2, 'stashbox', NULL)"
+            )
+            conn.execute(
+                "INSERT INTO duplicate_candidates (scene_a_id, scene_b_id, source, run_id) VALUES (3, 4, 'face', NULL)"
+            )
+
+        deleted = db.clear_orphaned_candidates()
+        assert deleted == 2
+
+        # Table should be empty
+        with db._connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM duplicate_candidates").fetchone()[0]
+            assert count == 0
+
+    def test_clear_orphaned_preserves_valid_candidates(self, db):
+        """Candidates with a real run_id should NOT be deleted."""
+        run_id = db.start_analysis_run("duplicate_scenes")
+        db.insert_candidate(1, 2, "stashbox", run_id)
+
+        # Insert an orphan too
+        with db._connection() as conn:
+            conn.execute(
+                "INSERT INTO duplicate_candidates (scene_a_id, scene_b_id, source, run_id) VALUES (3, 4, 'face', NULL)"
+            )
+
+        deleted = db.clear_orphaned_candidates()
+        assert deleted == 1
+
+        # Valid candidate should remain
+        assert db.count_candidates(run_id) == 1
+
+    def test_orphaned_candidates_block_new_inserts(self, db):
+        """NULL-run_id rows with same scene pair should block new INSERT (UNIQUE constraint)."""
+        with db._connection() as conn:
+            conn.execute(
+                "INSERT INTO duplicate_candidates (scene_a_id, scene_b_id, source, run_id) VALUES (1, 2, 'stashbox', NULL)"
+            )
+
+        # New insert with real run_id should fail due to UNIQUE(scene_a_id, scene_b_id)
+        run_id = db.start_analysis_run("duplicate_scenes")
+        result = db.insert_candidate(1, 2, "stashbox", run_id)
+        assert result is None  # Blocked by existing orphan
+
+        # After cleanup, the insert should succeed
+        db.clear_orphaned_candidates()
+        result = db.insert_candidate(1, 2, "stashbox", run_id)
+        assert result is not None
+
+    def test_clear_orphaned_returns_zero_when_none(self, db):
+        """Should return 0 when no orphaned candidates exist."""
+        deleted = db.clear_orphaned_candidates()
+        assert deleted == 0
+
+
+class TestProgressBridge:
+    """Verify progress callback bridges from BaseAnalyzer to job context."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    def test_set_items_total_fires_callback(self, db):
+        """set_items_total should fire the progress callback with (0, total)."""
+        from analyzers.base import BaseAnalyzer
+
+        class ConcreteAnalyzer(BaseAnalyzer):
+            type = "test"
+            async def run(self, incremental=True):
+                pass
+
+        run_id = db.start_analysis_run("test")
+        analyzer = ConcreteAnalyzer(MagicMock(), db, run_id=run_id)
+
+        callback_calls = []
+        analyzer._job_progress_callback = lambda processed, total: callback_calls.append((processed, total))
+
+        analyzer.set_items_total(100)
+
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == (0, 100)
+        assert analyzer._items_total == 100
+
+    def test_update_progress_fires_callback(self, db):
+        """update_progress should fire the progress callback with (items_processed, _items_total)."""
+        from analyzers.base import BaseAnalyzer
+
+        class ConcreteAnalyzer(BaseAnalyzer):
+            type = "test"
+            async def run(self, incremental=True):
+                pass
+
+        run_id = db.start_analysis_run("test")
+        analyzer = ConcreteAnalyzer(MagicMock(), db, run_id=run_id)
+
+        callback_calls = []
+        analyzer._job_progress_callback = lambda processed, total: callback_calls.append((processed, total))
+
+        analyzer.set_items_total(100)
+        analyzer.update_progress(50, 3)
+
+        assert len(callback_calls) == 2
+        assert callback_calls[1] == (50, 100)
+
+    def test_stop_signal(self, db):
+        """is_stop_requested should reflect request_stop calls."""
+        from analyzers.base import BaseAnalyzer
+
+        class ConcreteAnalyzer(BaseAnalyzer):
+            type = "test"
+            async def run(self, incremental=True):
+                pass
+
+        analyzer = ConcreteAnalyzer(MagicMock(), db)
+
+        assert not analyzer.is_stop_requested()
+        analyzer.request_stop()
+        assert analyzer.is_stop_requested()
+
+    def test_no_callback_no_error(self, db):
+        """set_items_total and update_progress should work without a callback set."""
+        from analyzers.base import BaseAnalyzer
+
+        class ConcreteAnalyzer(BaseAnalyzer):
+            type = "test"
+            async def run(self, incremental=True):
+                pass
+
+        run_id = db.start_analysis_run("test")
+        analyzer = ConcreteAnalyzer(MagicMock(), db, run_id=run_id)
+
+        # Should not raise
+        analyzer.set_items_total(100)
+        analyzer.update_progress(50, 3)
