@@ -1768,10 +1768,11 @@
           .filter(p => p.id !== performerId);
         if (conflicts.length > 0) {
           const candidate = conflicts[0];
-          // Different disambiguation values mean different people — not a conflict
+          // If either performer has a disambiguation, they are explicitly marked
+          // as distinct people sharing a name — skip the conflict dialog entirely
           const candidateDisambig = (candidate.disambiguation || '').trim();
           const proposedDisambigVal = (proposedDisambig || '').trim();
-          const isDistinctPerson = candidateDisambig && proposedDisambigVal && candidateDisambig !== proposedDisambigVal;
+          const isDistinctPerson = !!(candidateDisambig || proposedDisambigVal);
           if (!isDistinctPerson) {
             nameConflict = candidate;
           }
@@ -1808,7 +1809,7 @@
   }
 
 
-  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel, currentPerformer) {
+  function showNameConflictDialog(performerId, conflictingPerformer, onMerge, onCancel, currentPerformer, onUpdateOnly) {
     const overlay = document.createElement('div');
     overlay.className = 'ss-modal-overlay';
     overlay.style.zIndex = '10001';
@@ -1824,8 +1825,9 @@
         </div>
         <div class="ss-modal-body" style="padding: 16px;">
           <p style="margin: 0 0 12px; color: var(--ss-text-muted);">
-            A performer with this name already exists. You can merge the duplicate into this performer
-            (scenes will be reassigned and the duplicate deleted), or skip this conflict.
+            A performer with this name already exists. You can update fields without merging,
+            merge the duplicate into this performer (scenes will be reassigned and the duplicate deleted),
+            or skip this conflict.
           </p>
           <div class="ss-conflict-comparison">
             <div class="ss-conflict-card">
@@ -1847,7 +1849,8 @@
           </div>
           <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
             <button class="ss-btn" data-action="skip">Skip</button>
-            <button class="ss-btn ss-btn-primary" data-action="merge">Merge &amp; Continue</button>
+            <button class="ss-btn" data-action="merge">Merge &amp; Continue</button>
+            <button class="ss-btn ss-btn-primary" data-action="update-only">Update Fields Only</button>
           </div>
         </div>
       </div>
@@ -1866,6 +1869,9 @@
       } else if (action === 'merge') {
         closeDialog();
         onMerge(c.id);
+      } else if (action === 'update-only') {
+        closeDialog();
+        if (onUpdateOnly) onUpdateOnly();
       } else if (e.target === overlay) {
         closeDialog();
         onCancel();
@@ -2189,11 +2195,14 @@
       applyBtn.textContent = 'Validating...';
 
       const proposedName = fields.name || details.performer_name;
-      // Get disambiguation: from accepted fields first, then from the current local value in changes
+      // Get disambiguation: from accepted fields first, then from changes, then from stored details
       let proposedDisambig = fields.disambiguation || null;
       if (!proposedDisambig) {
         const disambigChange = changes.find(c => c.field === 'disambiguation');
         if (disambigChange) proposedDisambig = disambigChange.local_value || null;
+      }
+      if (!proposedDisambig) {
+        proposedDisambig = details.performer_disambiguation || null;
       }
       const proposedAliases = fields.aliases || fields._alias_add || [];
 
@@ -2252,7 +2261,64 @@
             }
           },
           () => { /* User chose skip */ },
-          { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig }
+          { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig },
+          async () => {
+            // User chose "Update Fields Only" — apply without merging.
+            // Strip name, disambiguation (could erase what distinguishes this performer),
+            // and _alias_add entries that match the conflicting name (old name demotion).
+            const safeFields = Object.assign({}, fields);
+            delete safeFields.name;
+            delete safeFields.disambiguation;
+            if (safeFields._alias_add) {
+              const conflictNameLower = (nameConflict.name || '').toLowerCase();
+              safeFields._alias_add = safeFields._alias_add.filter(
+                a => a.toLowerCase() !== conflictNameLower
+              );
+              if (safeFields._alias_add.length === 0) delete safeFields._alias_add;
+            }
+
+            // If no fields remain after stripping, just resolve without calling update
+            const hasFields = Object.keys(safeFields).length > 0;
+            if (!hasFields) {
+              try {
+                await RecommendationsAPI.resolve(rec.id, 'applied', { skipped_name: true, no_other_fields: true });
+                applyBtn.textContent = 'Resolved (name skipped)';
+                applyBtn.classList.add('ss-btn-success');
+                applyBtn.disabled = true;
+                setTimeout(() => {
+                  currentState.view = 'list';
+                  currentState.selectedRec = null;
+                  renderCurrentView(document.getElementById('ss-recommendations'));
+                }, 1500);
+              } catch (resolveErr) {
+                errorDiv.innerHTML = `<div>${escapeHtml(resolveErr.message)}</div>`;
+                errorDiv.style.display = 'block';
+                applyBtn.textContent = 'Apply Selected Changes';
+                applyBtn.disabled = false;
+              }
+              return;
+            }
+
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying...';
+            errorDiv.style.display = 'none';
+            try {
+              await RecommendationsAPI.updatePerformer(performerId, safeFields);
+              await RecommendationsAPI.resolve(rec.id, 'applied', { fields: safeFields, skipped_name: true });
+              applyBtn.textContent = 'Applied!';
+              applyBtn.classList.add('ss-btn-success');
+              setTimeout(() => {
+                currentState.view = 'list';
+                currentState.selectedRec = null;
+                renderCurrentView(document.getElementById('ss-recommendations'));
+              }, 1500);
+            } catch (updateErr) {
+              errorDiv.innerHTML = `<div>${escapeHtml(updateErr.message)}</div>`;
+              errorDiv.style.display = 'block';
+              applyBtn.textContent = 'Apply Selected Changes';
+              applyBtn.disabled = false;
+            }
+          }
         );
         return;
       }

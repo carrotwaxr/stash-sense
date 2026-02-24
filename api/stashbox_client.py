@@ -81,7 +81,7 @@ SCENE_FIELDS = """
     id
     title
     details
-    date
+    release_date
     urls { url site { name } }
     studio { id name }
     tags { id name }
@@ -314,7 +314,7 @@ class StashBoxClient:
           findScenesBySceneFingerprints(fingerprints: $fingerprints) {
             id
             title
-            date
+            release_date
             duration
             studio { id name }
             performers { performer { id name } as }

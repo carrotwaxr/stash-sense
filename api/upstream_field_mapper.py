@@ -38,7 +38,6 @@ DEFAULT_PERFORMER_FIELDS: set[str] = {
     "career_start_year",
     "career_end_year",
     "urls",
-    "details",
 }
 
 # Merge type for each field, controls how diffs and merges are handled
@@ -64,7 +63,6 @@ FIELD_MERGE_TYPES: dict[str, str] = {
     "career_start_year": "simple",
     "career_end_year": "simple",
     "urls": "alias_list",
-    "details": "text",
 }
 
 # Human-readable labels for each field
@@ -90,7 +88,6 @@ FIELD_LABELS: dict[str, str] = {
     "career_start_year": "Career Start Year",
     "career_end_year": "Career End Year",
     "urls": "URLs",
-    "details": "Details",
 }
 
 # ==================== Entity Field Config Registry ====================
@@ -319,7 +316,6 @@ _DIRECT_FIELDS = [
     "career_start_year",
     "career_end_year",
     "death_date",
-    "details",
     "ethnicity",
 ]
 
@@ -710,7 +706,7 @@ def normalize_upstream_scene(upstream: dict) -> dict:
 
     return {
         "title": upstream.get("title") or "",
-        "date": upstream.get("date") or "",
+        "date": upstream.get("release_date") or upstream.get("date") or "",
         "details": upstream.get("details") or "",
         "director": upstream.get("director") or "",
         "code": upstream.get("code") or "",
