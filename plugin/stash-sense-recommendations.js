@@ -1362,14 +1362,7 @@
         await RecommendationsAPI.mergePerformers(keeperId, sourceIds);
         await RecommendationsAPI.resolve(rec.id, 'merged', { keeper_id: keeperId });
 
-        btn.textContent = 'Merged!';
-        btn.classList.add('ss-btn-success');
-
-        setTimeout(() => {
-          currentState.view = 'list';
-          currentState.selectedRec = null;
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(btn, 'Merged!');
       } catch (e) {
         btn.textContent = `Failed: ${e.message}`;
         btn.classList.add('ss-btn-error');
@@ -1488,14 +1481,7 @@
               deleted_file_ids: fileIdsToDelete,
             });
 
-            btn.textContent = 'Deleted!';
-            btn.classList.add('ss-btn-success');
-
-            setTimeout(() => {
-              currentState.view = 'list';
-              currentState.selectedRec = null;
-              renderCurrentView(document.getElementById('ss-recommendations'));
-            }, 1500);
+            showSuccessAndReturn(btn, 'Deleted!');
           } catch (e) {
             const errMsg = e.message || '';
             // If file already deleted, resolve the recommendation anyway
@@ -1506,13 +1492,7 @@
                   deleted_file_ids: fileIdsToDelete,
                   note: 'Files already deleted',
                 });
-                btn.textContent = 'Already deleted - resolved';
-                btn.classList.add('ss-btn-success');
-                setTimeout(() => {
-                  currentState.view = 'list';
-                  currentState.selectedRec = null;
-                  renderCurrentView(document.getElementById('ss-recommendations'));
-                }, 1500);
+                showSuccessAndReturn(btn, 'Already deleted - resolved');
                 return;
               } catch (_) { /* fall through to error display */ }
             }
@@ -1806,6 +1786,21 @@
     }
 
     return { errors, nameConflict };
+  }
+
+
+  /**
+   * Mark a button as successful and navigate back to the recommendation list
+   * after a short delay. Replaces the repeated setTimeout + navigate pattern.
+   */
+  function showSuccessAndReturn(buttonEl, successText) {
+    buttonEl.textContent = successText;
+    buttonEl.classList.add('ss-btn-success');
+    setTimeout(() => {
+      currentState.view = 'list';
+      currentState.selectedRec = null;
+      renderCurrentView(document.getElementById('ss-recommendations'));
+    }, 1500);
   }
 
 
@@ -2175,13 +2170,7 @@
           applyBtn.disabled = true;
           applyBtn.textContent = 'Resolving...';
           await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
-          applyBtn.textContent = 'Done!';
-          applyBtn.classList.add('ss-btn-success');
-          setTimeout(() => {
-            currentState.view = 'list';
-            currentState.selectedRec = null;
-            renderCurrentView(document.getElementById('ss-recommendations'));
-          }, 1500);
+          showSuccessAndReturn(applyBtn, 'Done!');
         } catch (e) {
           applyBtn.textContent = `Failed: ${e.message}`;
           applyBtn.classList.add('ss-btn-error');
@@ -2246,13 +2235,7 @@
             try {
               await RecommendationsAPI.updatePerformer(performerId, fields);
               await RecommendationsAPI.resolve(rec.id, 'applied', { fields, auto_merged: conflictId });
-              applyBtn.textContent = 'Merged & Applied!';
-              applyBtn.classList.add('ss-btn-success');
-              setTimeout(() => {
-                currentState.view = 'list';
-                currentState.selectedRec = null;
-                renderCurrentView(document.getElementById('ss-recommendations'));
-              }, 1500);
+              showSuccessAndReturn(applyBtn, 'Merged & Applied!');
             } catch (updateErr) {
               errorDiv.innerHTML = `<div>${escapeHtml(updateErr.message)}</div>`;
               errorDiv.style.display = 'block';
@@ -2282,14 +2265,8 @@
             if (!hasFields) {
               try {
                 await RecommendationsAPI.resolve(rec.id, 'applied', { skipped_name: true, no_other_fields: true });
-                applyBtn.textContent = 'Resolved (name skipped)';
-                applyBtn.classList.add('ss-btn-success');
                 applyBtn.disabled = true;
-                setTimeout(() => {
-                  currentState.view = 'list';
-                  currentState.selectedRec = null;
-                  renderCurrentView(document.getElementById('ss-recommendations'));
-                }, 1500);
+                showSuccessAndReturn(applyBtn, 'Resolved (name skipped)');
               } catch (resolveErr) {
                 errorDiv.innerHTML = `<div>${escapeHtml(resolveErr.message)}</div>`;
                 errorDiv.style.display = 'block';
@@ -2305,13 +2282,7 @@
             try {
               await RecommendationsAPI.updatePerformer(performerId, safeFields);
               await RecommendationsAPI.resolve(rec.id, 'applied', { fields: safeFields, skipped_name: true });
-              applyBtn.textContent = 'Applied!';
-              applyBtn.classList.add('ss-btn-success');
-              setTimeout(() => {
-                currentState.view = 'list';
-                currentState.selectedRec = null;
-                renderCurrentView(document.getElementById('ss-recommendations'));
-              }, 1500);
+              showSuccessAndReturn(applyBtn, 'Applied!');
             } catch (updateErr) {
               errorDiv.innerHTML = `<div>${escapeHtml(updateErr.message)}</div>`;
               errorDiv.style.display = 'block';
@@ -2328,18 +2299,7 @@
         const result = await RecommendationsAPI.updatePerformer(performerId, fields);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
-        if (result?.auto_merged) {
-          applyBtn.textContent = `Merged & Applied!`;
-        } else {
-          applyBtn.textContent = 'Applied!';
-        }
-        applyBtn.classList.add('ss-btn-success');
-
-        setTimeout(() => {
-          currentState.view = 'list';
-          currentState.selectedRec = null;
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(applyBtn, result?.auto_merged ? 'Merged & Applied!' : 'Applied!');
       } catch (e) {
         let errorMsg = e.message;
         if (errorMsg.includes('different disambiguation') || errorMsg.includes('cannot be auto-merged')) {
@@ -2624,13 +2584,7 @@
           applyBtn.disabled = true;
           applyBtn.textContent = 'Resolving...';
           await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
-          applyBtn.textContent = 'Done!';
-          applyBtn.classList.add('ss-btn-success');
-          setTimeout(() => {
-            currentState.view = 'list';
-            currentState.selectedRec = null;
-            renderCurrentView(document.getElementById('ss-recommendations'));
-          }, 1500);
+          showSuccessAndReturn(applyBtn, 'Done!');
         } catch (e) {
           applyBtn.textContent = `Failed: ${e.message}`;
           applyBtn.classList.add('ss-btn-error');
@@ -2646,14 +2600,7 @@
         await RecommendationsAPI.updateTag(tagId, fields);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
-        applyBtn.textContent = 'Applied!';
-        applyBtn.classList.add('ss-btn-success');
-
-        setTimeout(() => {
-          currentState.view = 'list';
-          currentState.selectedRec = null;
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(applyBtn, 'Applied!');
       } catch (e) {
         errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
         errorDiv.style.display = 'block';
@@ -2900,13 +2847,7 @@
           applyBtn.disabled = true;
           applyBtn.textContent = 'Resolving...';
           await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
-          applyBtn.textContent = 'Done!';
-          applyBtn.classList.add('ss-btn-success');
-          setTimeout(() => {
-            currentState.view = 'list';
-            currentState.selectedRec = null;
-            renderCurrentView(document.getElementById('ss-recommendations'));
-          }, 1500);
+          showSuccessAndReturn(applyBtn, 'Done!');
         } catch (e) {
           applyBtn.textContent = `Failed: ${e.message}`;
           applyBtn.classList.add('ss-btn-error');
@@ -2921,14 +2862,7 @@
         await RecommendationsAPI.updateStudio(studioId, fields, details.endpoint);
         await RecommendationsAPI.resolve(rec.id, 'applied', { fields });
 
-        applyBtn.textContent = 'Applied!';
-        applyBtn.classList.add('ss-btn-success');
-
-        setTimeout(() => {
-          currentState.view = 'list';
-          currentState.selectedRec = null;
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(applyBtn, 'Applied!');
       } catch (e) {
         errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
         errorDiv.style.display = 'block';
@@ -3647,13 +3581,7 @@
           applyBtn.disabled = true;
           applyBtn.textContent = 'Resolving...';
           await RecommendationsAPI.resolve(rec.id, 'accepted_no_changes', {});
-          applyBtn.textContent = 'Done!';
-          applyBtn.classList.add('ss-btn-success');
-          setTimeout(() => {
-            currentState.view = 'list';
-            currentState.selectedRec = null;
-            renderCurrentView(document.getElementById('ss-recommendations'));
-          }, 1500);
+          showSuccessAndReturn(applyBtn, 'Done!');
         } catch (e) {
           applyBtn.textContent = `Failed: ${e.message}`;
           applyBtn.disabled = false;
@@ -3666,14 +3594,7 @@
         applyBtn.textContent = 'Applying...';
         await RecommendationsAPI.updateScene(sceneId, fields, performerIds, tagIds, studioId);
 
-        applyBtn.textContent = 'Applied!';
-        applyBtn.classList.add('ss-btn-success');
-
-        setTimeout(() => {
-          currentState.view = 'list';
-          currentState.selectedRec = null;
-          renderCurrentView(document.getElementById('ss-recommendations'));
-        }, 1500);
+        showSuccessAndReturn(applyBtn, 'Applied!');
       } catch (e) {
         errorDiv.innerHTML = `<div>${escapeHtml(e.message)}</div>`;
         errorDiv.style.display = 'block';
