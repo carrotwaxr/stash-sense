@@ -2248,15 +2248,38 @@
           async () => {
             // User chose "Update Fields Only" — apply without merging.
             // Strip name, disambiguation (could erase what distinguishes this performer),
-            // and _alias_add entries that match the conflicting name (old name demotion).
+            // and _alias_add entries that conflict with existing performer names.
             const safeFields = Object.assign({}, fields);
             delete safeFields.name;
             delete safeFields.disambiguation;
             if (safeFields._alias_add) {
-              const conflictNameLower = (nameConflict.name || '').toLowerCase();
-              safeFields._alias_add = safeFields._alias_add.filter(
-                a => a.toLowerCase() !== conflictNameLower
-              );
+              const strippedAliases = [];
+              // Filter aliases that match any existing performer name
+              const remaining = [];
+              for (const alias of safeFields._alias_add) {
+                try {
+                  const check = await SS.stashQuery(`
+                    query FindPerformersByName($name: String!) {
+                      findPerformers(performer_filter: { name: { value: $name, modifier: EQUALS } }) {
+                        performers { id name }
+                      }
+                    }
+                  `, { name: alias });
+                  const matches = (check?.findPerformers?.performers || [])
+                    .filter(p => p.id !== performerId);
+                  if (matches.length > 0) {
+                    strippedAliases.push(alias);
+                  } else {
+                    remaining.push(alias);
+                  }
+                } catch (e) {
+                  remaining.push(alias); // keep on query failure
+                }
+              }
+              if (strippedAliases.length > 0) {
+                console.warn('[Stash Sense] Stripped aliases matching existing performers:', strippedAliases);
+              }
+              safeFields._alias_add = remaining;
               if (safeFields._alias_add.length === 0) delete safeFields._alias_add;
             }
 
