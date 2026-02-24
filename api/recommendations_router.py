@@ -913,8 +913,10 @@ async def _auto_merge_conflicting_performer(
     Searches for performers with the conflicting name, finds the one that
     isn't the destination, and merges it into the destination.
 
-    Skips merge when the conflicting performer has a different disambiguation
-    than the destination — they're different people who happen to share a name.
+    Skips merge when either performer has a disambiguation — disambiguated
+    performers are explicitly marked as distinct people sharing a name, so
+    auto-merging them is never safe. Only merges when neither has disambiguation
+    (i.e. they're truly duplicates with the same unqualified name).
 
     Returns dict with merged_id and merged_name, or None if no match found.
     """
@@ -926,9 +928,10 @@ async def _auto_merge_conflicting_performer(
         if str(match["id"]) == str(destination_id):
             continue
         if (match.get("name") or "").strip().lower() == name_lower:
-            # Don't merge if they have different disambiguations — they're different people
             match_disambig = (match.get("disambiguation") or "").strip().lower()
-            if match_disambig and dest_disambig and match_disambig != dest_disambig:
+            # Skip if either performer has a disambiguation — they may be
+            # different people. Only auto-merge when neither is disambiguated.
+            if match_disambig or dest_disambig:
                 continue
             conflicting = match
             break

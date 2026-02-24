@@ -77,6 +77,81 @@ class TestUpstreamPerformerAnalyzer:
         assert any(c["field"] == "height" for c in recs[0].details["changes"])
 
     @pytest.mark.asyncio
+    async def test_stores_performer_disambiguation_in_details(self, mock_stash, rec_db):
+        """Recommendation details should include performer_disambiguation for
+        the conflict dialog to show the correct value."""
+        from analyzers.upstream_performer import UpstreamPerformerAnalyzer
+        mock_stash.get_performers_for_endpoint = AsyncMock(return_value=[
+            {
+                "id": "42", "name": "Hazel Grace", "disambiguation": "US",
+                "alias_list": [], "gender": "FEMALE", "birthdate": "1998-05-20",
+                "death_date": None, "ethnicity": None, "country": "US",
+                "eye_color": None, "hair_color": None, "height_cm": 160,
+                "measurements": "", "fake_tits": "", "career_length": "",
+                "tattoos": "", "piercings": "", "urls": [],
+                "favorite": False, "image_path": "/performer/42/image",
+                "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+            }
+        ])
+        upstream_performer = {
+            "id": "abc-123", "name": "Hazel Grace", "disambiguation": "US",
+            "aliases": [], "gender": "FEMALE", "birth_date": "1998-05-20",
+            "death_date": None, "ethnicity": None, "country": "US",
+            "eye_color": None, "hair_color": None, "height": 163,
+            "cup_size": None, "band_size": None, "waist_size": None,
+            "hip_size": None, "breast_type": None, "career_start_year": None,
+            "career_end_year": None, "tattoos": [], "piercings": [], "urls": [],
+            "is_favorite": False, "deleted": False, "merged_into_id": None,
+            "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
+        }
+        analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_performer = AsyncMock(return_value=upstream_performer)
+            MockSBC.return_value = mock_sbc
+            result = await analyzer.run()
+        assert result.recommendations_created == 1
+        recs = rec_db.get_recommendations(type="upstream_performer_changes")
+        assert recs[0].details["performer_disambiguation"] == "US"
+        assert recs[0].details["performer_image_path"] == "/performer/42/image"
+
+    @pytest.mark.asyncio
+    async def test_stores_empty_disambiguation_when_none(self, mock_stash, rec_db):
+        """performer_disambiguation should default to empty string when not set."""
+        from analyzers.upstream_performer import UpstreamPerformerAnalyzer
+        mock_stash.get_performers_for_endpoint = AsyncMock(return_value=[
+            {
+                "id": "42", "name": "Jane Doe", "disambiguation": None,
+                "alias_list": [], "gender": None, "birthdate": None,
+                "death_date": None, "ethnicity": None, "country": None,
+                "eye_color": None, "hair_color": None, "height_cm": 165,
+                "measurements": "", "fake_tits": "", "career_length": "",
+                "tattoos": "", "piercings": "", "urls": [],
+                "favorite": False, "image_path": None,
+                "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+            }
+        ])
+        upstream_performer = {
+            "id": "abc-123", "name": "Jane Doe", "disambiguation": "",
+            "aliases": [], "gender": None, "birth_date": None, "death_date": None,
+            "ethnicity": None, "country": None, "eye_color": None, "hair_color": None,
+            "height": 170, "cup_size": None, "band_size": None, "waist_size": None,
+            "hip_size": None, "breast_type": None, "career_start_year": None,
+            "career_end_year": None, "tattoos": [], "piercings": [], "urls": [],
+            "is_favorite": False, "deleted": False, "merged_into_id": None,
+            "created": "2024-01-01T00:00:00Z", "updated": "2026-01-15T10:00:00Z",
+        }
+        analyzer = UpstreamPerformerAnalyzer(mock_stash, rec_db)
+        with patch("stashbox_client.StashBoxClient") as MockSBC:
+            mock_sbc = MagicMock()
+            mock_sbc.get_performer = AsyncMock(return_value=upstream_performer)
+            MockSBC.return_value = mock_sbc
+            result = await analyzer.run()
+        assert result.recommendations_created == 1
+        recs = rec_db.get_recommendations(type="upstream_performer_changes")
+        assert recs[0].details["performer_disambiguation"] == ""
+
+    @pytest.mark.asyncio
     async def test_updates_existing_pending_recommendation(self, mock_stash, rec_db):
         from analyzers.upstream_performer import UpstreamPerformerAnalyzer
         rec_id = rec_db.create_recommendation(

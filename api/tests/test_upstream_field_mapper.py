@@ -9,6 +9,7 @@ from upstream_field_mapper import (
     diff_tag_fields,
     diff_scene_fields,
     normalize_upstream_performer,
+    normalize_upstream_scene,
 )
 
 
@@ -420,6 +421,32 @@ class TestDateComparisonWithSnapshot:
         changes = diff_performer_fields(local, upstream, snapshot, {"birthdate"})
         assert len(changes) == 1
         assert changes[0]["field"] == "birthdate"
+
+
+class TestNormalizeUpstreamScene:
+    def test_uses_release_date_field(self):
+        """StashBox canonical field is release_date, should map to 'date'."""
+        upstream = {"title": "Test Scene", "release_date": "2024-06-15"}
+        result = normalize_upstream_scene(upstream)
+        assert result["date"] == "2024-06-15"
+
+    def test_falls_back_to_date_field(self):
+        """Legacy 'date' field should still work when release_date is absent."""
+        upstream = {"title": "Test Scene", "date": "2024-06-15"}
+        result = normalize_upstream_scene(upstream)
+        assert result["date"] == "2024-06-15"
+
+    def test_release_date_takes_precedence_over_date(self):
+        """When both exist, release_date should win."""
+        upstream = {"title": "Test Scene", "release_date": "2024-06-15", "date": "2023-01-01"}
+        result = normalize_upstream_scene(upstream)
+        assert result["date"] == "2024-06-15"
+
+    def test_missing_date_fields_default_to_empty(self):
+        """When neither date field is present, should default to empty string."""
+        upstream = {"title": "Test Scene"}
+        result = normalize_upstream_scene(upstream)
+        assert result["date"] == ""
 
 
 class TestFieldMergeTypes:

@@ -189,6 +189,7 @@ class SceneFingerprintMatchAnalyzer(BaseAnalyzer):
                         "stashbox_scene_title": match.get("title"),
                         "stashbox_studio": studio.get("name") if studio else None,
                         "stashbox_performers": performers,
+                        # release_date is the canonical StashBox field; date kept as legacy fallback
                         "stashbox_date": match.get("release_date") or match.get("date"),
                         "stashbox_cover_url": images[0]["url"] if images else None,
                         "matching_fingerprints": matching_fps,

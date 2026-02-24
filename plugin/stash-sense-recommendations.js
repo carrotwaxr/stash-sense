@@ -1768,10 +1768,11 @@
           .filter(p => p.id !== performerId);
         if (conflicts.length > 0) {
           const candidate = conflicts[0];
-          // Different disambiguation values mean different people — not a conflict
+          // If either performer has a disambiguation, they are explicitly marked
+          // as distinct people sharing a name — skip the conflict dialog entirely
           const candidateDisambig = (candidate.disambiguation || '').trim();
           const proposedDisambigVal = (proposedDisambig || '').trim();
-          const isDistinctPerson = candidateDisambig && proposedDisambigVal && candidateDisambig !== proposedDisambigVal;
+          const isDistinctPerson = !!(candidateDisambig || proposedDisambigVal);
           if (!isDistinctPerson) {
             nameConflict = candidate;
           }
@@ -2262,16 +2263,41 @@
           () => { /* User chose skip */ },
           { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig },
           async () => {
-            // User chose "Update Fields Only" — apply without merging
+            // User chose "Update Fields Only" — apply without merging.
+            // Strip name, disambiguation (could erase what distinguishes this performer),
+            // and _alias_add entries that match the conflicting name (old name demotion).
+            const safeFields = Object.assign({}, fields);
+            delete safeFields.name;
+            delete safeFields.disambiguation;
+            if (safeFields._alias_add) {
+              const conflictNameLower = (nameConflict.name || '').toLowerCase();
+              safeFields._alias_add = safeFields._alias_add.filter(
+                a => a.toLowerCase() !== conflictNameLower
+              );
+              if (safeFields._alias_add.length === 0) delete safeFields._alias_add;
+            }
+
+            // If no fields remain after stripping, just resolve without calling update
+            const hasFields = Object.keys(safeFields).length > 0;
+            if (!hasFields) {
+              await RecommendationsAPI.resolve(rec.id, 'applied', { skipped_name: true, no_other_fields: true });
+              applyBtn.textContent = 'Resolved (name skipped)';
+              applyBtn.classList.add('ss-btn-success');
+              applyBtn.disabled = true;
+              setTimeout(() => {
+                currentState.view = 'list';
+                currentState.selectedRec = null;
+                renderCurrentView(document.getElementById('ss-recommendations'));
+              }, 1500);
+              return;
+            }
+
             applyBtn.disabled = true;
             applyBtn.textContent = 'Applying...';
             errorDiv.style.display = 'none';
             try {
-              // Remove name from fields to avoid the conflict, apply other fields only
-              const fieldsWithoutName = Object.assign({}, fields);
-              delete fieldsWithoutName.name;
-              await RecommendationsAPI.updatePerformer(performerId, fieldsWithoutName);
-              await RecommendationsAPI.resolve(rec.id, 'applied', { fields: fieldsWithoutName, skipped_name: true });
+              await RecommendationsAPI.updatePerformer(performerId, safeFields);
+              await RecommendationsAPI.resolve(rec.id, 'applied', { fields: safeFields, skipped_name: true });
               applyBtn.textContent = 'Applied!';
               applyBtn.classList.add('ss-btn-success');
               setTimeout(() => {
