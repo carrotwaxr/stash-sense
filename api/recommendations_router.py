@@ -932,6 +932,11 @@ async def _auto_merge_conflicting_performer(
             # Skip if either performer has a disambiguation — they may be
             # different people. Only auto-merge when neither is disambiguated.
             if match_disambig or dest_disambig:
+                logger.warning(
+                    f"Skipping auto-merge: disambiguation present "
+                    f"(dest='{dest_disambig}', match='{match_disambig}') "
+                    f"for performer '{conflicting_name}'"
+                )
                 continue
             conflicting = match
             break

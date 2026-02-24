@@ -2280,15 +2280,22 @@
             // If no fields remain after stripping, just resolve without calling update
             const hasFields = Object.keys(safeFields).length > 0;
             if (!hasFields) {
-              await RecommendationsAPI.resolve(rec.id, 'applied', { skipped_name: true, no_other_fields: true });
-              applyBtn.textContent = 'Resolved (name skipped)';
-              applyBtn.classList.add('ss-btn-success');
-              applyBtn.disabled = true;
-              setTimeout(() => {
-                currentState.view = 'list';
-                currentState.selectedRec = null;
-                renderCurrentView(document.getElementById('ss-recommendations'));
-              }, 1500);
+              try {
+                await RecommendationsAPI.resolve(rec.id, 'applied', { skipped_name: true, no_other_fields: true });
+                applyBtn.textContent = 'Resolved (name skipped)';
+                applyBtn.classList.add('ss-btn-success');
+                applyBtn.disabled = true;
+                setTimeout(() => {
+                  currentState.view = 'list';
+                  currentState.selectedRec = null;
+                  renderCurrentView(document.getElementById('ss-recommendations'));
+                }, 1500);
+              } catch (resolveErr) {
+                errorDiv.innerHTML = `<div>${escapeHtml(resolveErr.message)}</div>`;
+                errorDiv.style.display = 'block';
+                applyBtn.textContent = 'Apply Selected Changes';
+                applyBtn.disabled = false;
+              }
               return;
             }
 
