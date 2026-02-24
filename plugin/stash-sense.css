@@ -3174,6 +3174,27 @@ a.ss-upstream-endpoint-badge:hover {
   white-space: nowrap;
 }
 
+.ss-progress-indeterminate {
+  position: relative;
+  overflow: hidden;
+}
+
+.ss-progress-indeterminate::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--bs-primary, #0d6efd), transparent);
+  animation: ss-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes ss-shimmer {
+  0% { left: -50%; }
+  100% { left: 100%; }
+}
+
 /* Collapsible Header */
 .ss-collapsible-header {
   cursor: pointer;

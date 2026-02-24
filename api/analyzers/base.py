@@ -6,7 +6,7 @@ All analyzers inherit from this class and implement the run() method.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..stash_client_unified import StashClientUnified
@@ -47,16 +47,32 @@ class BaseAnalyzer(ABC):
         self.stash = stash
         self.rec_db = rec_db
         self.run_id = run_id
+        self._items_total: Optional[int] = None
+        self._stop_requested = False
+        self._job_progress_callback: Optional[Callable[[int, Optional[int]], None]] = None
 
     def set_items_total(self, total: int):
         """Report total items to process for this run."""
+        self._items_total = total
         if self.run_id is not None:
             self.rec_db.update_analysis_items_total(self.run_id, total)
+        if self._job_progress_callback:
+            self._job_progress_callback(0, total)
 
     def update_progress(self, items_processed: int, recommendations_created: int):
         """Report progress for this run."""
         if self.run_id is not None:
             self.rec_db.update_analysis_progress(self.run_id, items_processed, recommendations_created)
+        if self._job_progress_callback:
+            self._job_progress_callback(items_processed, self._items_total)
+
+    def request_stop(self):
+        """Signal that this analyzer should stop at its next checkpoint."""
+        self._stop_requested = True
+
+    def is_stop_requested(self) -> bool:
+        """Check whether a stop has been requested."""
+        return self._stop_requested
 
     @abstractmethod
     async def run(self, incremental: bool = True) -> AnalysisResult:

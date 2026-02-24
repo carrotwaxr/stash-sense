@@ -117,6 +117,11 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         Phase 1: Generate candidate pairs from three sources.
         Returns total number of unique candidates.
         """
+        # Clean up orphaned candidates from previous broken runs (NULL run_id)
+        orphans = self.rec_db.clear_orphaned_candidates()
+        if orphans:
+            logger.warning(f"Cleaned up {orphans} orphaned candidates (NULL run_id)")
+
         # Clear any stale candidates from a previous failed run
         self.rec_db.clear_candidates(run_id)
 
@@ -232,6 +237,10 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         last_id = 0
 
         while True:
+            if self.is_stop_requested():
+                logger.warning(f"Stop requested after scoring {scored} candidates")
+                break
+
             batch = self.rec_db.get_candidates_batch(run_id, after_id=last_id, limit=100)
             if not batch:
                 break
@@ -267,6 +276,11 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
 
                 scored += 1
                 last_id = candidate["id"]
+
+                # Periodic progress logging (every 500 scored)
+                if scored % 500 == 0:
+                    total = self._items_total or "?"
+                    logger.warning(f"Scoring progress: {scored}/{total} scored, {created} recommendations")
 
             self.update_progress(scored, created)
             await asyncio.sleep(0)

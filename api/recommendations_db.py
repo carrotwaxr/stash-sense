@@ -1603,6 +1603,15 @@ class RecommendationsDB:
             )
             return cursor.rowcount
 
+    def clear_orphaned_candidates(self) -> int:
+        """Delete candidates with NULL run_id (from broken runs that passed run_id=None).
+        Returns count deleted."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM duplicate_candidates WHERE run_id IS NULL"
+            )
+            return cursor.rowcount
+
     def get_candidate_scene_ids(self, run_id: int) -> set[int]:
         """Get all distinct scene IDs that appear in candidates for a run."""
         with self._connection() as conn:

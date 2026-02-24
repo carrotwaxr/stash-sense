@@ -32,6 +32,10 @@ def init_recommendations(db_path: str, stash_url: str, stash_api_key: str):
     stale = rec_db.fail_stale_analysis_runs()
     if stale:
         logger.warning("Marked %d stale analysis run(s) as failed", stale)
+    # Clean up orphaned candidates from broken runs that passed run_id=None
+    orphans = rec_db.clear_orphaned_candidates()
+    if orphans:
+        logger.warning("Cleaned up %d orphaned duplicate candidates (NULL run_id)", orphans)
     if stash_url:
         stash_client = StashClientUnified(stash_url, stash_api_key)
 
