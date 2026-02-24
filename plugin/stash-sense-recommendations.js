@@ -2342,7 +2342,9 @@
         }, 1500);
       } catch (e) {
         let errorMsg = e.message;
-        if (errorMsg.includes('duplicate') || errorMsg.includes('alias')) {
+        if (errorMsg.includes('different disambiguation') || errorMsg.includes('cannot be auto-merged')) {
+          errorMsg = 'Name conflict: a performer with this name has a different disambiguation — they are different people. Use "Update Fields Only" to apply other changes without the name.';
+        } else if (errorMsg.includes('duplicate') || errorMsg.includes('alias')) {
           errorMsg = `Alias conflict: ${errorMsg}. Try removing duplicate aliases.`;
         }
         errorDiv.innerHTML = `<div>${escapeHtml(errorMsg)}</div>`;
