@@ -884,6 +884,16 @@ async def update_performer_fields(request: UpdatePerformerRequest, entity_type: 
                 stash, performer_id, fields["name"],
                 destination_disambiguation=dest_disambig,
             )
+            if merged and merged.get("blocked_by_disambiguation"):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Name conflict: a performer with this name exists but has a "
+                        "different disambiguation — they are different people and "
+                        "cannot be auto-merged. Use 'Update Fields Only' to apply "
+                        "other changes without the name."
+                    ),
+                )
             if merged:
                 # Retry the update after merging the conflicting performer
                 try:
@@ -918,10 +928,14 @@ async def _auto_merge_conflicting_performer(
     auto-merging them is never safe. Only merges when neither has disambiguation
     (i.e. they're truly duplicates with the same unqualified name).
 
-    Returns dict with merged_id and merged_name, or None if no match found.
+    Returns:
+        dict with merged_id/merged_name on success,
+        dict with blocked_by_disambiguation=True when skipped due to disambiguation,
+        or None if no matching performer found.
     """
     matches = await stash.search_performers(conflicting_name, limit=10)
     conflicting = None
+    blocked_by_disambiguation = False
     name_lower = conflicting_name.strip().lower()
     dest_disambig = (destination_disambiguation or "").strip().lower()
     for match in matches:
@@ -937,11 +951,14 @@ async def _auto_merge_conflicting_performer(
                     f"(dest='{dest_disambig}', match='{match_disambig}') "
                     f"for performer '{conflicting_name}'"
                 )
+                blocked_by_disambiguation = True
                 continue
             conflicting = match
             break
 
     if not conflicting:
+        if blocked_by_disambiguation:
+            return {"blocked_by_disambiguation": True}
         return None
 
     logger.warning(

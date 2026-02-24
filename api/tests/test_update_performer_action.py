@@ -214,7 +214,8 @@ class TestDisambiguationMergeSafety:
     marked as distinct people sharing a name."""
 
     def test_skips_merge_when_both_have_different_disambiguations(self, app):
-        """'Hazel Grace (US)' and 'Hazel Grace (Russian)' should NOT merge."""
+        """'Hazel Grace (US)' and 'Hazel Grace (Russian)' should NOT merge.
+        Returns 409 with disambiguation-specific message."""
         with patch("recommendations_router.get_stash_client") as mock_get_stash:
             mock_stash = _make_mock_stash(
                 dest_disambig="US",
@@ -236,11 +237,13 @@ class TestDisambiguationMergeSafety:
                 "fields": {"name": "Hazel Grace"},
             })
 
-            assert resp.status_code == 500
+            assert resp.status_code == 409
+            assert "different disambiguation" in resp.json()["detail"]
             mock_stash.merge_performers.assert_not_called()
 
     def test_skips_merge_when_only_destination_has_disambiguation(self, app):
-        """'Hazel Grace (US)' should not merge with plain 'Hazel Grace'."""
+        """'Hazel Grace (US)' should not merge with plain 'Hazel Grace'.
+        Returns 409 with disambiguation-specific message."""
         with patch("recommendations_router.get_stash_client") as mock_get_stash:
             mock_stash = _make_mock_stash(
                 dest_disambig="US",
@@ -261,11 +264,13 @@ class TestDisambiguationMergeSafety:
                 "fields": {"name": "Hazel Grace"},
             })
 
-            assert resp.status_code == 500
+            assert resp.status_code == 409
+            assert "different disambiguation" in resp.json()["detail"]
             mock_stash.merge_performers.assert_not_called()
 
     def test_skips_merge_when_only_conflict_has_disambiguation(self, app):
-        """Plain 'Hazel Grace' should not auto-merge 'Hazel Grace (Russian)'."""
+        """Plain 'Hazel Grace' should not auto-merge 'Hazel Grace (Russian)'.
+        Returns 409 with disambiguation-specific message."""
         with patch("recommendations_router.get_stash_client") as mock_get_stash:
             mock_stash = _make_mock_stash(
                 dest_disambig="",
@@ -286,7 +291,8 @@ class TestDisambiguationMergeSafety:
                 "fields": {"name": "Hazel Grace"},
             })
 
-            assert resp.status_code == 500
+            assert resp.status_code == 409
+            assert "different disambiguation" in resp.json()["detail"]
             mock_stash.merge_performers.assert_not_called()
 
     def test_allows_merge_when_neither_has_disambiguation(self, app):
@@ -314,7 +320,8 @@ class TestDisambiguationMergeSafety:
 
     def test_uses_disambiguation_from_fields_over_current(self, app):
         """When fields dict includes disambiguation, it should be used for the
-        merge safety check (it's what the performer will become)."""
+        merge safety check (it's what the performer will become).
+        Returns 409 with disambiguation-specific message."""
         with patch("recommendations_router.get_stash_client") as mock_get_stash:
             mock_stash = _make_mock_stash(
                 dest_name="Hazel Grace",
@@ -338,5 +345,6 @@ class TestDisambiguationMergeSafety:
                 "fields": {"name": "Hazel Grace", "disambiguation": "US"},
             })
 
-            assert resp.status_code == 500
+            assert resp.status_code == 409
+            assert "different disambiguation" in resp.json()["detail"]
             mock_stash.merge_performers.assert_not_called()
