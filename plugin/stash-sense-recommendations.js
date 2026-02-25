@@ -116,6 +116,24 @@
       });
     },
 
+    async mergeScenes(destinationId, sourceIds) {
+      return apiCall('rec_merge_scenes', {
+        destination_id: destinationId,
+        source_ids: sourceIds,
+      });
+    },
+
+    async deleteScene(sceneId, deleteFile = false) {
+      return apiCall('rec_delete_scene', {
+        scene_id: sceneId,
+        delete_file: deleteFile,
+      });
+    },
+
+    async getSceneDetail(sceneId) {
+      return apiCall('rec_get_scene', { scene_id: sceneId });
+    },
+
     // Fingerprint operations
     async getFingerprintStatus() {
       return apiCall('fp_status');
@@ -1084,6 +1102,35 @@
       });
     }
 
+    if (rec.type === 'duplicate_scenes') {
+      const d = details;
+      const conf = d.confidence || (rec.confidence * 100);
+      const confColor = conf >= 80 ? '#28a745' : conf >= 60 ? '#ffc107' : '#6c757d';
+      const sb = d.signal_breakdown || {};
+      const primarySignal = sb.stashbox_match ? 'Stash-box match'
+        : sb.phash_distance != null && sb.phash_distance <= 10 ? `Phash (dist ${sb.phash_distance})`
+        : sb.metadata_score > 0 ? 'Metadata'
+        : 'Face analysis';
+
+      return SS.createElement('div', {
+        className: 'ss-rec-card ss-rec-dup-scenes',
+        innerHTML: `
+          <div class="ss-rec-card-header">
+            <div class="ss-rec-tag-icon">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+            </div>
+            <div class="ss-rec-card-info">
+              <div class="ss-rec-card-title">Scene ${rec.target_id} &harr; Scene ${d.scene_b_id}</div>
+              <div class="ss-rec-card-subtitle">
+                <span style="color: ${confColor}">${Math.round(conf)}% confidence</span>
+                &middot; ${primarySignal}
+              </div>
+            </div>
+          </div>
+        `,
+      });
+    }
+
     if (rec.type === 'upstream_performer_changes') {
       const realChanges = filterRealChanges(details.changes);
       const changeCount = realChanges.length;
@@ -1265,6 +1312,8 @@
       renderDuplicatePerformerDetail(content, rec);
     } else if (rec.type === 'duplicate_scene_files') {
       renderDuplicateSceneFilesDetail(content, rec);
+    } else if (rec.type === 'duplicate_scenes') {
+      await renderDuplicateScenesDetail(content, rec);
     } else if (rec.type === 'upstream_performer_changes') {
       await renderUpstreamPerformerDetail(content, rec);
     } else if (rec.type === 'upstream_tag_changes') {
@@ -1517,6 +1566,185 @@
         renderCurrentView(document.getElementById('ss-recommendations'));
       } catch (e) {
         btn.textContent = `Failed: ${e.message}`;
+        btn.disabled = false;
+      }
+    });
+  }
+
+  async function renderDuplicateScenesDetail(container, rec) {
+    const details = rec.details;
+    const sceneAId = rec.target_id;
+    const sceneBId = String(details.scene_b_id);
+
+    container.innerHTML = '<div class="ss-loading">Loading scene details...</div>';
+
+    let sceneA, sceneB;
+    try {
+      [sceneA, sceneB] = await Promise.all([
+        RecommendationsAPI.getSceneDetail(sceneAId),
+        RecommendationsAPI.getSceneDetail(sceneBId),
+      ]);
+    } catch (e) {
+      container.innerHTML = '<div class="ss-error-state"><p>Failed to load scenes: ' + e.message + '</p></div>';
+      return;
+    }
+
+    const conf = details.confidence || (rec.confidence * 100);
+    const confColor = conf >= 80 ? '#28a745' : conf >= 60 ? '#ffc107' : '#6c757d';
+    const reasoning = details.reasoning || [];
+
+    function formatDuration(seconds) {
+      if (!seconds) return 'N/A';
+      const m = Math.floor(seconds / 60);
+      const s = Math.round(seconds % 60);
+      return m + ':' + String(s).padStart(2, '0');
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return 'N/A';
+      const gb = bytes / (1024 * 1024 * 1024);
+      if (gb >= 1) return gb.toFixed(1) + ' GB';
+      return (bytes / (1024 * 1024)).toFixed(0) + ' MB';
+    }
+
+    function renderSceneCard(scene, id) {
+      const file = scene?.files?.[0];
+      const resolution = file ? file.width + 'x' + file.height : 'N/A';
+      const screenshotUrl = scene?.paths?.screenshot;
+
+      return '<div class="ss-dup-scene-card" data-id="' + id + '">' +
+        '<div class="ss-dup-scene-thumb">' +
+          (screenshotUrl ? '<img src="' + screenshotUrl + '" alt="Scene ' + id + '" loading="lazy" onerror="this.style.display=\'none\'" />' : '<div class="ss-no-image">No Screenshot</div>') +
+        '</div>' +
+        '<h4><a href="/scenes/' + id + '" target="_blank">' + escapeHtml(scene?.title || 'Unknown Scene') + '</a></h4>' +
+        '<ul class="ss-dup-scene-meta">' +
+          (scene?.studio?.name ? '<li><strong>Studio:</strong> ' + escapeHtml(scene.studio.name) + '</li>' : '') +
+          (scene?.performers?.length ? '<li><strong>Performers:</strong> ' + scene.performers.map(function(p) { return escapeHtml(p.name); }).join(', ') + '</li>' : '') +
+          (scene?.date ? '<li><strong>Date:</strong> ' + scene.date + '</li>' : '') +
+          '<li><strong>Duration:</strong> ' + formatDuration(file?.duration) + '</li>' +
+          (file ? '<li><strong>File:</strong> ' + resolution + ' &middot; ' + (file.video_codec || 'N/A') + ' &middot; ' + formatFileSize(file.size) + '</li>' : '') +
+        '</ul>' +
+        '<label class="ss-radio-label"><input type="radio" name="keeper" value="' + id + '" /> Keep this scene</label>' +
+      '</div>';
+    }
+
+    container.innerHTML =
+      '<div class="ss-detail-dup-scenes">' +
+        '<h2>Duplicate Scenes</h2>' +
+        '<div class="ss-dup-confidence" style="color: ' + confColor + '">' +
+          Math.round(conf) + '% confidence &mdash; ' + (reasoning[0] || '') +
+        '</div>' +
+        '<div class="ss-dup-signals">' +
+          reasoning.slice(1).map(function(r) { return '<span class="ss-signal-badge">' + escapeHtml(r) + '</span>'; }).join('') +
+        '</div>' +
+        '<div class="ss-dup-scenes-grid">' +
+          renderSceneCard(sceneA, sceneAId) +
+          '<div class="ss-dup-vs">VS</div>' +
+          renderSceneCard(sceneB, sceneBId) +
+        '</div>' +
+        '<div class="ss-detail-actions">' +
+          '<button class="ss-btn ss-btn-primary" id="ss-merge-btn">Merge Scenes</button>' +
+          '<button class="ss-btn ss-btn-danger" id="ss-delete-a-btn">Delete Scene ' + sceneAId + '</button>' +
+          '<button class="ss-btn ss-btn-danger" id="ss-delete-b-btn">Delete Scene ' + sceneBId + '</button>' +
+          '<button class="ss-btn ss-btn-secondary" id="ss-dismiss-btn">Dismiss</button>' +
+        '</div>' +
+      '</div>';
+
+    // Default: first scene as keeper
+    const firstRadio = container.querySelector('input[name="keeper"]');
+    if (firstRadio) firstRadio.checked = true;
+
+    // Click card to select radio
+    container.querySelectorAll('.ss-dup-scene-card').forEach(function(card) {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('a')) return;
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+      });
+    });
+
+    // Merge action
+    container.querySelector('#ss-merge-btn').addEventListener('click', function() {
+      const keeperId = container.querySelector('input[name="keeper"]:checked')?.value;
+      if (!keeperId) return;
+      const sourceId = keeperId === sceneAId ? sceneBId : sceneAId;
+      const btn = container.querySelector('#ss-merge-btn');
+
+      showConfirmModal(
+        'Merge scene ' + sourceId + ' into scene ' + keeperId + '? Files, tags, and performers will be consolidated.',
+        async function() {
+          try {
+            btn.disabled = true;
+            btn.textContent = 'Merging...';
+            await RecommendationsAPI.mergeScenes(keeperId, [sourceId]);
+            await RecommendationsAPI.resolve(rec.id, 'merged', { keeper_id: keeperId, source_id: sourceId });
+            showSuccessAndReturn(btn, 'Merged!');
+          } catch (e) {
+            btn.textContent = 'Failed: ' + e.message;
+            btn.classList.add('ss-btn-error');
+            btn.disabled = false;
+          }
+        }
+      );
+    });
+
+    // Delete A action
+    container.querySelector('#ss-delete-a-btn').addEventListener('click', function() {
+      const btn = container.querySelector('#ss-delete-a-btn');
+      showConfirmModal(
+        'Delete scene ' + sceneAId + ' ("' + escapeHtml(sceneA?.title || '') + '")? This cannot be undone.',
+        async function() {
+          try {
+            btn.disabled = true;
+            btn.textContent = 'Deleting...';
+            await RecommendationsAPI.deleteScene(sceneAId, true);
+            await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: sceneAId, kept_scene_id: sceneBId });
+            showSuccessAndReturn(btn, 'Deleted!');
+          } catch (e) {
+            btn.textContent = 'Failed: ' + e.message;
+            btn.classList.add('ss-btn-error');
+            btn.disabled = false;
+          }
+        },
+        { showDontAsk: true, storageKey: 'delete-dup-scene' }
+      );
+    });
+
+    // Delete B action
+    container.querySelector('#ss-delete-b-btn').addEventListener('click', function() {
+      const btn = container.querySelector('#ss-delete-b-btn');
+      showConfirmModal(
+        'Delete scene ' + sceneBId + ' ("' + escapeHtml(sceneB?.title || '') + '")? This cannot be undone.',
+        async function() {
+          try {
+            btn.disabled = true;
+            btn.textContent = 'Deleting...';
+            await RecommendationsAPI.deleteScene(sceneBId, true);
+            await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: sceneBId, kept_scene_id: sceneAId });
+            showSuccessAndReturn(btn, 'Deleted!');
+          } catch (e) {
+            btn.textContent = 'Failed: ' + e.message;
+            btn.classList.add('ss-btn-error');
+            btn.disabled = false;
+          }
+        },
+        { showDontAsk: true, storageKey: 'delete-dup-scene' }
+      );
+    });
+
+    // Dismiss action
+    container.querySelector('#ss-dismiss-btn').addEventListener('click', async function() {
+      const btn = container.querySelector('#ss-dismiss-btn');
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Dismissing...';
+        await RecommendationsAPI.dismiss(rec.id, 'User dismissed');
+        currentState.view = 'list';
+        currentState.selectedRec = null;
+        renderCurrentView(document.getElementById('ss-recommendations'));
+      } catch (e) {
+        btn.textContent = 'Failed: ' + e.message;
         btn.disabled = false;
       }
     });
