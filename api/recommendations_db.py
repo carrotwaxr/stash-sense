@@ -1706,6 +1706,44 @@ class RecommendationsDB:
             ).fetchall()
             return [(row[0], row[1]) for row in rows]
 
+    def store_scene_phashes(self, phashes: list[tuple[int, str]]) -> int:
+        """
+        Store scene phashes in memory for duplicate candidate generation.
+        Input: list of (stash_scene_id, phash_hex) tuples.
+        Stores parsed data in self._phash_data for generate_phash_candidates().
+        Returns count stored.
+        """
+        self._phash_data: list[tuple[int, int]] = []
+        for scene_id, phash_hex in phashes:
+            try:
+                self._phash_data.append((scene_id, int(phash_hex, 16)))
+            except (ValueError, TypeError):
+                continue
+        return len(self._phash_data)
+
+    def generate_phash_candidates(self, max_distance: int = 10) -> list[tuple[int, int, int]]:
+        """
+        Find all scene pairs with phash Hamming distance <= max_distance.
+        Uses data stored by store_scene_phashes().
+        Returns list of (scene_a_id, scene_b_id, hamming_distance) in canonical order.
+        """
+        data = getattr(self, "_phash_data", None)
+        if not data:
+            return []
+
+        candidates = []
+        for i in range(len(data)):
+            for j in range(i + 1, len(data)):
+                xor = data[i][1] ^ data[j][1]
+                dist = bin(xor).count("1")
+                if dist <= max_distance:
+                    a, b = data[i][0], data[j][0]
+                    if a > b:
+                        a, b = b, a
+                    candidates.append((a, b, dist))
+
+        return candidates
+
     # ========================================================================
     # Job Queue CRUD
     # ========================================================================

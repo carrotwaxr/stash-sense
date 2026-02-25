@@ -12,6 +12,7 @@ class TestDuplicateScenesAnalyzer:
     def mock_stash(self):
         stash = MagicMock()
         stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        stash.get_scenes_with_fingerprints = AsyncMock(return_value=([], 0))
         stash.get_scene_stream_url = AsyncMock(return_value="http://test/stream.mp4")
         return stash
 
@@ -31,7 +32,25 @@ class TestDuplicateScenesAnalyzer:
     async def test_finds_stashbox_duplicates(self, mock_stash, rec_db):
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
-        # Two scenes with same stash-box ID
+        # Two scenes with same stash-box ID (stashbox data comes from get_scenes_with_fingerprints)
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(
+            return_value=(
+                [
+                    {
+                        "id": "1",
+                        "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+                        "files": [{"duration": 1800, "fingerprints": []}],
+                    },
+                    {
+                        "id": "2",
+                        "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+                        "files": [{"duration": 1800, "fingerprints": []}],
+                    },
+                ],
+                2,
+            )
+        )
+        # Scene metadata for scoring phase comes from get_scenes_for_fingerprinting
         mock_stash.get_scenes_for_fingerprinting = AsyncMock(
             return_value=(
                 [
@@ -74,28 +93,34 @@ class TestDuplicateScenesAnalyzer:
     async def test_finds_metadata_duplicates(self, mock_stash, rec_db):
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
-        # Two scenes with same studio + same performers + similar duration
-        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+        scenes_data = [
+            {
+                "id": "1",
+                "title": "Scene A",
+                "stash_ids": [],
+                "studio": {"id": "s1", "name": "Test Studio"},
+                "performers": [{"id": "p1", "name": "Test Performer"}],
+                "files": [{"duration": 1800}],
+                "date": "2024-01-15",
+            },
+            {
+                "id": "2",
+                "title": "Scene B",
+                "stash_ids": [],
+                "studio": {"id": "s1", "name": "Test Studio"},
+                "performers": [{"id": "p1", "name": "Test Performer"}],
+                "files": [{"duration": 1803}],  # Within 5s
+                "date": "2024-01-15",
+            },
+        ]
+        # Metadata for candidate generation + scoring
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(return_value=(scenes_data, 2))
+        # Fingerprints endpoint (no phash data needed for this test)
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(
             return_value=(
                 [
-                    {
-                        "id": "1",
-                        "title": "Scene A",
-                        "stash_ids": [],
-                        "studio": {"id": "s1", "name": "Test Studio"},
-                        "performers": [{"id": "p1", "name": "Test Performer"}],
-                        "files": [{"duration": 1800}],
-                        "date": "2024-01-15",
-                    },
-                    {
-                        "id": "2",
-                        "title": "Scene B",
-                        "stash_ids": [],
-                        "studio": {"id": "s1", "name": "Test Studio"},
-                        "performers": [{"id": "p1", "name": "Test Performer"}],
-                        "files": [{"duration": 1803}],  # Within 5s
-                        "date": "2024-01-15",
-                    },
+                    {"id": "1", "stash_ids": [], "files": [{"duration": 1800, "fingerprints": []}]},
+                    {"id": "2", "stash_ids": [], "files": [{"duration": 1803, "fingerprints": []}]},
                 ],
                 2,
             )
@@ -111,7 +136,7 @@ class TestDuplicateScenesAnalyzer:
     async def test_respects_min_confidence(self, mock_stash, rec_db):
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
-        # Two scenes with only studio match (low confidence)
+        # Two scenes with only studio match (low confidence) — need shared performer for metadata candidate
         mock_stash.get_scenes_for_fingerprinting = AsyncMock(
             return_value=(
                 [
@@ -120,8 +145,8 @@ class TestDuplicateScenesAnalyzer:
                         "title": "Scene A",
                         "stash_ids": [],
                         "studio": {"id": "s1", "name": "Test Studio"},
-                        "performers": [],
-                        "files": [],
+                        "performers": [{"id": "p1", "name": "Perf"}],
+                        "files": [{"duration": 600}],
                         "date": None,
                     },
                     {
@@ -129,9 +154,9 @@ class TestDuplicateScenesAnalyzer:
                         "title": "Scene B",
                         "stash_ids": [],
                         "studio": {"id": "s1", "name": "Test Studio"},
-                        "performers": [],
-                        "files": [],
-                        "date": None,
+                        "performers": [{"id": "p1", "name": "Perf"}],
+                        "files": [{"duration": 3600}],
+                        "date": "2020-01-01",
                     },
                 ],
                 2,
@@ -149,6 +174,23 @@ class TestDuplicateScenesAnalyzer:
     async def test_skips_dismissed_targets(self, mock_stash, rec_db):
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(
+            return_value=(
+                [
+                    {
+                        "id": "1",
+                        "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+                        "files": [{"duration": 1800, "fingerprints": []}],
+                    },
+                    {
+                        "id": "2",
+                        "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+                        "files": [{"duration": 1800, "fingerprints": []}],
+                    },
+                ],
+                2,
+            )
+        )
         mock_stash.get_scenes_for_fingerprinting = AsyncMock(
             return_value=(
                 [
@@ -423,6 +465,7 @@ class TestCandidateGeneration:
     def mock_stash(self):
         stash = MagicMock()
         stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        stash.get_scenes_with_fingerprints = AsyncMock(return_value=([], 0))
         return stash
 
     @pytest.fixture
@@ -435,15 +478,15 @@ class TestCandidateGeneration:
         """Scenes sharing a stash-box ID become candidates with source='stashbox'."""
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
-        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(
             return_value=(
                 [
                     {"id": "1", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc"}],
-                     "studio": None, "performers": [], "files": [], "date": None},
+                     "files": [{"duration": 1800, "fingerprints": []}]},
                     {"id": "2", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc"}],
-                     "studio": None, "performers": [], "files": [], "date": None},
+                     "files": [{"duration": 1800, "fingerprints": []}]},
                     {"id": "3", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "xyz"}],
-                     "studio": None, "performers": [], "files": [], "date": None},
+                     "files": [{"duration": 1800, "fingerprints": []}]},
                 ],
                 3,
             )
@@ -461,15 +504,15 @@ class TestCandidateGeneration:
         assert stashbox_candidates[0]["scene_b_id"] == 2
 
     @pytest.mark.asyncio
-    async def test_generates_face_candidates(self, mock_stash, db):
-        """Scenes sharing an identified performer in fingerprints become candidates."""
+    async def test_generates_phash_candidates(self, mock_stash, db):
+        """Scenes with similar phashes become candidates."""
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
-        fp1 = db.create_scene_fingerprint(stash_scene_id=10, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
-        db.add_fingerprint_face(fp1, "performer_1", face_count=5, avg_confidence=0.8, proportion=1.0)
-        fp2 = db.create_scene_fingerprint(stash_scene_id=20, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
-        db.add_fingerprint_face(fp2, "performer_1", face_count=3, avg_confidence=0.7, proportion=1.0)
-
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(return_value=([
+            {"id": "1", "stash_ids": [], "files": [{"duration": 1800, "fingerprints": [{"type": "phash", "value": "eb716d2e0149f2d1"}]}]},
+            {"id": "2", "stash_ids": [], "files": [{"duration": 1800, "fingerprints": [{"type": "phash", "value": "eb716d2e0149f2d0"}]}]},
+            {"id": "3", "stash_ids": [], "files": [{"duration": 1800, "fingerprints": [{"type": "phash", "value": "0000000000000000"}]}]},
+        ], 3))
         mock_stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
 
         run_id = db.start_analysis_run("duplicate_scenes")
@@ -478,8 +521,8 @@ class TestCandidateGeneration:
 
         assert count >= 1
         candidates = db.get_candidates_batch(run_id, after_id=0, limit=100)
-        face_candidates = [c for c in candidates if c["source"] == "face"]
-        assert len(face_candidates) == 1
+        scene_pairs = {(c["scene_a_id"], c["scene_b_id"]) for c in candidates}
+        assert (1, 2) in scene_pairs
 
     @pytest.mark.asyncio
     async def test_generates_metadata_candidates(self, mock_stash, db):
@@ -533,24 +576,21 @@ class TestCandidateGeneration:
 
     @pytest.mark.asyncio
     async def test_deduplicates_across_sources(self, mock_stash, db):
-        """A pair found by both stashbox and face should appear only once."""
+        """A pair found by both stashbox and phash should appear only once."""
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
-        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+        # Same pair appears as both stashbox match and phash match
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(
             return_value=(
                 [
                     {"id": "10", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "same"}],
-                     "studio": None, "performers": [], "files": [], "date": None},
+                     "files": [{"duration": 1800, "fingerprints": [{"type": "phash", "value": "eb716d2e0149f2d1"}]}]},
                     {"id": "20", "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "same"}],
-                     "studio": None, "performers": [], "files": [], "date": None},
+                     "files": [{"duration": 1800, "fingerprints": [{"type": "phash", "value": "eb716d2e0149f2d0"}]}]},
                 ],
                 2,
             )
         )
-        fp1 = db.create_scene_fingerprint(stash_scene_id=10, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
-        db.add_fingerprint_face(fp1, "performer_1", face_count=5, avg_confidence=0.8, proportion=1.0)
-        fp2 = db.create_scene_fingerprint(stash_scene_id=20, total_faces=1, frames_analyzed=60, fingerprint_status="complete")
-        db.add_fingerprint_face(fp2, "performer_1", face_count=3, avg_confidence=0.7, proportion=1.0)
 
         run_id = db.start_analysis_run("duplicate_scenes")
         analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
@@ -571,6 +611,7 @@ class TestAnalysisJobRunId:
     def mock_stash(self):
         stash = MagicMock()
         stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        stash.get_scenes_with_fingerprints = AsyncMock(return_value=([], 0))
         return stash
 
     @pytest.mark.asyncio

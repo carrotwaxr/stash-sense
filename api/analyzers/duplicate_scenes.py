@@ -2,14 +2,10 @@
 Duplicate Scenes Analyzer
 
 Detects duplicate scenes using a two-phase pipeline:
-  Phase 1: Candidate generation via inverted indices + SQL self-join
+  Phase 1: Candidate generation via stash-box IDs, phash similarity, and metadata indices
   Phase 2: Sequential scoring of candidate pairs
 
 See: docs/plans/2026-02-15-scalable-duplicate-scene-detection-design.md
-
-Note: Face fingerprint similarity requires fingerprints to be generated first.
-Use /recommendations/fingerprints/generate to generate fingerprints for your library.
-The analyzer will still find duplicates via stash-box IDs and metadata without fingerprints.
 """
 
 import asyncio
@@ -49,7 +45,7 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
 
     Phase 1 (Candidate Generation):
         - Stash-box ID grouping: scenes sharing (endpoint, stash_id)
-        - Face fingerprint SQL self-join: scenes sharing identified performers
+        - Phash Hamming distance: scenes with perceptual hash distance <= 10
         - Metadata intersection: scenes sharing (studio_id, performer_id)
         All candidates stored in duplicate_candidates table.
 
@@ -76,6 +72,7 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         super().__init__(stash, rec_db, **kwargs)
         self.min_confidence = min_confidence
         self.batch_size = batch_size
+        self._phash_distances: dict[tuple[int, int], int] = {}
 
     async def run(self, incremental: bool = True) -> DuplicateScenesResult:
         """
@@ -114,7 +111,10 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
 
     async def _generate_candidates(self, run_id: int) -> int:
         """
-        Phase 1: Generate candidate pairs from three sources.
+        Phase 1: Generate candidate pairs from three sources:
+          A) Stash-box ID grouping
+          B) Phash Hamming distance (replaces face fingerprint self-join)
+          C) Metadata intersection (studio + performer)
         Returns total number of unique candidates.
         """
         # Clean up orphaned candidates from previous broken runs (NULL run_id)
@@ -124,15 +124,17 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
 
         # Clear any stale candidates from a previous failed run
         self.rec_db.clear_candidates(run_id)
+        self._phash_distances = {}
 
-        # Source A + C: Stash-box IDs and metadata indices (single pass over paginated scenes)
+        # Source A: Stash-box IDs + Source B: Phash fingerprints
+        # (single pass over paginated scenes with fingerprints)
         stashbox_index: dict[tuple[str, str], list[int]] = {}
-        combined_index: dict[tuple[str, str], set[int]] = {}  # (studio_id, performer_id) -> scene_ids
+        phash_list: list[tuple[int, str]] = []  # (scene_id, phash_hex)
 
         offset = 0
         total_scenes = 0
         while True:
-            scenes, total = await self.stash.get_scenes_for_fingerprinting(
+            scenes, total = await self.stash.get_scenes_with_fingerprints(
                 limit=self.batch_size, offset=offset,
             )
             total_scenes = total
@@ -145,20 +147,22 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                     key = (stash_id_entry["endpoint"], stash_id_entry["stash_id"])
                     stashbox_index.setdefault(key, []).append(sid)
 
-                # Build combined (studio, performer) index
-                studio = scene.get("studio")
-                if studio and studio.get("id"):
-                    studio_id = studio["id"]
-                    for performer in scene.get("performers", []):
-                        key = (studio_id, performer["id"])
-                        combined_index.setdefault(key, set()).add(sid)
+                # Extract phash from file fingerprints
+                for file_entry in scene.get("files", []):
+                    for fp in file_entry.get("fingerprints", []):
+                        if fp.get("type") == "phash" and fp.get("value"):
+                            phash_list.append((sid, fp["value"]))
+                            break  # one phash per scene
+                    else:
+                        continue
+                    break  # found phash, stop checking files
 
             if len(scenes) == 0 or offset + len(scenes) >= total:
                 break
             offset += self.batch_size
             await asyncio.sleep(0)
 
-        logger.warning(f"Loaded {total_scenes} scenes. Building candidates...")
+        logger.warning(f"Loaded {total_scenes} scenes ({len(phash_list)} with phash). Building candidates...")
 
         # Generate stash-box candidates
         stashbox_pairs = []
@@ -171,15 +175,44 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
             self.rec_db.insert_candidates_batch(stashbox_pairs, run_id)
             logger.warning(f"  Stash-box ID: {len(stashbox_pairs)} candidates")
 
-        # Source B: Face fingerprint candidates (SQL self-join)
-        face_pairs = self.rec_db.generate_face_candidates()
-        if face_pairs:
-            self.rec_db.insert_candidates_batch(
-                [(a, b, "face") for a, b in face_pairs], run_id
-            )
-            logger.warning(f"  Face fingerprint: {len(face_pairs)} candidates ({self.rec_db.count_candidates(run_id)} after dedup)")
+        # Source B: Phash candidates (Hamming distance)
+        if phash_list:
+            stored = self.rec_db.store_scene_phashes(phash_list)
+            phash_triples = self.rec_db.generate_phash_candidates(max_distance=10)
+            if phash_triples:
+                phash_pairs = []
+                for a, b, dist in phash_triples:
+                    pair_key = (min(a, b), max(a, b))
+                    self._phash_distances[pair_key] = dist
+                    phash_pairs.append((a, b, "phash"))
+                self.rec_db.insert_candidates_batch(phash_pairs, run_id)
+                logger.warning(f"  Phash: {len(phash_pairs)} candidates ({self.rec_db.count_candidates(run_id)} after dedup)")
+            else:
+                logger.warning(f"  Phash: 0 candidates (from {stored} scenes with phash)")
 
-        # Generate metadata candidates
+        # Source C: Metadata candidates (studio + performer index)
+        # Requires a separate pass over get_scenes_for_fingerprinting for studio/performer data
+        combined_index: dict[tuple[str, str], set[int]] = {}
+        offset = 0
+        while True:
+            scenes, total = await self.stash.get_scenes_for_fingerprinting(
+                limit=self.batch_size, offset=offset,
+            )
+
+            for scene in scenes:
+                sid = int(scene["id"])
+                studio = scene.get("studio")
+                if studio and studio.get("id"):
+                    studio_id = studio["id"]
+                    for performer in scene.get("performers", []):
+                        key = (studio_id, performer["id"])
+                        combined_index.setdefault(key, set()).add(sid)
+
+            if len(scenes) == 0 or offset + len(scenes) >= total:
+                break
+            offset += self.batch_size
+            await asyncio.sleep(0)
+
         metadata_pairs = []
         for key, scene_ids in combined_index.items():
             if len(scene_ids) > 1:
@@ -257,7 +290,12 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                 fp_a = fingerprints.get(str(candidate["scene_a_id"]))
                 fp_b = fingerprints.get(str(candidate["scene_b_id"]))
 
-                match = calculate_duplicate_confidence(scene_a, scene_b, fp_a, fp_b)
+                # Look up phash distance for this pair
+                pair_key = (min(candidate["scene_a_id"], candidate["scene_b_id"]),
+                            max(candidate["scene_a_id"], candidate["scene_b_id"]))
+                phash_dist = self._phash_distances.get(pair_key)
+
+                match = calculate_duplicate_confidence(scene_a, scene_b, fp_a, fp_b, phash_distance=phash_dist)
 
                 if match and match.confidence >= self.min_confidence:
                     rec_id = self.create_recommendation(
