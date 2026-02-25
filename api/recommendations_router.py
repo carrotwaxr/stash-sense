@@ -570,6 +570,55 @@ async def delete_scene_files(request: DeleteSceneFilesRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class MergeScenesRequest(BaseModel):
+    """Request to merge duplicate scenes."""
+    destination_id: str
+    source_ids: list[str]
+
+
+@router.post("/actions/merge-scenes")
+async def merge_scenes(request: MergeScenesRequest):
+    """Execute a scene merge via Stash's sceneMerge mutation."""
+    stash = get_stash_client()
+    try:
+        result = await stash.merge_scenes(request.source_ids, request.destination_id)
+        return {"success": True, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeleteSceneRequest(BaseModel):
+    """Request to delete a scene."""
+    scene_id: str
+    delete_file: bool = False
+
+
+@router.post("/actions/delete-scene")
+async def delete_scene(request: DeleteSceneRequest):
+    """Delete a scene from Stash."""
+    stash = get_stash_client()
+    try:
+        result = await stash.destroy_scene(request.scene_id, delete_file=request.delete_file)
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/scene/{scene_id}")
+async def get_scene_detail(scene_id: str):
+    """Get scene details for the duplicate scenes detail view."""
+    stash = get_stash_client()
+    try:
+        scene = await stash.get_scene_by_id(scene_id)
+        if not scene:
+            raise HTTPException(status_code=404, detail="Scene not found")
+        return scene
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== Fingerprints ====================
 
 _current_db_version: Optional[str] = None

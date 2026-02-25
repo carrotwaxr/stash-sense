@@ -448,6 +448,29 @@ def rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, al
     return sidecar_post(sidecar_url, "/recommendations/actions/delete-scene-files", data, timeout=120)
 
 
+def rec_merge_scenes(sidecar_url, destination_id, source_ids):
+    """Execute scene merge."""
+    data = {
+        "destination_id": destination_id,
+        "source_ids": source_ids,
+    }
+    return sidecar_post(sidecar_url, "/recommendations/actions/merge-scenes", data, timeout=120)
+
+
+def rec_delete_scene(sidecar_url, scene_id, delete_file=False):
+    """Delete a scene."""
+    data = {
+        "scene_id": scene_id,
+        "delete_file": delete_file,
+    }
+    return sidecar_post(sidecar_url, "/recommendations/actions/delete-scene", data, timeout=60)
+
+
+def rec_get_scene(sidecar_url, scene_id):
+    """Get scene details for display."""
+    return sidecar_get(sidecar_url, f"/recommendations/scene/{scene_id}")
+
+
 # ==================== Fingerprint Operations ====================
 
 def fp_status(sidecar_url):
@@ -553,6 +576,26 @@ def handle_recommendations(mode, args, sidecar_url):
         if not scene_id or not keep_file_id:
             return {"error": "scene_id and keep_file_id required"}
         return rec_delete_files(sidecar_url, scene_id, file_ids_to_delete, keep_file_id, all_file_ids)
+
+    elif mode == "rec_merge_scenes":
+        destination_id = args.get("destination_id")
+        source_ids = args.get("source_ids", [])
+        if not destination_id or not source_ids:
+            return {"error": "destination_id and source_ids required"}
+        return rec_merge_scenes(sidecar_url, destination_id, source_ids)
+
+    elif mode == "rec_delete_scene":
+        scene_id = args.get("scene_id")
+        delete_file = args.get("delete_file", False)
+        if not scene_id:
+            return {"error": "scene_id required"}
+        return rec_delete_scene(sidecar_url, scene_id, delete_file)
+
+    elif mode == "rec_get_scene":
+        scene_id = args.get("scene_id")
+        if not scene_id:
+            return {"error": "scene_id required"}
+        return rec_get_scene(sidecar_url, scene_id)
 
     elif mode == "rec_update_performer":
         performer_id = args.get("performer_id")

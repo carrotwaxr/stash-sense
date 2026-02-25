@@ -986,6 +986,9 @@ class StashClientUnified:
             title
             date
             updated_at
+            paths {
+              screenshot
+            }
             studio {
               id
               name
@@ -995,7 +998,17 @@ class StashClientUnified:
               name
             }
             files {
+              id
+              path
+              size
               duration
+              video_codec
+              width
+              height
+              fingerprints {
+                type
+                value
+              }
             }
             stash_ids {
               endpoint
@@ -1006,6 +1019,47 @@ class StashClientUnified:
         """
         data = await self._execute(query, {"id": scene_id})
         return data.get("findScene")
+
+    async def merge_scenes(
+        self, source_ids: list[str], destination_id: str,
+    ) -> dict:
+        """Merge source scenes into destination scene via Stash's sceneMerge mutation."""
+        query = """
+        mutation SceneMerge($input: SceneMergeInput!) {
+          sceneMerge(input: $input) {
+            count
+          }
+        }
+        """
+        variables = {
+            "input": {
+                "source": source_ids,
+                "destination": destination_id,
+                "play_history": True,
+                "o_history": True,
+            }
+        }
+        data = await self._execute(query, variables)
+        return data.get("sceneMerge", {})
+
+    async def destroy_scene(
+        self, scene_id: str, delete_file: bool = False, delete_generated: bool = True,
+    ) -> bool:
+        """Delete a scene. Optionally deletes the underlying file."""
+        query = """
+        mutation SceneDestroy($input: SceneDestroyInput!) {
+          sceneDestroy(input: $input)
+        }
+        """
+        variables = {
+            "input": {
+                "id": scene_id,
+                "delete_file": delete_file,
+                "delete_generated": delete_generated,
+            }
+        }
+        data = await self._execute(query, variables)
+        return data.get("sceneDestroy", False)
 
     # ==================== Images ====================
 
