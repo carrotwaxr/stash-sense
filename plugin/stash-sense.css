@@ -3581,6 +3581,7 @@ a.ss-upstream-endpoint-badge:hover {
 }
 
 .ss-dup-scene-thumb {
+  position: relative;
   width: 100%;
   aspect-ratio: 16/9;
   border-radius: 4px;
@@ -3589,10 +3590,20 @@ a.ss-upstream-endpoint-badge:hover {
   background: var(--bs-body-bg);
 }
 
-.ss-dup-scene-thumb img {
+.ss-dup-scene-thumb img,
+.ss-dup-scene-thumb video {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: opacity 0.2s ease;
+}
+
+.ss-dup-scene-preview {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .ss-dup-scene-card h4 {
@@ -3640,4 +3651,20 @@ a.ss-upstream-endpoint-badge:hover {
   border-radius: 12px;
   background: var(--bs-tertiary-bg);
   color: var(--bs-secondary-color);
+}
+
+.ss-dup-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ss-dup-card-actions .ss-btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.ss-detail-actions-center {
+  justify-content: center;
 }
