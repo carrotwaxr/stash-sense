@@ -20,7 +20,7 @@ router = APIRouter(tags=["settings"])
 
 # Set at startup
 _start_time: Optional[float] = None
-_version: str = "0.1.2-beta.10"
+_version: str = "0.1.2-beta.11"
 
 
 def init_settings_router():
