@@ -988,6 +988,7 @@ class StashClientUnified:
             updated_at
             paths {
               screenshot
+              preview
             }
             studio {
               id

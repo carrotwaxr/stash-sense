@@ -1615,14 +1615,16 @@
       return (bytes / (1024 * 1024)).toFixed(0) + ' MB';
     }
 
-    function renderSceneCard(scene, id) {
+    function renderSceneCard(scene, id, otherId) {
       const file = scene?.files?.[0];
       const resolution = file ? file.width + 'x' + file.height : 'N/A';
       const screenshotUrl = relativeUrl(scene?.paths?.screenshot);
+      const previewUrl = relativeUrl(scene?.paths?.preview);
 
       return '<div class="ss-dup-scene-card" data-id="' + id + '">' +
         '<div class="ss-dup-scene-thumb">' +
           (screenshotUrl ? '<img src="' + screenshotUrl + '" alt="Scene ' + id + '" loading="lazy" onerror="this.style.display=\'none\'" />' : '<div class="ss-no-image">No Screenshot</div>') +
+          (previewUrl ? '<video class="ss-dup-scene-preview" muted loop preload="none" data-src="' + previewUrl + '"></video>' : '') +
         '</div>' +
         '<h4><a href="/scenes/' + id + '" target="_blank">' + escapeHtml(scene?.title || 'Unknown Scene') + '</a></h4>' +
         '<ul class="ss-dup-scene-meta">' +
@@ -1632,7 +1634,10 @@
           '<li><strong>Duration:</strong> ' + formatDuration(file?.duration) + '</li>' +
           (file ? '<li><strong>File:</strong> ' + resolution + ' &middot; ' + (file.video_codec || 'N/A') + ' &middot; ' + formatFileSize(file.size) + '</li>' : '') +
         '</ul>' +
-        '<label class="ss-radio-label"><input type="radio" name="keeper" value="' + id + '" /> Keep this scene</label>' +
+        '<div class="ss-dup-card-actions">' +
+          '<button class="ss-btn ss-btn-primary ss-dup-keep-merge-btn" data-keeper="' + id + '" data-source="' + otherId + '">Keep + Merge</button>' +
+          '<button class="ss-btn ss-btn-danger ss-dup-delete-btn" data-delete="' + id + '" data-keep="' + otherId + '">Delete</button>' +
+        '</div>' +
       '</div>';
     }
 
@@ -1646,99 +1651,98 @@
           reasoning.slice(1).map(function(r) { return '<span class="ss-signal-badge">' + escapeHtml(r) + '</span>'; }).join('') +
         '</div>' +
         '<div class="ss-dup-scenes-grid">' +
-          renderSceneCard(sceneA, sceneAId) +
+          renderSceneCard(sceneA, sceneAId, sceneBId) +
           '<div class="ss-dup-vs">VS</div>' +
-          renderSceneCard(sceneB, sceneBId) +
+          renderSceneCard(sceneB, sceneBId, sceneAId) +
         '</div>' +
-        '<div class="ss-detail-actions">' +
-          '<button class="ss-btn ss-btn-primary" id="ss-merge-btn">Merge Scenes</button>' +
-          '<button class="ss-btn ss-btn-danger" id="ss-delete-a-btn">Delete Scene ' + sceneAId + '</button>' +
-          '<button class="ss-btn ss-btn-danger" id="ss-delete-b-btn">Delete Scene ' + sceneBId + '</button>' +
-          '<button class="ss-btn ss-btn-secondary" id="ss-dismiss-btn">Dismiss</button>' +
+        '<div class="ss-detail-actions ss-detail-actions-center">' +
+          '<button class="ss-btn ss-btn-secondary" id="ss-dismiss-btn">Not Duplicates</button>' +
         '</div>' +
       '</div>';
 
-    // Default: first scene as keeper
-    const firstRadio = container.querySelector('input[name="keeper"]');
-    if (firstRadio) firstRadio.checked = true;
+    function disableAllDupActions() {
+      container.querySelectorAll('.ss-dup-keep-merge-btn, .ss-dup-delete-btn, #ss-dismiss-btn').forEach(function(b) { b.disabled = true; });
+    }
 
-    // Click card to select radio
-    container.querySelectorAll('.ss-dup-scene-card').forEach(function(card) {
-      card.style.cursor = 'pointer';
-      card.addEventListener('click', function(e) {
-        if (e.target.closest('a')) return;
-        const radio = card.querySelector('input[type="radio"]');
-        if (radio) radio.checked = true;
+    function enableAllDupActions() {
+      container.querySelectorAll('.ss-dup-keep-merge-btn, .ss-dup-delete-btn, #ss-dismiss-btn').forEach(function(b) { b.disabled = false; });
+    }
+
+    // Scene title lookup for confirmations
+    var sceneTitles = {};
+    sceneTitles[sceneAId] = sceneA?.title || 'Unknown Scene';
+    sceneTitles[sceneBId] = sceneB?.title || 'Unknown Scene';
+
+    // Keep + Merge action (delegated)
+    container.querySelectorAll('.ss-dup-keep-merge-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var keeperId = btn.getAttribute('data-keeper');
+        var sourceId = btn.getAttribute('data-source');
+        showConfirmModal(
+          'Keep "' + escapeHtml(sceneTitles[keeperId]) + '" and merge "' + escapeHtml(sceneTitles[sourceId]) + '" into it? Files, tags, and performers will be consolidated.',
+          async function() {
+            try {
+              disableAllDupActions();
+              btn.textContent = 'Merging...';
+              await RecommendationsAPI.mergeScenes(keeperId, [sourceId]);
+              await RecommendationsAPI.resolve(rec.id, 'merged', { keeper_id: keeperId, source_id: sourceId });
+              showSuccessAndReturn(btn, 'Merged!');
+            } catch (e) {
+              btn.textContent = 'Failed: ' + e.message;
+              btn.classList.add('ss-btn-error');
+              enableAllDupActions();
+            }
+          }
+        );
       });
     });
 
-    // Merge action
-    container.querySelector('#ss-merge-btn').addEventListener('click', function() {
-      const keeperId = container.querySelector('input[name="keeper"]:checked')?.value;
-      if (!keeperId) return;
-      const sourceId = keeperId === sceneAId ? sceneBId : sceneAId;
-      const btn = container.querySelector('#ss-merge-btn');
+    // Delete action (delegated)
+    container.querySelectorAll('.ss-dup-delete-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var deleteId = btn.getAttribute('data-delete');
+        var keepId = btn.getAttribute('data-keep');
+        showConfirmModal(
+          'Delete "' + escapeHtml(sceneTitles[deleteId]) + '"? The scene and its file will be permanently deleted from disk. This cannot be undone.',
+          async function() {
+            try {
+              disableAllDupActions();
+              btn.textContent = 'Deleting...';
+              await RecommendationsAPI.deleteScene(deleteId, false);
+              await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: deleteId, kept_scene_id: keepId });
+              showSuccessAndReturn(btn, 'Deleted!');
+            } catch (e) {
+              btn.textContent = 'Failed: ' + e.message;
+              btn.classList.add('ss-btn-error');
+              enableAllDupActions();
+            }
+          },
+          { showDontAsk: true, storageKey: 'delete-dup-scene' }
+        );
+      });
+    });
 
-      showConfirmModal(
-        'Merge scene ' + sourceId + ' into scene ' + keeperId + '? Files, tags, and performers will be consolidated.',
-        async function() {
-          try {
-            disableAllActions(container);
-            btn.textContent = 'Merging...';
-            await RecommendationsAPI.mergeScenes(keeperId, [sourceId]);
-            await RecommendationsAPI.resolve(rec.id, 'merged', { keeper_id: keeperId, source_id: sourceId });
-            showSuccessAndReturn(btn, 'Merged!');
-          } catch (e) {
-            btn.textContent = 'Failed: ' + e.message;
-            btn.classList.add('ss-btn-error');
-            enableAllActions(container);
-          }
+    // Video preview on hover
+    container.querySelectorAll('.ss-dup-scene-thumb').forEach(function(thumb) {
+      var video = thumb.querySelector('.ss-dup-scene-preview');
+      if (!video) return;
+      var img = thumb.querySelector('img');
+
+      thumb.addEventListener('mouseenter', function() {
+        if (!video.src && video.dataset.src) {
+          video.src = video.dataset.src;
         }
-      );
-    });
+        if (img) img.style.opacity = '0';
+        video.style.opacity = '1';
+        video.play().catch(function() {});
+      });
 
-    // Delete A action
-    container.querySelector('#ss-delete-a-btn').addEventListener('click', function() {
-      const btn = container.querySelector('#ss-delete-a-btn');
-      showConfirmModal(
-        'Delete scene ' + sceneAId + ' ("' + escapeHtml(sceneA?.title || '') + '")? The scene and its file will be permanently deleted from disk. This cannot be undone.',
-        async function() {
-          try {
-            disableAllActions(container);
-            btn.textContent = 'Deleting...';
-            await RecommendationsAPI.deleteScene(sceneAId, false);
-            await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: sceneAId, kept_scene_id: sceneBId });
-            showSuccessAndReturn(btn, 'Deleted!');
-          } catch (e) {
-            btn.textContent = 'Failed: ' + e.message;
-            btn.classList.add('ss-btn-error');
-            enableAllActions(container);
-          }
-        },
-        { showDontAsk: true, storageKey: 'delete-dup-scene' }
-      );
-    });
-
-    // Delete B action
-    container.querySelector('#ss-delete-b-btn').addEventListener('click', function() {
-      const btn = container.querySelector('#ss-delete-b-btn');
-      showConfirmModal(
-        'Delete scene ' + sceneBId + ' ("' + escapeHtml(sceneB?.title || '') + '")? The scene and its file will be permanently deleted from disk. This cannot be undone.',
-        async function() {
-          try {
-            disableAllActions(container);
-            btn.textContent = 'Deleting...';
-            await RecommendationsAPI.deleteScene(sceneBId, false);
-            await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: sceneBId, kept_scene_id: sceneAId });
-            showSuccessAndReturn(btn, 'Deleted!');
-          } catch (e) {
-            btn.textContent = 'Failed: ' + e.message;
-            btn.classList.add('ss-btn-error');
-            enableAllActions(container);
-          }
-        },
-        { showDontAsk: true, storageKey: 'delete-dup-scene' }
-      );
+      thumb.addEventListener('mouseleave', function() {
+        video.pause();
+        video.currentTime = 0;
+        if (img) img.style.opacity = '1';
+        video.style.opacity = '0';
+      });
     });
 
     // Dismiss action
