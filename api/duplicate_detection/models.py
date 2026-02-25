@@ -88,10 +88,11 @@ class SignalBreakdown:
 
     stashbox_match: bool
     stashbox_endpoint: Optional[str]
-    face_score: float  # 0-85
-    face_reasoning: str
-    metadata_score: float  # 0-60
-    metadata_reasoning: str
+    phash_distance: Optional[int] = None
+    face_score: float = 0.0  # 0-75
+    face_reasoning: str = ""
+    metadata_score: float = 0.0  # 0-60
+    metadata_reasoning: str = ""
 
 
 @dataclass

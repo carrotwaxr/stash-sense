@@ -152,7 +152,31 @@ class TestStashboxMatch:
 class TestFaceSignatureSimilarity:
     """Tests for face_signature_similarity function."""
 
-    def test_identical_fingerprints(self):
+    def test_zero_shared_performers_returns_zero(self):
+        """Scenes with no shared performers must score 0."""
+        from duplicate_detection.scoring import face_signature_similarity
+        from duplicate_detection.models import SceneFingerprint, FaceAppearance
+
+        fp_a = SceneFingerprint(
+            stash_scene_id=1,
+            faces={"stashdb:p1": FaceAppearance("stashdb:p1", 20, 0.9, 1.0)},
+            total_faces_detected=20,
+            frames_analyzed=40,
+        )
+        fp_b = SceneFingerprint(
+            stash_scene_id=2,
+            faces={"stashdb:p2": FaceAppearance("stashdb:p2", 20, 0.9, 1.0)},
+            total_faces_detected=20,
+            frames_analyzed=40,
+        )
+
+        score, reasoning = face_signature_similarity(fp_a, fp_b)
+
+        assert score == 0.0
+        assert "No shared performers" in reasoning
+
+    def test_identical_cast_scores_high(self):
+        """Identical cast with identical proportions should score >= 70."""
         from duplicate_detection.scoring import face_signature_similarity
         from duplicate_detection.models import SceneFingerprint, FaceAppearance
 
@@ -177,33 +201,42 @@ class TestFaceSignatureSimilarity:
 
         score, reasoning = face_signature_similarity(fp_a, fp_b)
 
-        # Identical proportions = 0% difference = 85% score
-        assert score == 85.0
+        # Jaccard = 1.0 -> base = 60, proportion bonus = 15, total = 75 (capped)
+        assert score >= 70.0
         assert "2 shared performers" in reasoning
 
-    def test_no_shared_performers(self):
+    def test_partial_cast_overlap_scores_moderately(self):
+        """Partial overlap (1 shared out of 3 total) scores in 15-40 range."""
         from duplicate_detection.scoring import face_signature_similarity
         from duplicate_detection.models import SceneFingerprint, FaceAppearance
 
         fp_a = SceneFingerprint(
             stash_scene_id=1,
-            faces={"stashdb:p1": FaceAppearance("stashdb:p1", 20, 0.9, 1.0)},
-            total_faces_detected=20,
+            faces={
+                "stashdb:p1": FaceAppearance("stashdb:p1", 20, 0.9, 0.5),
+                "stashdb:p2": FaceAppearance("stashdb:p2", 20, 0.85, 0.5),
+            },
+            total_faces_detected=40,
             frames_analyzed=40,
         )
         fp_b = SceneFingerprint(
             stash_scene_id=2,
-            faces={"stashdb:p2": FaceAppearance("stashdb:p2", 20, 0.9, 1.0)},
-            total_faces_detected=20,
+            faces={
+                "stashdb:p1": FaceAppearance("stashdb:p1", 15, 0.88, 0.5),
+                "stashdb:p3": FaceAppearance("stashdb:p3", 15, 0.80, 0.5),
+            },
+            total_faces_detected=30,
             frames_analyzed=40,
         )
 
         score, reasoning = face_signature_similarity(fp_a, fp_b)
 
-        # No overlap = low score
-        assert score < 50.0
+        # Jaccard = 1/3 -> base = 20, proportion bonus up to 15
+        assert 15.0 <= score <= 40.0
+        assert "1 shared performers" in reasoning
 
-    def test_no_identified_performers(self):
+    def test_unknown_performers_excluded(self):
+        """'unknown' performer ID should be excluded from comparison."""
         from duplicate_detection.scoring import face_signature_similarity
         from duplicate_detection.models import SceneFingerprint, FaceAppearance
 
@@ -224,6 +257,36 @@ class TestFaceSignatureSimilarity:
 
         assert score == 0.0
         assert "No identified performers" in reasoning
+
+    def test_score_capped_at_75(self):
+        """Score must never exceed 75."""
+        from duplicate_detection.scoring import face_signature_similarity
+        from duplicate_detection.models import SceneFingerprint, FaceAppearance
+
+        fp_a = SceneFingerprint(
+            stash_scene_id=1,
+            faces={
+                "stashdb:p1": FaceAppearance("stashdb:p1", 30, 0.95, 0.33),
+                "stashdb:p2": FaceAppearance("stashdb:p2", 30, 0.95, 0.33),
+                "stashdb:p3": FaceAppearance("stashdb:p3", 30, 0.95, 0.34),
+            },
+            total_faces_detected=90,
+            frames_analyzed=40,
+        )
+        fp_b = SceneFingerprint(
+            stash_scene_id=2,
+            faces={
+                "stashdb:p1": FaceAppearance("stashdb:p1", 30, 0.95, 0.33),
+                "stashdb:p2": FaceAppearance("stashdb:p2", 30, 0.95, 0.33),
+                "stashdb:p3": FaceAppearance("stashdb:p3", 30, 0.95, 0.34),
+            },
+            total_faces_detected=90,
+            frames_analyzed=40,
+        )
+
+        score, reasoning = face_signature_similarity(fp_a, fp_b)
+
+        assert score <= 75.0
 
 
 class TestCombinedConfidence:

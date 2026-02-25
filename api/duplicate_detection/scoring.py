@@ -7,7 +7,6 @@ from typing import Optional
 from .models import (
     SceneFingerprint,
     SceneMetadata,
-    FaceAppearance,
     SignalBreakdown,
     DuplicateMatch,
 )
@@ -119,39 +118,39 @@ def face_signature_similarity(
     fp_a: SceneFingerprint, fp_b: SceneFingerprint
 ) -> tuple[float, str]:
     """
-    Calculate face signature similarity score (0-85).
+    Calculate face signature similarity score (0-75).
 
-    Compares which performers appear and in what proportions.
+    Requires at least one shared performer. Score based on Jaccard
+    similarity of performer sets, with proportion bonus for shared performers.
     """
-    all_performers = set(fp_a.faces.keys()) | set(fp_b.faces.keys())
-    all_performers.discard("unknown")
+    all_a = set(fp_a.faces.keys()) - {"unknown"}
+    all_b = set(fp_b.faces.keys()) - {"unknown"}
+    shared = all_a & all_b
 
-    if not all_performers:
+    if not all_a and not all_b:
         return 0.0, "No identified performers in either scene"
 
+    if not shared:
+        return 0.0, "No shared performers"
+
+    # Jaccard similarity of performer sets
+    union = all_a | all_b
+    jaccard = len(shared) / len(union) if union else 0.0
+
+    # Proportion similarity for shared performers only
     proportion_diffs = []
-    matches = []
-
-    for performer_id in all_performers:
-        prop_a = fp_a.faces.get(performer_id, FaceAppearance(performer_id, 0, 0, 0)).proportion
-        prop_b = fp_b.faces.get(performer_id, FaceAppearance(performer_id, 0, 0, 0)).proportion
-
-        diff = abs(prop_a - prop_b)
+    for pid in shared:
+        diff = abs(fp_a.faces[pid].proportion - fp_b.faces[pid].proportion)
         proportion_diffs.append(diff)
-
-        # Both have meaningful presence (>10%)
-        if prop_a > 0.1 and prop_b > 0.1:
-            matches.append(performer_id)
-
     avg_diff = sum(proportion_diffs) / len(proportion_diffs)
 
-    # Convert to similarity score (0-85 range)
-    # Perfect match (avg_diff=0) -> 85%
-    # Completely different (avg_diff>=0.5) -> 0%
-    similarity = max(0.0, 85.0 * (1.0 - avg_diff * 2.0))
+    # Score: Jaccard drives the base, proportion similarity is a bonus
+    base = jaccard * 60.0
+    proportion_bonus = max(0.0, 15.0 * (1.0 - avg_diff * 4.0))
+    score = min(base + proportion_bonus, 75.0)
 
-    reason = f"{len(matches)} shared performers, {avg_diff:.1%} avg proportion difference"
-    return similarity, reason
+    reason = f"{len(shared)} shared performers (Jaccard {jaccard:.0%}), {avg_diff:.1%} avg proportion diff"
+    return score, reason
 
 
 def calculate_duplicate_confidence(

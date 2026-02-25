@@ -41,6 +41,7 @@ class TestDuplicateMatch:
             signal_breakdown=SignalBreakdown(
                 stashbox_match=False,
                 stashbox_endpoint=None,
+                phash_distance=None,
                 face_score=78.0,
                 face_reasoning="2 shared performers, 3% avg proportion difference",
                 metadata_score=30.0,
