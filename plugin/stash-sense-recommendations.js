@@ -1739,9 +1739,9 @@
 
       thumb.addEventListener('mouseleave', function() {
         video.pause();
-        video.currentTime = 0;
         if (img) img.style.opacity = '1';
         video.style.opacity = '0';
+        setTimeout(function() { video.currentTime = 0; }, 200);
       });
     });
 
