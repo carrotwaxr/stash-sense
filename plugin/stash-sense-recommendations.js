@@ -1067,7 +1067,7 @@
           <div class="ss-rec-performers">
             ${performers.map(p => `
               <div class="ss-rec-performer-thumb ${p.is_suggested_keeper ? 'keeper' : ''}">
-                ${p.image_path ? `<img src="${p.image_path}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'" />` : ''}
+                ${p.image_path ? `<img src="${relativeUrl(p.image_path)}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'" />` : ''}
                 <span class="ss-performer-name">${p.name}</span>
                 <span class="ss-performer-count">${p.scene_count} scenes</span>
               </div>
@@ -1140,7 +1140,7 @@
         className: 'ss-rec-card ss-rec-upstream',
         innerHTML: `
           <div class="ss-rec-card-header">
-            <img src="${details.performer_image_path || ''}" class="ss-rec-thumb" onerror="this.style.display='none'"/>
+            <img src="${relativeUrl(details.performer_image_path) || ''}" class="ss-rec-thumb" onerror="this.style.display='none'"/>
             <div class="ss-rec-card-info">
               <div class="ss-rec-card-title">Upstream Changes: ${details.performer_name || 'Unknown'}</div>
               <div class="ss-rec-card-subtitle">
@@ -1347,7 +1347,7 @@
           ${performers.map(p => `
             <div class="ss-performer-option ${p.is_suggested_keeper ? 'suggested' : ''}" data-id="${p.id}">
               <div class="ss-performer-image">
-                ${p.image_path ? `<img src="${p.image_path}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="ss-no-image">No Image</div>'}
+                ${p.image_path ? `<img src="${relativeUrl(p.image_path)}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'" />` : '<div class="ss-no-image">No Image</div>'}
                 ${p.is_suggested_keeper ? '<span class="ss-suggested-badge">Suggested Keeper</span>' : ''}
               </div>
               <div class="ss-performer-details">
@@ -1618,7 +1618,7 @@
     function renderSceneCard(scene, id) {
       const file = scene?.files?.[0];
       const resolution = file ? file.width + 'x' + file.height : 'N/A';
-      const screenshotUrl = scene?.paths?.screenshot;
+      const screenshotUrl = relativeUrl(scene?.paths?.screenshot);
 
       return '<div class="ss-dup-scene-card" data-id="' + id + '">' +
         '<div class="ss-dup-scene-thumb">' +
@@ -2066,7 +2066,7 @@
           <div class="ss-conflict-comparison">
             <div class="ss-conflict-card">
               <div class="ss-conflict-card-label">This Performer</div>
-              <img src="${escapeHtml(cur.image_path || '')}" class="ss-conflict-thumb" onerror="this.style.display='none'" />
+              <img src="${escapeHtml(relativeUrl(cur.image_path) || '')}" class="ss-conflict-thumb" onerror="this.style.display='none'" />
               <div class="ss-conflict-name">${escapeHtml(cur.name || 'Unknown')}</div>
               ${cur.disambiguation ? `<div class="ss-conflict-disambig">${escapeHtml(cur.disambiguation)}</div>` : ''}
               <div class="ss-conflict-meta">ID: ${escapeHtml(String(performerId))}</div>
@@ -2074,7 +2074,7 @@
             </div>
             <div class="ss-conflict-card">
               <div class="ss-conflict-card-label">Conflicting Performer</div>
-              <img src="${escapeHtml(c.image_path || '')}" class="ss-conflict-thumb" onerror="this.style.display='none'" />
+              <img src="${escapeHtml(relativeUrl(c.image_path) || '')}" class="ss-conflict-thumb" onerror="this.style.display='none'" />
               <div class="ss-conflict-name">${escapeHtml(c.name)}</div>
               ${c.disambiguation ? `<div class="ss-conflict-disambig">${escapeHtml(c.disambiguation)}</div>` : ''}
               <div class="ss-conflict-meta">ID: ${escapeHtml(c.id)} &middot; ${c.scene_count || 0} scenes</div>
@@ -2171,7 +2171,7 @@
     const headerDiv = document.createElement('div');
     headerDiv.className = 'ss-upstream-header';
     headerDiv.innerHTML = `
-      <img src="${details.performer_image_path || ''}" alt="${details.performer_name || ''}" onerror="this.style.display='none'" />
+      <img src="${relativeUrl(details.performer_image_path) || ''}" alt="${details.performer_name || ''}" onerror="this.style.display='none'" />
       <div style="flex:1;">
         <h2 style="margin: 0 0 4px 0;">
           <a href="/performers/${performerId}" target="_blank">${details.performer_name || 'Unknown'}</a>
@@ -2483,7 +2483,7 @@
             }
           },
           () => { /* User chose skip */ },
-          { name: details.performer_name, image_path: details.performer_image_path, disambiguation: proposedDisambig },
+          { name: details.performer_name, image_path: relativeUrl(details.performer_image_path), disambiguation: proposedDisambig },
           async () => {
             // User chose "Update Fields Only" — apply without merging.
             // Strip name, disambiguation (could erase what distinguishes this performer),
@@ -4385,6 +4385,19 @@
     const div = document.createElement('div');
     div.appendChild(document.createTextNode(String(str)));
     return div.innerHTML;
+  }
+
+  /**
+   * Convert an absolute URL to a relative path. Stash's API returns image URLs
+   * with the internal origin (e.g. http://10.0.0.4:6969/scene/1/screenshot).
+   * When the user accesses Stash via a reverse proxy on a different domain,
+   * these absolute URLs break (mixed content, unreachable host). Stripping to
+   * a relative path lets the browser resolve against the current origin.
+   */
+  function relativeUrl(url) {
+    if (!url) return url;
+    try { return new URL(url).pathname; }
+    catch (e) { return url; }
   }
 
   function formatFieldValue(val) {
