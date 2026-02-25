@@ -21,7 +21,7 @@
     
     
       
-        <title>Settings Page UI/UX Pass - Stash Sense</title>
+        <title>Duplicate Scenes Detection Redesign - Stash Sense</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#settings-page-uiux-pass" class="md-skip">
+        <a href="#duplicate-scenes-detection-redesign" class="md-skip">
           Skip to content
         </a>
       
@@ -108,7 +108,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Settings Page UI/UX Pass
+              Duplicate Scenes Detection Redesign
             
           </span>
         </div>
@@ -964,47 +964,14 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#design-decisions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Design Decisions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#server-changes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Server Changes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Server Changes">
+    <nav class="md-nav" aria-label="Problem">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#job_modelspy" class="md-nav__link">
+  <a href="#current-signal-breakdown-production-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        job_models.py
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#queue_routerpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        queue_router.py
+        Current Signal Breakdown (Production Data)
       
     </span>
   </a>
@@ -1017,22 +984,45 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#frontend-changes" class="md-nav__link">
+  <a href="#goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Frontend Changes
+        Goals
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Frontend Changes">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#new-css-classes-stash-sensecss" class="md-nav__link">
+  <a href="#phase-1-candidate-generation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        New CSS classes (stash-sense.css)
+        Phase 1: Candidate Generation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 1: Candidate Generation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-1-stash-box-id-grouping-keep-as-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source 1: Stash-box ID grouping (keep as-is)
       
     </span>
   </a>
@@ -1040,10 +1030,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#schedule-row-layout" class="md-nav__link">
+  <a href="#source-2-phash-similarity-new-replaces-face-candidates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Schedule row layout
+        Source 2: Phash similarity (NEW — replaces face candidates)
       
     </span>
   </a>
@@ -1051,10 +1041,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#renderschedulescategory-refactor" class="md-nav__link">
+  <a href="#source-3-metadata-intersection-keep-as-is" class="md-nav__link">
     <span class="md-ellipsis">
       
-        renderSchedulesCategory() refactor
+        Source 3: Metadata intersection (keep as-is)
       
     </span>
   </a>
@@ -1062,21 +1052,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#renderendpointfieldconfig-cleanup" class="md-nav__link">
+  <a href="#removed-face-fingerprint-candidates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        renderEndpointFieldConfig() cleanup
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#other-inline-style-cleanup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Other inline style cleanup
+        Removed: Face fingerprint candidates
       
     </span>
   </a>
@@ -1087,37 +1066,175 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#not-in-scope" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-scoring" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Not in Scope
+        Phase 2: Scoring
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 2: Scoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tier-1-stash-box-id-match-100" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 1: Stash-box ID Match → 100%
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#testing" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#tier-2-strong-phash-match-hamming-4-bits-85-95" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Testing
+        Tier 2: Strong phash match (Hamming ≤ 4 bits) → 85-95%
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#key-files" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#tier-3-moderate-phash-match-hamming-5-10-bits-corroboration-60-84" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Key Files
+        Tier 3: Moderate phash match (Hamming 5-10 bits) + corroboration → 60-84%
       
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier-4-metadata-face-only-no-phash-match-50-70" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 4: Metadata + face only (no phash match) → 50-70%
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hard-rules-all-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hard Rules (all tiers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#face-scoring-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Face Scoring Fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plugin-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin UI
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin UI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-card-renderrecommendationcard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Card (renderRecommendationCard)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail-view-renderduplicatescenesdetail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail View (renderDuplicateScenesDetail)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#future-enhancements-not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future Enhancements (not in scope)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1141,128 +1258,219 @@
   
 
 
-<h1 id="settings-page-uiux-pass">Settings Page UI/UX Pass</h1>
-<p><strong>Date:</strong> 2026-02-19
-<strong>Ticket:</strong> refactor: settings page UI/UX pass - consistent components, human-friendly intervals</p>
+<h1 id="duplicate-scenes-detection-redesign">Duplicate Scenes Detection Redesign</h1>
+<p><strong>Date:</strong> 2026-02-24
+<strong>Status:</strong> Draft</p>
 <h2 id="problem">Problem</h2>
-<p>The plugin settings page has accumulated visual inconsistencies:
-- Job Schedules uses raw <code>&lt;input type="number"&gt;</code> with browser-native spinners and inline styles
-- Interval values displayed as raw hours (168 = 1 week) — meaningless at a glance
-- Three different coding patterns across Sidecar Settings, Job Schedules, and Upstream Sync sections
-- Inline styles scattered throughout <code>stash-sense-settings.js</code> instead of CSS classes
-- Inconsistent save patterns: auto-save vs explicit Save button</p>
-<h2 id="design-decisions">Design Decisions</h2>
+<p>The current duplicate scenes detection generates 22,753 recommendations from ~24K scenes — nearly all of them false positives. Three root causes:</p>
+<ol>
+<li>
+<p><strong>Face candidate explosion</strong>: The SQL self-join on <code>scene_fingerprint_faces</code> creates candidate pairs for ANY two scenes sharing a single identified performer. Popular performers appearing in 500+ scenes generate 100K+ pairs each, totaling 4,095,469 face candidates.</p>
+</li>
+<li>
+<p><strong>Broken face scoring</strong>: <code>face_signature_similarity()</code> computes a score based on average proportion differences across the <strong>union</strong> of all performers in both scenes. Two scenes with completely different performers can score 50%+ because their proportion distributions are numerically similar. 85% of recommendations (19,256) are face-only with zero metadata support.</p>
+</li>
+<li>
+<p><strong>Missing plugin UI</strong>: No list card renderer or detail view for <code>duplicate_scenes</code> type — users see raw fallback text and "Unknown recommendation type."</p>
+</li>
+</ol>
+<h3 id="current-signal-breakdown-production-data">Current Signal Breakdown (Production Data)</h3>
+<table>
+<thead>
+<tr>
+<th>Signal Type</th>
+<th>Count</th>
+<th>Avg Confidence</th>
+<th>Quality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>face_only</td>
+<td>19,256</td>
+<td>56.3%</td>
+<td>Junk — no corroboration</td>
+</tr>
+<tr>
+<td>face+metadata</td>
+<td>3,298</td>
+<td>63.8%</td>
+<td>Mixed — some real dupes</td>
+</tr>
+<tr>
+<td>stashbox</td>
+<td>185</td>
+<td>100%</td>
+<td>All legitimate</td>
+</tr>
+<tr>
+<td>metadata_only</td>
+<td>14</td>
+<td>52.6%</td>
+<td>Low volume</td>
+</tr>
+</tbody>
+</table>
+<h2 id="goals">Goals</h2>
 <ul>
-<li><strong>Server-side interval definitions</strong>: <code>JobDefinition</code> gets <code>allowed_intervals</code> and <code>description</code> fields. The <code>queue_types</code> API serializes them to the frontend. Single source of truth.</li>
-<li><strong>Tiered interval presets</strong>: Light/Network jobs get frequent options (6h–2w), heavy/slow-changing jobs get infrequent options (1d–1mo).</li>
-<li><strong>Native <code>&lt;select&gt;</code> for interval picker</strong>: Styled to match dark theme. Accessible, zero JS overhead, options come from server.</li>
-<li><strong>Auto-save everywhere</strong>: All settings auto-save with 500ms debounce, except upstream field config (batch checkbox operation keeps explicit Save).</li>
-<li><strong>No new component abstractions</strong>: Use existing CSS classes consistently + add a few new ones. No UI library needed.</li>
-<li><strong>Defaults unchanged</strong>: 24h for DB update + upstream, 168h for duplicates + fingerprints.</li>
+<li>Catch duplicates that Stash's built-in phash dedup misses (different intros/outros, shorter cuts, re-encodes from different sources)</li>
+<li>Produce dramatically fewer, higher-quality recommendations</li>
+<li>Provide actionable UI: side-by-side comparison with merge/delete/dismiss</li>
+<li>Persistent dismissals prevent repeat false positives (key UX advantage over Stash)</li>
 </ul>
-<h2 id="server-changes">Server Changes</h2>
-<h3 id="job_modelspy">job_models.py</h3>
-<p>Add predefined interval tiers:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">INTERVALS_FREQUENT</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="s2">&quot;Every 6 hours&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="s2">&quot;Every 12 hours&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="p">(</span><span class="mi">24</span><span class="p">,</span> <span class="s2">&quot;Every day&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">48</span><span class="p">,</span> <span class="s2">&quot;Every 2 days&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">72</span><span class="p">,</span> <span class="s2">&quot;Every 3 days&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="p">(</span><span class="mi">168</span><span class="p">,</span> <span class="s2">&quot;Every week&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">336</span><span class="p">,</span> <span class="s2">&quot;Every 2 weeks&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">]</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">INTERVALS_INFREQUENT</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="p">(</span><span class="mi">24</span><span class="p">,</span> <span class="s2">&quot;Every day&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">48</span><span class="p">,</span> <span class="s2">&quot;Every 2 days&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">72</span><span class="p">,</span> <span class="s2">&quot;Every 3 days&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="p">(</span><span class="mi">168</span><span class="p">,</span> <span class="s2">&quot;Every week&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">336</span><span class="p">,</span> <span class="s2">&quot;Every 2 weeks&quot;</span><span class="p">),</span> <span class="p">(</span><span class="mi">720</span><span class="p">,</span> <span class="s2">&quot;Every month&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">]</span>
+<h2 id="design">Design</h2>
+<h3 id="phase-1-candidate-generation">Phase 1: Candidate Generation</h3>
+<p>Replace the three current candidate sources with:</p>
+<h4 id="source-1-stash-box-id-grouping-keep-as-is">Source 1: Stash-box ID grouping (keep as-is)</h4>
+<p>Scenes sharing <code>(endpoint, stash_id)</code>. ~188 candidates. All legitimate duplicates.</p>
+<h4 id="source-2-phash-similarity-new-replaces-face-candidates">Source 2: Phash similarity (NEW — replaces face candidates)</h4>
+<p>Query all scene phashes from Stash via <code>get_scenes_with_fingerprints()</code>. Stash computes a 64-bit DCT-based perceptual hash per file, already available for all scenes.</p>
+<ul>
+<li>Convert hex phash strings to 64-bit integers</li>
+<li>Find all scene pairs with Hamming distance ≤ 10 bits</li>
+<li>~24K scenes × 8 bytes = 192KB in memory</li>
+<li>All-pairs comparison using vectorized bitwise XOR + popcount runs in seconds on CPU</li>
+<li>No video decoding or GPU required — uses data Stash already computed</li>
+</ul>
+<p>This replaces the 4M+ face candidate source with a content-similarity signal that's free to compute.</p>
+<h4 id="source-3-metadata-intersection-keep-as-is">Source 3: Metadata intersection (keep as-is)</h4>
+<p>Scenes sharing <code>(studio_id, performer_id)</code> pairs. ~143K candidates. Same logic as today.</p>
+<h4 id="removed-face-fingerprint-candidates">Removed: Face fingerprint candidates</h4>
+<p>Face identity moves from candidate generation to <strong>scoring only</strong>. Having the same performers is corroboration, not evidence of duplication.</p>
+<h3 id="phase-2-scoring">Phase 2: Scoring</h3>
+<h4 id="tier-1-stash-box-id-match-100">Tier 1: Stash-box ID Match → 100%</h4>
+<p>Identical stash-box ID on the same endpoint. Authoritative. No further scoring needed.</p>
+<h4 id="tier-2-strong-phash-match-hamming-4-bits-85-95">Tier 2: Strong phash match (Hamming ≤ 4 bits) → 85-95%</h4>
+<p>Visual content is nearly identical. Highest non-authoritative signal.</p>
+<p>Bonuses:
+- Same date: +3
+- Performer overlap: +3
+- Same studio: +2
+- Duration ratio ≥ 0.3: +2</p>
+<p>Cap: 95%</p>
+<h4 id="tier-3-moderate-phash-match-hamming-5-10-bits-corroboration-60-84">Tier 3: Moderate phash match (Hamming 5-10 bits) + corroboration → 60-84%</h4>
+<p>Phash is close but not definitive. Requires at least one corroborating signal:</p>
+<ul>
+<li>Face corroboration: ≥1 shared performer with &gt;10% proportion in both scenes</li>
+<li>Metadata corroboration: same studio + ≥50% performer overlap, or exact performer match</li>
+<li>Date match: same release date</li>
+</ul>
+<p>Score = phash_base (scaled by Hamming distance) + corroboration_bonus. Cap: 84%.</p>
+<h4 id="tier-4-metadata-face-only-no-phash-match-50-70">Tier 4: Metadata + face only (no phash match) → 50-70%</h4>
+<p>Catches cases phash misses entirely (different intros, shorter cuts from different sources).</p>
+<p>Requires at minimum:
+- Same date + exact performer match → 45 points (strongest metadata signal)
+- Same date + partial performer overlap (Jaccard ≥ 0.5) → 35 points
+- Exact performer match without date → 25 points
+- Same studio → 10 points (mild boost)</p>
+<p>Face corroboration (requires ≥1 actually shared performer):
+- All performers match with proportions within 10% → +15
+- ≥50% performer overlap with proportions within 20% → +10</p>
+<p>Duration penalty (only subtracts, never adds):
+- Ratio &lt; 0.15 (e.g., 3min vs 45min) → -20 points
+- Ratio 0.15-0.30 → -10 points
+- Ratio ≥ 0.30 → no penalty (handles web release 50m vs DVD 25m)</p>
+<p>Cap: 70%</p>
+<h4 id="hard-rules-all-tiers">Hard Rules (all tiers)</h4>
+<ul>
+<li>Face score = 0 when zero shared performers (Jaccard = 0)</li>
+<li>No single non-authoritative signal scores above 70% alone</li>
+<li>Minimum 50% confidence to create any recommendation</li>
+<li>Duration differences never add confidence, only subtract at extremes</li>
+</ul>
+<h3 id="face-scoring-fix">Face Scoring Fix</h3>
+<p>The <code>face_signature_similarity()</code> function must be rewritten:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">face_signature_similarity</span><span class="p">(</span><span class="n">fp_a</span><span class="p">,</span> <span class="n">fp_b</span><span class="p">):</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">shared</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_a</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_b</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">shared</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="s2">&quot;unknown&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">shared</span><span class="p">:</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        <span class="k">return</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">&quot;No shared performers&quot;</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="c1"># Only score based on actually shared performers</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">proportion_diffs</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">shared</span><span class="p">:</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="n">diff</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">fp_a</span><span class="o">.</span><span class="n">faces</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">proportion</span> <span class="o">-</span> <span class="n">fp_b</span><span class="o">.</span><span class="n">faces</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">proportion</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="n">proportion_diffs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">avg_diff</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">proportion_diffs</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">proportion_diffs</span><span class="p">)</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="c1"># Jaccard similarity of performer sets (excluding unknown)</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">all_a</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_a</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;unknown&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">all_b</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_b</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;unknown&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">jaccard</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_a</span> <span class="o">&amp;</span> <span class="n">all_b</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_a</span> <span class="o">|</span> <span class="n">all_b</span><span class="p">)</span> <span class="k">if</span> <span class="p">(</span><span class="n">all_a</span> <span class="o">|</span> <span class="n">all_b</span><span class="p">)</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="c1"># Score: Jaccard drives the base, proportion similarity is a bonus</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="n">base</span> <span class="o">=</span> <span class="n">jaccard</span> <span class="o">*</span> <span class="mf">60.0</span>  <span class="c1"># 0-60 based on cast overlap</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="n">proportion_bonus</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">15.0</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">avg_diff</span> <span class="o">*</span> <span class="mf">4.0</span><span class="p">))</span>  <span class="c1"># 0-15 for close proportions</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">score</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">base</span> <span class="o">+</span> <span class="n">proportion_bonus</span><span class="p">,</span> <span class="mf">75.0</span><span class="p">)</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="k">return</span> <span class="n">score</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shared</span><span class="p">)</span><span class="si">}</span><span class="s2"> shared performers (Jaccard </span><span class="si">{</span><span class="n">jaccard</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2">), </span><span class="si">{</span><span class="n">avg_diff</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> avg proportion diff&quot;</span>
 </code></pre></div>
-<p>Extend <code>JobDefinition</code>:
-- <code>description: str</code> — human-readable description of what the job does
-- <code>allowed_intervals: list[tuple[int, str]]</code> — valid interval options for this job type</p>
-<p>Job descriptions:
-- Database Update: "Checks for updated face recognition data"
-- Upstream Performer Changes: "Detects field changes from stash-box sources"
-- Duplicate Performer Detection: "Finds performers that may be duplicates"
-- Duplicate Scene File Detection: "Finds scenes with identical file fingerprints"
-- Duplicate Scene Detection: "Finds scenes that may be the same content"
-- Fingerprint Generation: "Generates face recognition fingerprints for scenes"</p>
-<p>Interval assignments:
-- <code>INTERVALS_FREQUENT</code>: Database Update, Upstream Performer Changes
-- <code>INTERVALS_INFREQUENT</code>: All three duplicate detectors, Fingerprint Generation</p>
-<h3 id="queue_routerpy">queue_router.py</h3>
-<p>Serialize new fields in <code>queue_types</code> response:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;type_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;database_update&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;display_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Database Update&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Checks for updated face recognition data&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;allowed_intervals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;hours&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Every 6 hours&quot;</span><span class="p">},</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;hours&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Every 12 hours&quot;</span><span class="p">},</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="err">...</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="p">]</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">}</span>
-</code></pre></div></p>
-<h2 id="frontend-changes">Frontend Changes</h2>
-<h3 id="new-css-classes-stash-sensecss">New CSS classes (stash-sense.css)</h3>
-<ul>
-<li><code>.ss-select</code> — styled native <code>&lt;select&gt;</code> matching dark theme (same border/bg/font as <code>.ss-number-input input</code>)</li>
-<li><code>.ss-setting-hint</code> — 13px secondary-color text (replaces 4+ inline style occurrences)</li>
-<li><code>.ss-setting-row-vertical</code> — variant of <code>.ss-setting-row</code> with <code>flex-direction: column</code></li>
-<li><code>.ss-setting-row-header</code> — flex row with space-between for compound row headers</li>
-<li><code>.ss-upstream-fields-wrapper</code> — wrapper for expandable field config area</li>
-<li>Fix <code>.ss-number-input</code> spinner rules: change from <code>opacity: 1</code> to <code>display: none</code> / <code>-webkit-appearance: none</code></li>
-</ul>
-<h3 id="schedule-row-layout">Schedule row layout</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>┌─────────────────────────────────────────────────────────────┐
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>│  Database Update                    [toggle]  [Every day ▾] │
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>│  Checks for updated face recognition data                   │
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>└─────────────────────────────────────────────────────────────┘
+<p>Key changes:
+- Returns 0 when no performers are actually shared
+- Score is based on Jaccard similarity (what fraction of the cast overlaps)
+- Proportion difference only matters for shared performers
+- Capped at 75 (can't create a recommendation alone at 50% threshold without extreme cast overlap)</p>
+<h3 id="plugin-ui">Plugin UI</h3>
+<h4 id="list-card-renderrecommendationcard">List Card (<code>renderRecommendationCard</code>)</h4>
+<p>Add a <code>duplicate_scenes</code> handler showing:
+- Scene A title and Scene B title
+- Confidence badge (color-coded: green ≥80%, yellow ≥60%, gray ≥50%)
+- Primary signal indicator (stashbox / phash / metadata)</p>
+<h4 id="detail-view-renderduplicatescenesdetail">Detail View (<code>renderDuplicateScenesDetail</code>)</h4>
+<p>Side-by-side comparison:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>┌─────────────────────┬─────────────────────┐
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>│  Scene A            │  Scene B            │
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│  [thumbnail]        │  [thumbnail]        │
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│  Title (→ Stash)    │  Title (→ Stash)    │
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│  Studio: X          │  Studio: X          │
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│  Performers: A, B   │  Performers: A, B   │
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│  Date: 2024-01-15   │  Date: 2024-01-15   │
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│  Duration: 45:30    │  Duration: 23:15    │
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│  Files: 1080p 4.2GB │  Files: 720p 1.8GB  │
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│  ○ Keep this scene  │  ○ Keep this scene  │
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>└─────────────────────┴─────────────────────┘
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>Confidence: 92% — High confidence duplicate
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>Signals: Same studio + Exact performer match + Same date
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>[ Merge Scenes ]  [ Delete A ]  [ Delete B ]  [ Dismiss ]
 </code></pre></div>
+<p>Both scenes are fetched from Stash at render time (we store only scene IDs in recommendation details).</p>
+<h4 id="actions">Actions</h4>
+<p><strong>Merge Scenes</strong>: Calls Stash <code>sceneMerge</code> mutation:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">mutation</span><span class="w"> </span><span class="nf">SceneMerge</span><span class="p">(</span><span class="nv">$input</span><span class="p">:</span><span class="w"> </span><span class="nc">SceneMergeInput</span><span class="p">!)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="n">sceneMerge</span><span class="p">(</span><span class="n">input</span><span class="p">:</span><span class="w"> </span><span class="nv">$input</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">count</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">}</span>
+</code></pre></div>
+- <code>destination</code>: selected keeper scene ID
+- <code>source</code>: [other scene ID]
+- <code>play_history: true</code>
+- <code>o_history: true</code>
+- Tags, performers, stash IDs consolidate onto keeper. Files transfer.
+- Resolves recommendation with <code>action: "merged"</code>.</p>
+<p><strong>Delete Scene A / B</strong>: Calls <code>sceneDestroy</code> mutation with confirmation dialog. Resolves recommendation with <code>action: "deleted"</code>.</p>
+<p><strong>Dismiss</strong>: Existing dismiss flow. Persistent — won't resurface.</p>
+<p><strong>Open in Stash</strong>: Direct links to both scenes (<code>/scenes/{id}</code>).</p>
+<h3 id="api-changes">API Changes</h3>
+<p>Add to <code>stash_client_unified.py</code>:
+- <code>merge_scenes(source_ids, destination_id)</code> — wraps <code>sceneMerge</code> mutation
+- <code>delete_scene(scene_id)</code> — wraps <code>sceneDestroy</code> mutation (if not already present)
+- <code>get_scene_details(scene_id)</code> — fetch full scene data for detail view (title, studio, performers, date, duration, files, cover image)</p>
+<p>Add to <code>recommendations_router.py</code>:
+- <code>POST /recommendations/{id}/merge-scenes</code> — merge scenes and resolve recommendation
+- <code>POST /recommendations/{id}/delete-scene</code> — delete a scene and resolve recommendation</p>
+<h3 id="data-migration">Data Migration</h3>
+<p>When this ships:
+1. Clear all existing <code>duplicate_scenes</code> recommendations (they're all junk from the broken scoring)
+2. Bump the analyzer's <code>logic_version</code> to force re-analysis
+3. Clear <code>duplicate_candidates</code> table</p>
+<h3 id="future-enhancements-not-in-scope">Future Enhancements (not in scope)</h3>
 <ul>
-<li>Description is static (what the job does), not echoing the interval</li>
-<li><code>&lt;select&gt;</code> disabled when toggle is off</li>
-<li>Auto-saves on toggle or dropdown change via <code>debouncedSave</code> pattern</li>
-</ul>
-<h3 id="renderschedulescategory-refactor">renderSchedulesCategory() refactor</h3>
-<ul>
-<li>Replace all inline <code>styles: {}</code> with CSS classes</li>
-<li>Replace <code>&lt;input type="number"&gt;</code> with <code>&lt;select&gt;</code> populated from <code>allowed_intervals</code></li>
-<li>Remove per-row Save button, use debounced auto-save</li>
-<li>Use <code>.ss-setting-row</code>, <code>.ss-setting-info</code>, <code>.ss-setting-control</code> consistently</li>
-</ul>
-<h3 id="renderendpointfieldconfig-cleanup">renderEndpointFieldConfig() cleanup</h3>
-<ul>
-<li>Inline style on row wrapper → <code>.ss-setting-row .ss-setting-row-vertical</code></li>
-<li>Inline flex header → <code>.ss-setting-row-header</code></li>
-<li>"Show Fields" button → <code>.ss-btn .ss-btn-sm</code></li>
-<li>Fields wrapper → <code>.ss-upstream-fields-wrapper</code></li>
-<li>Loading/help text → <code>.ss-setting-hint</code></li>
-<li>Keep explicit Save for batch field config (not auto-save)</li>
-<li>No behavioral changes</li>
-</ul>
-<h3 id="other-inline-style-cleanup">Other inline style cleanup</h3>
-<ul>
-<li>Description/help text throughout → <code>.ss-setting-hint</code></li>
-<li>Remove all remaining <code>style:</code> attributes in <code>stash-sense-settings.js</code></li>
-</ul>
-<h2 id="not-in-scope">Not in Scope</h2>
-<ul>
-<li>StashBox provider cards at top of settings page</li>
-<li>Operations tab styling</li>
-<li>API behavior changes beyond serializing new metadata fields</li>
-</ul>
-<h2 id="testing">Testing</h2>
-<ul>
-<li><strong>Unit</strong>: <code>JobDefinition</code> serialization includes <code>description</code> and <code>allowed_intervals</code> in <code>queue_types</code> response</li>
-<li><strong>Unit</strong>: Schedule update API accepts hour values from predefined lists</li>
-<li><strong>Manual</strong>: Visual verification — no inline styles, consistent alignment, dropdown works, auto-save works</li>
-<li><strong>Manual</strong>: Responsive layout at 768px breakpoint</li>
-<li><strong>Manual</strong>: Toggle disables/enables dropdown</li>
-</ul>
-<h2 id="key-files">Key Files</h2>
-<ul>
-<li><code>api/job_models.py</code> — <code>JobDefinition</code> extensions, interval tier constants</li>
-<li><code>api/queue_router.py</code> — serialize new fields</li>
-<li><code>plugin/stash-sense-settings.js</code> — full refactor of schedule + upstream sync rendering</li>
-<li><code>plugin/stash-sense.css</code> — new classes, spinner fix</li>
+<li>Field-level conflict resolution UI during merge (let user pick title from A vs B)</li>
+<li>Multi-point phash fingerprinting (sample phash at 10%, 25%, 50%, 75%, 90% of video duration to catch scenes with different intros)</li>
+<li>Cluster-based dedup (group 3+ scenes as duplicates of each other instead of pairwise)</li>
 </ul>
 
 
