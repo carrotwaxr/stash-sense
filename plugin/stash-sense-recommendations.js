@@ -1571,6 +1571,14 @@
     });
   }
 
+  function disableAllActions(container) {
+    container.querySelectorAll('.ss-detail-actions .ss-btn').forEach(function(b) { b.disabled = true; });
+  }
+
+  function enableAllActions(container) {
+    container.querySelectorAll('.ss-detail-actions .ss-btn').forEach(function(b) { b.disabled = false; });
+  }
+
   async function renderDuplicateScenesDetail(container, rec) {
     const details = rec.details;
     const sceneAId = rec.target_id;
@@ -1675,7 +1683,7 @@
         'Merge scene ' + sourceId + ' into scene ' + keeperId + '? Files, tags, and performers will be consolidated.',
         async function() {
           try {
-            btn.disabled = true;
+            disableAllActions(container);
             btn.textContent = 'Merging...';
             await RecommendationsAPI.mergeScenes(keeperId, [sourceId]);
             await RecommendationsAPI.resolve(rec.id, 'merged', { keeper_id: keeperId, source_id: sourceId });
@@ -1683,7 +1691,7 @@
           } catch (e) {
             btn.textContent = 'Failed: ' + e.message;
             btn.classList.add('ss-btn-error');
-            btn.disabled = false;
+            enableAllActions(container);
           }
         }
       );
@@ -1693,18 +1701,18 @@
     container.querySelector('#ss-delete-a-btn').addEventListener('click', function() {
       const btn = container.querySelector('#ss-delete-a-btn');
       showConfirmModal(
-        'Delete scene ' + sceneAId + ' ("' + escapeHtml(sceneA?.title || '') + '")? This cannot be undone.',
+        'Delete scene ' + sceneAId + ' ("' + escapeHtml(sceneA?.title || '') + '")? The scene and its file will be permanently deleted from disk. This cannot be undone.',
         async function() {
           try {
-            btn.disabled = true;
+            disableAllActions(container);
             btn.textContent = 'Deleting...';
-            await RecommendationsAPI.deleteScene(sceneAId, true);
+            await RecommendationsAPI.deleteScene(sceneAId, false);
             await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: sceneAId, kept_scene_id: sceneBId });
             showSuccessAndReturn(btn, 'Deleted!');
           } catch (e) {
             btn.textContent = 'Failed: ' + e.message;
             btn.classList.add('ss-btn-error');
-            btn.disabled = false;
+            enableAllActions(container);
           }
         },
         { showDontAsk: true, storageKey: 'delete-dup-scene' }
@@ -1715,18 +1723,18 @@
     container.querySelector('#ss-delete-b-btn').addEventListener('click', function() {
       const btn = container.querySelector('#ss-delete-b-btn');
       showConfirmModal(
-        'Delete scene ' + sceneBId + ' ("' + escapeHtml(sceneB?.title || '') + '")? This cannot be undone.',
+        'Delete scene ' + sceneBId + ' ("' + escapeHtml(sceneB?.title || '') + '")? The scene and its file will be permanently deleted from disk. This cannot be undone.',
         async function() {
           try {
-            btn.disabled = true;
+            disableAllActions(container);
             btn.textContent = 'Deleting...';
-            await RecommendationsAPI.deleteScene(sceneBId, true);
+            await RecommendationsAPI.deleteScene(sceneBId, false);
             await RecommendationsAPI.resolve(rec.id, 'deleted', { deleted_scene_id: sceneBId, kept_scene_id: sceneAId });
             showSuccessAndReturn(btn, 'Deleted!');
           } catch (e) {
             btn.textContent = 'Failed: ' + e.message;
             btn.classList.add('ss-btn-error');
-            btn.disabled = false;
+            enableAllActions(container);
           }
         },
         { showDontAsk: true, storageKey: 'delete-dup-scene' }

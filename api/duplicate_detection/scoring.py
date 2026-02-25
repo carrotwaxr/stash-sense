@@ -34,11 +34,6 @@ def check_stashbox_match(scene_a: SceneMetadata, scene_b: SceneMetadata) -> Stas
     return StashboxMatchResult(matched=False)
 
 
-def _has_useful_metadata(scene: SceneMetadata) -> bool:
-    """Check if scene has enough metadata for comparison."""
-    return bool(scene.studio_id or scene.performer_ids)
-
-
 def _jaccard_similarity(set_a: set, set_b: set) -> float:
     """Calculate Jaccard similarity between two sets."""
     if not set_a or not set_b:
@@ -250,8 +245,8 @@ def calculate_duplicate_confidence(
         return None
 
     # Calculate combined confidence
-    if p_score >= 70.0:
-        # Tier 2: Strong phash — phash drives confidence, others are bonuses
+    if phash_distance is not None and phash_distance <= 4:
+        # Tier 2: Strong phash (distance <= 4) — phash drives confidence, others are bonuses
         confidence = p_score + min(meta_sc * 0.15, 5.0) + min(face_sc * 0.1, 5.0)
     elif p_score > 0:
         # Tier 3: Moderate phash — needs corroboration

@@ -365,6 +365,29 @@ class TestCombinedConfidenceRedesign:
         assert match is not None
         assert 70.0 <= match.confidence <= 95.0
 
+    def test_tier2_boundary_distance_4(self):
+        """Distance 4 should be Tier 2 (strong phash), not Tier 3."""
+        from duplicate_detection.scoring import calculate_duplicate_confidence
+
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        match = calculate_duplicate_confidence(a, b, phash_distance=4)
+        assert match is not None
+        # Tier 2: phash drives confidence with bonuses. Should be well above 50%.
+        assert match.confidence >= 55.0
+
+    def test_tier3_starts_at_distance_5(self):
+        """Distance 5 should be Tier 3 (moderate phash needing corroboration)."""
+        from duplicate_detection.scoring import calculate_duplicate_confidence
+
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        match_d4 = calculate_duplicate_confidence(a, b, phash_distance=4)
+        match_d5 = calculate_duplicate_confidence(a, b, phash_distance=5)
+        # Distance 5 without corroboration should score lower than distance 4
+        if match_d5 is not None:
+            assert match_d4.confidence > match_d5.confidence
+
     def test_moderate_phash_alone_scores_low(self):
         from duplicate_detection.scoring import calculate_duplicate_confidence
 

@@ -72,6 +72,10 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         super().__init__(stash, rec_db, **kwargs)
         self.min_confidence = min_confidence
         self.batch_size = batch_size
+        # NOTE: _phash_distances is populated during _generate_candidates() and consumed
+        # during _score_candidates(). It is only in memory — not persisted to SQLite.
+        # This works because both phases run in the same run() call. If the analyzer
+        # crashes between phases, candidates are persisted but distances must be regenerated.
         self._phash_distances: dict[tuple[int, int], int] = {}
 
     async def run(self, incremental: bool = True) -> DuplicateScenesResult:
@@ -81,6 +85,12 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         Note: Incremental mode is not yet supported — always runs a full scan.
         """
         run_id = self.run_id
+
+        # Auto-resolve stale pending recommendations from previous runs.
+        # New analysis will create fresh recommendations with updated scoring.
+        stale_count = self._resolve_stale_recommendations()
+        if stale_count:
+            logger.warning(f"Auto-resolved {stale_count} stale duplicate_scenes recommendations from previous run")
 
         # Phase 1: Generate candidates
         logger.warning("Phase 1: Generating candidates...")
@@ -191,7 +201,9 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                 logger.warning(f"  Phash: 0 candidates (from {stored} scenes with phash)")
 
         # Source C: Metadata candidates (studio + performer index)
-        # Requires a separate pass over get_scenes_for_fingerprinting for studio/performer data
+        # Requires a separate pass because get_scenes_with_fingerprints does not include
+        # studio or performer data (different GraphQL query). Consolidating would require
+        # extending that query, but the two queries serve different purposes.
         combined_index: dict[tuple[str, str], set[int]] = {}
         offset = 0
         while True:
@@ -324,6 +336,23 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
             await asyncio.sleep(0)
 
         return scored, created, total_scenes, scenes_with_fp, coverage_pct
+
+    def _resolve_stale_recommendations(self) -> int:
+        """Auto-resolve all pending duplicate_scenes recommendations.
+        Called at the start of each run so old results from previous (potentially
+        broken) scoring don't persist alongside new ones."""
+        with self.rec_db._connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE recommendations
+                SET status = 'resolved',
+                    resolution_action = 'auto_resolved_reanalysis',
+                    resolved_at = datetime('now'),
+                    updated_at = datetime('now')
+                WHERE type = 'duplicate_scenes' AND status = 'pending'
+                """
+            )
+            return cursor.rowcount
 
     async def _load_scene_metadata(
         self, scene_ids: set[int]

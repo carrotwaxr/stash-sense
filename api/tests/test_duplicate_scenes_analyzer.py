@@ -599,6 +599,108 @@ class TestCandidateGeneration:
         assert count == 1
 
 
+class TestPhashCandidateDB:
+    """Tests for store_scene_phashes and generate_phash_candidates."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    def test_store_scene_phashes_returns_count(self, db):
+        count = db.store_scene_phashes([(1, "eb716d2e0149f2d1"), (2, "eb716d2e0149f2d0")])
+        assert count == 2
+
+    def test_store_scene_phashes_skips_invalid(self, db):
+        count = db.store_scene_phashes([(1, "eb716d2e0149f2d1"), (2, "not_hex"), (3, None)])
+        assert count == 1
+
+    def test_generate_phash_candidates_finds_close_pair(self, db):
+        # Distance 1 between these two phashes
+        db.store_scene_phashes([(1, "eb716d2e0149f2d1"), (2, "eb716d2e0149f2d0")])
+        candidates = db.generate_phash_candidates(max_distance=10)
+        assert len(candidates) == 1
+        assert candidates[0] == (1, 2, 1)
+
+    def test_generate_phash_candidates_excludes_distant_pair(self, db):
+        # Distance 64 (all bits different)
+        db.store_scene_phashes([(1, "0000000000000000"), (2, "ffffffffffffffff")])
+        candidates = db.generate_phash_candidates(max_distance=10)
+        assert len(candidates) == 0
+
+    def test_generate_phash_candidates_canonical_order(self, db):
+        db.store_scene_phashes([(99, "eb716d2e0149f2d1"), (1, "eb716d2e0149f2d0")])
+        candidates = db.generate_phash_candidates(max_distance=10)
+        assert candidates[0][0] < candidates[0][1]
+
+    def test_generate_phash_candidates_empty_when_no_data(self, db):
+        candidates = db.generate_phash_candidates(max_distance=10)
+        assert candidates == []
+
+    def test_generate_phash_candidates_respects_max_distance(self, db):
+        # Distance 1 pair
+        db.store_scene_phashes([(1, "eb716d2e0149f2d1"), (2, "eb716d2e0149f2d0")])
+        assert len(db.generate_phash_candidates(max_distance=0)) == 0
+        assert len(db.generate_phash_candidates(max_distance=1)) == 1
+
+
+class TestStaleRecommendationCleanup:
+    """Tests for auto-resolving stale duplicate_scenes recommendations on re-analysis."""
+
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        stash.get_scenes_with_fingerprints = AsyncMock(return_value=([], 0))
+        return stash
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.mark.asyncio
+    async def test_stale_recs_auto_resolved_on_new_run(self, mock_stash, db):
+        """Pending duplicate_scenes recommendations should be auto-resolved when analysis re-runs."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        # Create a stale recommendation manually
+        with db._connection() as conn:
+            conn.execute(
+                """INSERT INTO recommendations (type, target_type, target_id, details, confidence, status, created_at, updated_at)
+                VALUES ('duplicate_scenes', 'scene', '1', '{}', 0.5, 'pending', datetime('now'), datetime('now'))"""
+            )
+
+        # Run analyzer (no scenes, so no new recs)
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        await analyzer.run()
+
+        # Old recommendation should be resolved
+        recs = db.get_recommendations(type="duplicate_scenes", status="pending")
+        assert len(recs) == 0
+
+    @pytest.mark.asyncio
+    async def test_dismissed_recs_not_affected(self, mock_stash, db):
+        """Dismissed recommendations should not be touched by stale cleanup."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        with db._connection() as conn:
+            conn.execute(
+                """INSERT INTO recommendations (type, target_type, target_id, details, confidence, status, created_at, updated_at)
+                VALUES ('duplicate_scenes', 'scene', '1', '{}', 0.5, 'dismissed', datetime('now'), datetime('now'))"""
+            )
+
+        run_id = db.start_analysis_run("duplicate_scenes")
+        analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
+        await analyzer.run()
+
+        # Dismissed rec should still be dismissed
+        with db._connection() as conn:
+            row = conn.execute("SELECT status FROM recommendations WHERE target_id = '1'").fetchone()
+            assert row["status"] == "dismissed"
+
+
 class TestAnalysisJobRunId:
     """Verify AnalysisJob creates a real analysis_runs entry and passes it to the analyzer."""
 
