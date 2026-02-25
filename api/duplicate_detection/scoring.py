@@ -64,54 +64,63 @@ def metadata_score(scene_a: SceneMetadata, scene_b: SceneMetadata) -> tuple[floa
     """
     Calculate metadata similarity score (0-60).
 
-    Requires a base signal (studio or performers) to return non-zero.
-    Duration and date are confirmation multipliers.
+    Date + performers is the strongest signal. Studio is a mild boost.
+    Duration only penalizes at extremes, never adds confidence.
     """
-    if not _has_useful_metadata(scene_a) or not _has_useful_metadata(scene_b):
-        return 0.0, "Insufficient metadata"
-
-    base = 0.0
+    score = 0.0
     reasons = []
 
-    # Base signals
-    if scene_a.studio_id and scene_b.studio_id and scene_a.studio_id == scene_b.studio_id:
-        base += 20.0
-        reasons.append("Same studio")
+    # Date comparison
+    days = _days_between(scene_a.date, scene_b.date)
+    same_date = days is not None and days == 0
+    close_date = days is not None and days <= 7
 
+    # Performer comparison
     performer_overlap = _jaccard_similarity(scene_a.performer_ids, scene_b.performer_ids)
-    if performer_overlap == 1.0 and scene_a.performer_ids:
-        base += 20.0
+    exact_performers = performer_overlap == 1.0 and bool(scene_a.performer_ids)
+    partial_performers = performer_overlap >= 0.5
+
+    # Primary scoring: date + performers is strongest
+    if same_date and exact_performers:
+        score += 45.0
+        reasons.append("Same date + exact performer match")
+    elif same_date and partial_performers:
+        score += 35.0
+        reasons.append(f"Same date + performers overlap ({performer_overlap:.0%})")
+    elif close_date and exact_performers:
+        score += 35.0
+        reasons.append("Release dates within 7 days + exact performer match")
+    elif exact_performers:
+        score += 25.0
         reasons.append("Exact performer match")
-    elif performer_overlap >= 0.5:
-        base += 12.0
+    elif same_date and (scene_a.performer_ids or scene_b.performer_ids):
+        score += 20.0
+        reasons.append("Same date")
+    elif partial_performers:
+        score += 15.0
         reasons.append(f"Performers overlap ({performer_overlap:.0%})")
 
-    if base == 0:
-        return 0.0, "No studio or performer match"
+    # Studio boost (mild, not decisive)
+    if scene_a.studio_id and scene_b.studio_id and scene_a.studio_id == scene_b.studio_id:
+        score += 10.0
+        reasons.append("Same studio")
 
-    # Confirmation multipliers
-    multiplier = 1.0
-
-    days = _days_between(scene_a.date, scene_b.date)
-    if days is not None:
-        if days == 0:
-            multiplier += 0.5
-            reasons.append("Same release date")
-        elif days <= 7:
-            multiplier += 0.3
-            reasons.append("Release dates within 7 days")
-
+    # Duration penalty (only subtracts, never adds)
     if scene_a.duration_seconds and scene_b.duration_seconds:
-        diff = abs(scene_a.duration_seconds - scene_b.duration_seconds)
-        if diff <= 5:
-            multiplier += 0.5
-            reasons.append("Duration within 5s")
-        elif diff <= 30:
-            multiplier += 0.3
-            reasons.append("Duration within 30s")
+        shorter = min(scene_a.duration_seconds, scene_b.duration_seconds)
+        longer = max(scene_a.duration_seconds, scene_b.duration_seconds)
+        ratio = shorter / longer if longer > 0 else 1.0
+        if ratio < 0.15:
+            score -= 20.0
+            reasons.append("Duration ratio < 15% (penalty -20)")
+        elif ratio < 0.30:
+            score -= 10.0
+            reasons.append("Duration ratio < 30% (penalty -10)")
 
-    score = min(base * multiplier, 60.0)
-    return score, " + ".join(reasons)
+    if not reasons:
+        return 0.0, "No metadata signals"
+
+    return min(max(score, 0.0), 60.0), " + ".join(reasons)
 
 
 def face_signature_similarity(

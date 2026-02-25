@@ -3,92 +3,86 @@
 
 
 class TestMetadataScore:
-    """Tests for metadata_score function."""
+    """Tests for revised metadata scoring with date as strongest signal."""
 
-    def test_same_studio_same_date_similar_duration(self):
-        from duplicate_detection.scoring import metadata_score
+    def _scene(self, **kwargs):
         from duplicate_detection.models import SceneMetadata
 
-        scene_a = SceneMetadata(
-            scene_id="1",
-            studio_id="s1",
-            performer_ids={"p1", "p2"},
-            date="2024-01-15",
-            duration_seconds=1935,
-        )
-        scene_b = SceneMetadata(
-            scene_id="2",
-            studio_id="s1",
-            performer_ids={"p1", "p2"},
-            date="2024-01-15",
-            duration_seconds=1938,  # Within 5s
-        )
+        defaults = dict(scene_id="1", studio_id=None, performer_ids=set(), date=None, duration_seconds=None)
+        defaults.update(kwargs)
+        return SceneMetadata(**defaults)
 
-        score, reasoning = metadata_score(scene_a, scene_b)
-
-        # Base: 20 (studio) + 20 (exact performers) = 40
-        # Multiplier: 1.0 + 0.5 (same date) + 0.5 (duration within 5s) = 2.0
-        # Total: 40 * 2.0 = 80, capped at 60
-        assert score == 60.0
-        assert "Same studio" in reasoning
-        assert "Exact performer match" in reasoning
-
-    def test_no_base_signal_returns_zero(self):
+    def test_same_date_exact_performers_highest_score(self):
         from duplicate_detection.scoring import metadata_score
-        from duplicate_detection.models import SceneMetadata
 
-        scene_a = SceneMetadata(scene_id="1", performer_ids={"p1"})
-        scene_b = SceneMetadata(scene_id="2", performer_ids={"p2"})  # Different performer
+        a = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1", "p2"}, studio_id="s1")
+        b = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1", "p2"}, studio_id="s1")
+        score, reason = metadata_score(a, b)
+        assert score >= 55.0  # 45 + 10 studio
+        assert "Same date" in reason
 
-        score, reasoning = metadata_score(scene_a, scene_b)
+    def test_same_date_partial_performers(self):
+        from duplicate_detection.scoring import metadata_score
 
+        # Jaccard = 2/3 = 67% (>= 50% threshold)
+        a = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1", "p2"})
+        b = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1", "p2", "p3"})
+        score, reason = metadata_score(a, b)
+        assert 35.0 <= score <= 50.0
+
+    def test_exact_performers_no_date(self):
+        from duplicate_detection.scoring import metadata_score
+
+        a = self._scene(scene_id="1", performer_ids={"p1", "p2"})
+        b = self._scene(scene_id="2", performer_ids={"p1", "p2"})
+        score, reason = metadata_score(a, b)
+        assert 25.0 <= score <= 40.0
+
+    def test_studio_only_mild_boost(self):
+        from duplicate_detection.scoring import metadata_score
+
+        a = self._scene(scene_id="1", studio_id="s1")
+        b = self._scene(scene_id="2", studio_id="s1")
+        score, reason = metadata_score(a, b)
+        assert score == 10.0
+
+    def test_no_metadata_returns_zero(self):
+        from duplicate_detection.scoring import metadata_score
+
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        score, _ = metadata_score(a, b)
         assert score == 0.0
-        assert "No studio or performer match" in reasoning
 
-    def test_insufficient_metadata(self):
+    def test_duration_penalty_extreme(self):
         from duplicate_detection.scoring import metadata_score
-        from duplicate_detection.models import SceneMetadata
 
-        scene_a = SceneMetadata(scene_id="1")  # No useful metadata
-        scene_b = SceneMetadata(scene_id="2")
+        a = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1"}, duration_seconds=180)
+        b = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1"}, duration_seconds=2700)
+        score_with_dur, reason = metadata_score(a, b)
+        a_no_dur = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1"})
+        b_no_dur = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1"})
+        score_no_dur, _ = metadata_score(a_no_dur, b_no_dur)
+        assert score_with_dur < score_no_dur
 
-        score, reasoning = metadata_score(scene_a, scene_b)
-
-        assert score == 0.0
-        assert "Insufficient metadata" in reasoning
-
-    def test_partial_performer_overlap(self):
+    def test_duration_no_penalty_web_vs_dvd(self):
         from duplicate_detection.scoring import metadata_score
-        from duplicate_detection.models import SceneMetadata
 
-        scene_a = SceneMetadata(scene_id="1", performer_ids={"p1", "p2", "p3"})
-        scene_b = SceneMetadata(scene_id="2", performer_ids={"p1", "p2"})  # 2/3 overlap
+        a = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1"}, duration_seconds=3000)
+        b = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1"}, duration_seconds=1500)
+        score_with_dur, _ = metadata_score(a, b)
+        a_no_dur = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1"})
+        b_no_dur = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1"})
+        score_no_dur, _ = metadata_score(a_no_dur, b_no_dur)
+        assert score_with_dur == score_no_dur  # ratio 0.5, no penalty
 
-        score, reasoning = metadata_score(scene_a, scene_b)
-
-        # Jaccard = 2/3 = 0.67, which is >= 0.5
-        # Base: 12 (partial overlap)
-        # No date or duration to multiply
-        assert score == 12.0
-        assert "Performers overlap" in reasoning
-
-    def test_date_within_7_days(self):
+    def test_cap_at_60(self):
         from duplicate_detection.scoring import metadata_score
-        from duplicate_detection.models import SceneMetadata
 
-        scene_a = SceneMetadata(
-            scene_id="1", studio_id="s1", date="2024-01-15"
-        )
-        scene_b = SceneMetadata(
-            scene_id="2", studio_id="s1", date="2024-01-20"  # 5 days later
-        )
-
-        score, reasoning = metadata_score(scene_a, scene_b)
-
-        # Base: 20 (studio)
-        # Multiplier: 1.0 + 0.3 (within 7 days) = 1.3
-        assert score == 26.0
-        assert "Release dates within 7 days" in reasoning
+        a = self._scene(scene_id="1", date="2024-01-15", performer_ids={"p1", "p2"}, studio_id="s1")
+        b = self._scene(scene_id="2", date="2024-01-15", performer_ids={"p1", "p2"}, studio_id="s1")
+        score, _ = metadata_score(a, b)
+        assert score <= 60.0
 
 
 class TestStashboxMatch:
