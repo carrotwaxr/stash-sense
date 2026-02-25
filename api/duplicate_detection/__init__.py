@@ -13,6 +13,8 @@ from .scoring import (
     metadata_score,
     face_signature_similarity,
     calculate_duplicate_confidence,
+    hamming_distance,
+    phash_score,
     StashboxMatchResult,
 )
 
@@ -27,5 +29,7 @@ __all__ = [
     "metadata_score",
     "face_signature_similarity",
     "calculate_duplicate_confidence",
+    "hamming_distance",
+    "phash_score",
     "StashboxMatchResult",
 ]

@@ -283,63 +283,135 @@ class TestFaceSignatureSimilarity:
         assert score <= 75.0
 
 
-class TestCombinedConfidence:
-    """Tests for calculate_duplicate_confidence function."""
+class TestPhashScore:
+    def test_identical_phash(self):
+        from duplicate_detection.scoring import phash_score
 
-    def test_stashbox_match_returns_100(self):
+        score, reason = phash_score(0)
+        assert score >= 85.0
+
+    def test_very_close_phash(self):
+        from duplicate_detection.scoring import phash_score
+
+        score, _ = phash_score(3)
+        assert 60.0 <= score <= 90.0
+
+    def test_moderate_phash(self):
+        from duplicate_detection.scoring import phash_score
+
+        score, _ = phash_score(8)
+        assert 20.0 <= score <= 45.0
+
+    def test_distant_phash(self):
+        from duplicate_detection.scoring import phash_score
+
+        score, _ = phash_score(11)
+        assert score == 0.0
+
+    def test_none_returns_zero(self):
+        from duplicate_detection.scoring import phash_score
+
+        score, _ = phash_score(None)
+        assert score == 0.0
+
+
+class TestHammingDistance:
+    def test_identical(self):
+        from duplicate_detection.scoring import hamming_distance
+
+        assert hamming_distance("eb716d2e0149f2d1", "eb716d2e0149f2d1") == 0
+
+    def test_one_bit_diff(self):
+        from duplicate_detection.scoring import hamming_distance
+
+        assert hamming_distance("eb716d2e0149f2d1", "eb716d2e0149f2d0") == 1
+
+    def test_completely_different(self):
+        from duplicate_detection.scoring import hamming_distance
+
+        assert hamming_distance("0000000000000000", "ffffffffffffffff") == 64
+
+    def test_none_handling(self):
+        from duplicate_detection.scoring import hamming_distance
+
+        assert hamming_distance(None, "eb716d2e0149f2d1") is None
+        assert hamming_distance("eb716d2e0149f2d1", None) is None
+
+
+class TestCombinedConfidenceRedesign:
+    def _scene(self, **kwargs):
+        from duplicate_detection.models import SceneMetadata
+
+        defaults = dict(scene_id="1", studio_id=None, performer_ids=set(), date=None, duration_seconds=None, stash_ids=[])
+        defaults.update(kwargs)
+        return SceneMetadata(**defaults)
+
+    def test_stashbox_match_still_100(self):
         from duplicate_detection.scoring import calculate_duplicate_confidence
-        from duplicate_detection.models import SceneMetadata, StashID
+        from duplicate_detection.models import StashID
 
-        scene_a = SceneMetadata(
-            scene_id="1",
-            stash_ids=[StashID("https://stashdb.org/graphql", "abc-123")],
-        )
-        scene_b = SceneMetadata(
-            scene_id="2",
-            stash_ids=[StashID("https://stashdb.org/graphql", "abc-123")],
-        )
+        a = self._scene(scene_id="1", stash_ids=[StashID("https://stashdb.org", "abc")])
+        b = self._scene(scene_id="2", stash_ids=[StashID("https://stashdb.org", "abc")])
+        match = calculate_duplicate_confidence(a, b)
+        assert match is not None
+        assert match.confidence == 100.0
 
-        result = calculate_duplicate_confidence(scene_a, scene_b, None, None)
-
-        assert result is not None
-        assert result.confidence == 100.0
-        assert result.signal_breakdown.stashbox_match is True
-
-    def test_combined_face_and_metadata(self):
+    def test_strong_phash_scores_high(self):
         from duplicate_detection.scoring import calculate_duplicate_confidence
-        from duplicate_detection.models import SceneMetadata, SceneFingerprint, FaceAppearance
 
-        scene_a = SceneMetadata(scene_id="1", studio_id="s1")
-        scene_b = SceneMetadata(scene_id="2", studio_id="s1")
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        match = calculate_duplicate_confidence(a, b, phash_distance=2)
+        assert match is not None
+        assert 70.0 <= match.confidence <= 95.0
 
-        fp_a = SceneFingerprint(
-            stash_scene_id=1,
-            faces={"stashdb:p1": FaceAppearance("stashdb:p1", 20, 0.9, 1.0)},
-            total_faces_detected=20,
-            frames_analyzed=40,
-        )
-        fp_b = SceneFingerprint(
-            stash_scene_id=2,
-            faces={"stashdb:p1": FaceAppearance("stashdb:p1", 22, 0.88, 1.0)},
-            total_faces_detected=22,
-            frames_analyzed=40,
-        )
+    def test_moderate_phash_alone_scores_low(self):
+        from duplicate_detection.scoring import calculate_duplicate_confidence
 
-        result = calculate_duplicate_confidence(scene_a, scene_b, fp_a, fp_b)
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        match = calculate_duplicate_confidence(a, b, phash_distance=8)
+        # Without corroboration, score = phash * 0.6 ≈ 33 * 0.6 ≈ 20
+        assert match is None or match.confidence < 50.0
 
-        assert result is not None
-        # Face score should be high (same performer, same proportion)
-        # Metadata score = 20 (same studio)
-        # Combined should be capped at 95
-        assert 50.0 <= result.confidence <= 95.0
-        assert result.signal_breakdown.stashbox_match is False
+    def test_moderate_phash_with_metadata_scores_well(self):
+        from duplicate_detection.scoring import calculate_duplicate_confidence
+
+        a = self._scene(scene_id="1", studio_id="s1", performer_ids={"p1"}, date="2024-01-15")
+        b = self._scene(scene_id="2", studio_id="s1", performer_ids={"p1"}, date="2024-01-15")
+        match = calculate_duplicate_confidence(a, b, phash_distance=8)
+        assert match is not None
+        assert match.confidence >= 50.0
+
+    def test_metadata_only_catches_different_intros(self):
+        from duplicate_detection.scoring import calculate_duplicate_confidence
+
+        a = self._scene(scene_id="1", studio_id="s1", performer_ids={"p1", "p2"}, date="2024-01-15")
+        b = self._scene(scene_id="2", studio_id="s1", performer_ids={"p1", "p2"}, date="2024-01-15")
+        match = calculate_duplicate_confidence(a, b)
+        assert match is not None
+        assert match.confidence >= 50.0
+
+    def test_no_signals_returns_none(self):
+        from duplicate_detection.scoring import calculate_duplicate_confidence
+
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        match = calculate_duplicate_confidence(a, b)
+        assert match is None
 
     def test_same_scene_returns_none(self):
         from duplicate_detection.scoring import calculate_duplicate_confidence
-        from duplicate_detection.models import SceneMetadata
 
-        scene = SceneMetadata(scene_id="1")
+        a = self._scene(scene_id="1")
+        match = calculate_duplicate_confidence(a, a)
+        assert match is None
 
-        result = calculate_duplicate_confidence(scene, scene, None, None)
+    def test_signal_breakdown_includes_phash(self):
+        from duplicate_detection.scoring import calculate_duplicate_confidence
 
-        assert result is None
+        a = self._scene(scene_id="1")
+        b = self._scene(scene_id="2")
+        match = calculate_duplicate_confidence(a, b, phash_distance=2)
+        assert match is not None
+        assert match.signal_breakdown.phash_distance == 2

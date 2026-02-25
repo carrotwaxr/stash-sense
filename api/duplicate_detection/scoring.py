@@ -162,22 +162,56 @@ def face_signature_similarity(
     return score, reason
 
 
+def hamming_distance(phash_a: Optional[str], phash_b: Optional[str]) -> Optional[int]:
+    """Calculate Hamming distance between two hex-encoded 64-bit phashes."""
+    if phash_a is None or phash_b is None:
+        return None
+    try:
+        xor = int(phash_a, 16) ^ int(phash_b, 16)
+        return bin(xor).count("1")
+    except (ValueError, TypeError):
+        return None
+
+
+def phash_score(distance: Optional[int]) -> tuple[float, str]:
+    """
+    Calculate phash similarity score (0-85) from Hamming distance.
+    Distance 0 = identical (85), distance 10 = weak (20), distance >10 = 0.
+    Linear interpolation: 85 - (distance * 6.5)
+    """
+    if distance is None:
+        return 0.0, "No phash available"
+    if distance > 10:
+        return 0.0, f"Phash distance {distance} (too far)"
+
+    score = 85.0 - (distance * 6.5)
+    if distance == 0:
+        reason = "Identical phash"
+    elif distance <= 4:
+        reason = f"Very similar phash (distance {distance})"
+    elif distance <= 7:
+        reason = f"Moderately similar phash (distance {distance})"
+    else:
+        reason = f"Weak phash similarity (distance {distance})"
+
+    return score, reason
+
+
 def calculate_duplicate_confidence(
     scene_a: SceneMetadata,
     scene_b: SceneMetadata,
-    fp_a: Optional[SceneFingerprint],
-    fp_b: Optional[SceneFingerprint],
+    fp_a: Optional[SceneFingerprint] = None,
+    fp_b: Optional[SceneFingerprint] = None,
+    phash_distance: Optional[int] = None,
 ) -> Optional[DuplicateMatch]:
     """
     Calculate overall duplicate confidence combining all signals.
-
-    Returns None if scenes are the same or confidence is too low to consider.
+    Tiered: stashbox (100%), strong phash (85-95%), moderate phash+corroboration (60-84%), metadata+face (50-70%).
     """
-    # Guard: same scene
     if scene_a.scene_id == scene_b.scene_id:
         return None
 
-    # Tier 1: Authoritative stash-box match
+    # Tier 1: Stash-box ID match
     stashbox = check_stashbox_match(scene_a, scene_b)
     if stashbox.matched:
         return DuplicateMatch(
@@ -188,6 +222,7 @@ def calculate_duplicate_confidence(
             signal_breakdown=SignalBreakdown(
                 stashbox_match=True,
                 stashbox_endpoint=stashbox.endpoint,
+                phash_distance=None,
                 face_score=0.0,
                 face_reasoning="",
                 metadata_score=0.0,
@@ -195,48 +230,58 @@ def calculate_duplicate_confidence(
             ),
         )
 
-    # Tier 2: Face + Metadata signals
-    face_score = 0.0
-    face_reasoning = "No fingerprint available"
+    # Compute individual signals
+    p_score, p_reasoning = phash_score(phash_distance)
 
+    face_sc = 0.0
+    face_reasoning = "No fingerprint available"
     if fp_a and fp_b:
         if fp_a.total_faces_detected == 0 and fp_b.total_faces_detected == 0:
             face_reasoning = "No faces detected in either scene"
         elif fp_a.total_faces_detected == 0 or fp_b.total_faces_detected == 0:
             face_reasoning = "Asymmetric face detection"
         else:
-            face_score, face_reasoning = face_signature_similarity(fp_a, fp_b)
+            face_sc, face_reasoning = face_signature_similarity(fp_a, fp_b)
 
-    meta_score, meta_reasoning = metadata_score(scene_a, scene_b)
+    meta_sc, meta_reasoning = metadata_score(scene_a, scene_b)
 
     # No signals = no match
-    if face_score == 0 and meta_score == 0:
+    if p_score == 0 and face_sc == 0 and meta_sc == 0:
         return None
 
-    # Combine with diminishing returns
-    primary = max(face_score, meta_score)
-    secondary = min(face_score, meta_score)
-    combined = primary + (secondary * 0.3)
+    # Calculate combined confidence
+    if p_score >= 70.0:
+        # Tier 2: Strong phash — phash drives confidence, others are bonuses
+        confidence = p_score + min(meta_sc * 0.15, 5.0) + min(face_sc * 0.1, 5.0)
+    elif p_score > 0:
+        # Tier 3: Moderate phash — needs corroboration
+        corroboration = max(meta_sc, face_sc)
+        if corroboration > 0:
+            confidence = p_score + corroboration * 0.4
+        else:
+            confidence = p_score * 0.6  # Unconfirmed moderate phash
+    else:
+        # Tier 4: No phash — metadata + face only
+        primary = max(meta_sc, face_sc)
+        secondary = min(meta_sc, face_sc)
+        confidence = primary + secondary * 0.3
 
-    # Cap at 95% without stash-box confirmation
-    confidence = min(combined, 95.0)
+    confidence = min(confidence, 95.0)
 
-    # Build reasoning
     reasoning = []
-    if face_score > 0:
+    if p_score > 0:
+        reasoning.append(p_reasoning)
+    if face_sc > 0:
         reasoning.append(f"Face analysis: {face_reasoning}")
-    if meta_score > 0:
+    if meta_sc > 0:
         reasoning.append(f"Metadata: {meta_reasoning}")
 
-    # Add confidence qualifier
     if confidence >= 80:
         reasoning.insert(0, "High confidence duplicate")
     elif confidence >= 50:
         reasoning.insert(0, "Likely duplicate")
-    elif confidence >= 30:
-        reasoning.insert(0, "Possible duplicate")
     else:
-        reasoning.insert(0, "Low confidence match")
+        reasoning.insert(0, "Possible duplicate")
 
     return DuplicateMatch(
         scene_a_id=int(scene_a.scene_id),
@@ -246,9 +291,10 @@ def calculate_duplicate_confidence(
         signal_breakdown=SignalBreakdown(
             stashbox_match=False,
             stashbox_endpoint=None,
-            face_score=face_score,
+            phash_distance=phash_distance,
+            face_score=face_sc,
             face_reasoning=face_reasoning,
-            metadata_score=meta_score,
+            metadata_score=meta_sc,
             metadata_reasoning=meta_reasoning,
         ),
     )
