@@ -307,10 +307,14 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                 match = calculate_duplicate_confidence(scene_a, scene_b, fp_a, fp_b, phash_distance=phash_dist)
 
                 if match and match.confidence >= self.min_confidence:
+                    # target_id encodes the canonical pair so UNIQUE(type, target_type, target_id)
+                    # allows each scene to appear in multiple duplicate pairs.
+                    pair_target = f"{match.scene_a_id}:{match.scene_b_id}"
                     rec_id = self.create_recommendation(
                         target_type="scene",
-                        target_id=str(match.scene_a_id),
+                        target_id=pair_target,
                         details={
+                            "scene_a_id": match.scene_a_id,
                             "scene_b_id": match.scene_b_id,
                             "confidence": match.confidence,
                             "reasoning": match.reasoning,
@@ -335,19 +339,16 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
         return scored, created, total_scenes, scenes_with_fp, coverage_pct
 
     def _resolve_stale_recommendations(self) -> int:
-        """Auto-resolve all pending duplicate_scenes recommendations.
-        Called at the start of each run so old results from previous (potentially
-        broken) scoring don't persist alongside new ones."""
+        """Delete all pending duplicate_scenes recommendations from previous runs.
+
+        Must DELETE (not just UPDATE status) because the recommendations table has
+        UNIQUE(type, target_type, target_id). Resolved rows would block new INSERTs
+        for the same pairs, causing all re-detected duplicates to be silently dropped.
+        Dismissed recommendations are preserved — is_dismissed() prevents re-creation.
+        """
         with self.rec_db._connection() as conn:
             cursor = conn.execute(
-                """
-                UPDATE recommendations
-                SET status = 'resolved',
-                    resolution_action = 'auto_resolved_reanalysis',
-                    resolved_at = datetime('now'),
-                    updated_at = datetime('now')
-                WHERE type = 'duplicate_scenes' AND status = 'pending'
-                """
+                "DELETE FROM recommendations WHERE type = 'duplicate_scenes' AND status = 'pending'"
             )
             return cursor.rowcount
 

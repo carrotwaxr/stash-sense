@@ -1120,7 +1120,7 @@
               <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
             </div>
             <div class="ss-rec-card-info">
-              <div class="ss-rec-card-title">Scene ${rec.target_id} &harr; Scene ${d.scene_b_id}</div>
+              <div class="ss-rec-card-title">Scene ${d.scene_a_id || rec.target_id} &harr; Scene ${d.scene_b_id}</div>
               <div class="ss-rec-card-subtitle">
                 <span style="color: ${confColor}">${Math.round(conf)}% confidence</span>
                 &middot; ${primarySignal}
@@ -1581,7 +1581,7 @@
 
   async function renderDuplicateScenesDetail(container, rec) {
     const details = rec.details;
-    const sceneAId = rec.target_id;
+    const sceneAId = String(details.scene_a_id || rec.target_id);
     const sceneBId = String(details.scene_b_id);
 
     container.innerHTML = '<div class="ss-loading">Loading scene details...</div>';

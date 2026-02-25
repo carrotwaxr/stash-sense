@@ -215,11 +215,11 @@ class TestDuplicateScenesAnalyzer:
             )
         )
 
-        # Dismiss scene 1 for duplicate_scenes
+        # Dismiss the pair 1:2 for duplicate_scenes (target_id encodes both scene IDs)
         with rec_db._connection() as conn:
             conn.execute(
                 "INSERT INTO dismissed_targets (type, target_type, target_id) VALUES (?, ?, ?)",
-                ("duplicate_scenes", "scene", "1"),
+                ("duplicate_scenes", "scene", "1:2"),
             )
 
         run_id = rec_db.start_analysis_run("duplicate_scenes")
@@ -660,15 +660,17 @@ class TestStaleRecommendationCleanup:
         return RecommendationsDB(tmp_path / "test.db")
 
     @pytest.mark.asyncio
-    async def test_stale_recs_auto_resolved_on_new_run(self, mock_stash, db):
-        """Pending duplicate_scenes recommendations should be auto-resolved when analysis re-runs."""
+    async def test_stale_recs_deleted_on_new_run(self, mock_stash, db):
+        """Pending duplicate_scenes recommendations should be deleted when analysis re-runs.
+        DELETE (not just resolve) is required because UNIQUE(type, target_type, target_id)
+        would block new INSERTs for the same pairs if old rows still exist."""
         from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
 
         # Create a stale recommendation manually
         with db._connection() as conn:
             conn.execute(
                 """INSERT INTO recommendations (type, target_type, target_id, details, confidence, status, created_at, updated_at)
-                VALUES ('duplicate_scenes', 'scene', '1', '{}', 0.5, 'pending', datetime('now'), datetime('now'))"""
+                VALUES ('duplicate_scenes', 'scene', '1:2', '{}', 0.5, 'pending', datetime('now'), datetime('now'))"""
             )
 
         # Run analyzer (no scenes, so no new recs)
@@ -676,9 +678,10 @@ class TestStaleRecommendationCleanup:
         analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
         await analyzer.run()
 
-        # Old recommendation should be resolved
-        recs = db.get_recommendations(type="duplicate_scenes", status="pending")
-        assert len(recs) == 0
+        # Old recommendation should be deleted entirely (not just status changed)
+        with db._connection() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM recommendations WHERE target_id = '1:2'").fetchone()
+            assert row[0] == 0
 
     @pytest.mark.asyncio
     async def test_dismissed_recs_not_affected(self, mock_stash, db):
@@ -688,16 +691,16 @@ class TestStaleRecommendationCleanup:
         with db._connection() as conn:
             conn.execute(
                 """INSERT INTO recommendations (type, target_type, target_id, details, confidence, status, created_at, updated_at)
-                VALUES ('duplicate_scenes', 'scene', '1', '{}', 0.5, 'dismissed', datetime('now'), datetime('now'))"""
+                VALUES ('duplicate_scenes', 'scene', '1:2', '{}', 0.5, 'dismissed', datetime('now'), datetime('now'))"""
             )
 
         run_id = db.start_analysis_run("duplicate_scenes")
         analyzer = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id)
         await analyzer.run()
 
-        # Dismissed rec should still be dismissed
+        # Dismissed rec should still be dismissed (only pending are deleted)
         with db._connection() as conn:
-            row = conn.execute("SELECT status FROM recommendations WHERE target_id = '1'").fetchone()
+            row = conn.execute("SELECT status FROM recommendations WHERE target_id = '1:2'").fetchone()
             assert row["status"] == "dismissed"
 
 
