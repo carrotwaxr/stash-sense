@@ -701,6 +701,79 @@ class TestStaleRecommendationCleanup:
             assert row["status"] == "dismissed"
 
 
+class TestCandidateCleanupBetweenRuns:
+    """Regression test: old candidates must not block new inserts.
+
+    The duplicate_candidates table has UNIQUE(scene_a_id, scene_b_id) without
+    run_id, so leftover rows from a previous run would cause INSERT OR IGNORE
+    to silently drop all new candidates.
+    """
+
+    @pytest.fixture
+    def mock_stash(self):
+        stash = MagicMock()
+        stash.get_scenes_for_fingerprinting = AsyncMock(return_value=([], 0))
+        stash.get_scenes_with_fingerprints = AsyncMock(return_value=([], 0))
+        return stash
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from recommendations_db import RecommendationsDB
+        return RecommendationsDB(tmp_path / "test.db")
+
+    @pytest.mark.asyncio
+    async def test_old_candidates_cleared_before_new_run(self, mock_stash, db):
+        """Candidates from run N should not block inserts for run N+1."""
+        from analyzers.duplicate_scenes import DuplicateScenesAnalyzer
+
+        # Simulate stash-box candidates from run 1
+        stashbox_scenes = [
+            {
+                "id": "1",
+                "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+                "files": [{"duration": 1800, "fingerprints": []}],
+            },
+            {
+                "id": "2",
+                "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc-123"}],
+                "files": [{"duration": 1800, "fingerprints": []}],
+            },
+        ]
+
+        mock_stash.get_scenes_with_fingerprints = AsyncMock(
+            return_value=(stashbox_scenes, 2)
+        )
+        # Metadata pass — same performers so they generate metadata candidates too
+        mock_stash.get_scenes_for_fingerprinting = AsyncMock(
+            return_value=(
+                [
+                    {"id": "1", "studio": {"id": "s1"}, "performers": [{"id": "p1"}],
+                     "stash_ids": [], "date": None, "files": [{"duration": 1800}]},
+                    {"id": "2", "studio": {"id": "s1"}, "performers": [{"id": "p1"}],
+                     "stash_ids": [], "date": None, "files": [{"duration": 1800}]},
+                ],
+                2,
+            )
+        )
+
+        # Run 1
+        run_id_1 = db.start_analysis_run("duplicate_scenes")
+        analyzer1 = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id_1)
+        await analyzer1.run()
+        candidates_run1 = db.count_candidates(run_id_1)
+        assert candidates_run1 > 0, "Run 1 should have candidates"
+
+        # Run 2 — same data, should produce the same candidate count
+        run_id_2 = db.start_analysis_run("duplicate_scenes")
+        analyzer2 = DuplicateScenesAnalyzer(mock_stash, db, run_id=run_id_2)
+        await analyzer2.run()
+        candidates_run2 = db.count_candidates(run_id_2)
+        assert candidates_run2 == candidates_run1, (
+            f"Run 2 should have same candidate count as run 1 ({candidates_run1}), "
+            f"but got {candidates_run2}. Old candidates likely blocked new inserts."
+        )
+
+
 class TestAnalysisJobRunId:
     """Verify AnalysisJob creates a real analysis_runs entry and passes it to the analyzer."""
 

@@ -127,13 +127,10 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
           C) Metadata intersection (studio + performer)
         Returns total number of unique candidates.
         """
-        # Clean up orphaned candidates from previous broken runs (NULL run_id)
-        orphans = self.rec_db.clear_orphaned_candidates()
-        if orphans:
-            logger.warning(f"Cleaned up {orphans} orphaned candidates (NULL run_id)")
-
-        # Clear any stale candidates from a previous failed run
-        self.rec_db.clear_candidates(run_id)
+        # Clear ALL candidates from previous runs. The duplicate_candidates table
+        # is an ephemeral work queue — old candidates block new inserts due to
+        # UNIQUE(scene_a_id, scene_b_id) constraint (which doesn't include run_id).
+        self.rec_db.clear_all_candidates()
         self._phash_distances = {}
 
         # Source A: Stash-box IDs + Source B: Phash fingerprints

@@ -1603,6 +1603,14 @@ class RecommendationsDB:
             )
             return cursor.rowcount
 
+    def clear_all_candidates(self) -> int:
+        """Delete ALL candidates from all runs. The candidates table is an
+        ephemeral work queue — old rows block new inserts due to the
+        UNIQUE(scene_a_id, scene_b_id) constraint which doesn't include run_id."""
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM duplicate_candidates")
+            return cursor.rowcount
+
     def clear_orphaned_candidates(self) -> int:
         """Delete candidates with NULL run_id (from broken runs that passed run_id=None).
         Returns count deleted."""
