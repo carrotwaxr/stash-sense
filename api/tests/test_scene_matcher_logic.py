@@ -6,10 +6,10 @@ from unittest.mock import Mock
 # Mock recognizer before importing scene_matcher
 sys.modules['recognizer'] = Mock()
 
-import numpy as np  # noqa: E402
-import pytest  # noqa: E402
+import numpy as np
+import pytest
 
-from scene_matcher import _cosine_distance, merge_clusters_by_match  # noqa: E402
+from scene_matcher import _cosine_distance, merge_clusters_by_match
 
 
 class TestCosineDistance:

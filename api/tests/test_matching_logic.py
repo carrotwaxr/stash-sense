@@ -6,10 +6,10 @@ from unittest.mock import Mock
 # Mock voyager before importing matching
 sys.modules['voyager'] = Mock()
 
-import numpy as np  # noqa: E402
-import pytest  # noqa: E402
+import numpy as np
+import pytest
 
-from matching import (  # noqa: E402
+from matching import (
     check_model_health,
     fuse_results,
     ModelHealth,
