@@ -9,6 +9,8 @@ import httpx
 import pytest
 import pytest_asyncio
 
+pytestmark = pytest.mark.heavy
+
 from model_manager import (
     DownloadProgress,
     DownloadStatus,

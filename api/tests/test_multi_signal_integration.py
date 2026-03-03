@@ -1,5 +1,9 @@
 """Integration tests for multi-signal identification."""
 
+import pytest
+
+pytestmark = pytest.mark.heavy
+
 
 class TestMultiSignalIntegration:
     """Test full multi-signal pipeline."""

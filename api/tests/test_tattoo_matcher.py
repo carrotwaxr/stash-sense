@@ -4,6 +4,8 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import numpy as np
 
+pytestmark = pytest.mark.heavy
+
 from tattoo_matcher import TattooMatcher, _TattooEmbeddingGenerator
 from tattoo_detector import TattooDetection
 

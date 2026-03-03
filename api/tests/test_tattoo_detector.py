@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.heavy
+
 
 class TestTattooResult:
     """Tests for TattooResult dataclass."""
