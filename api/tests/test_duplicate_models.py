@@ -83,6 +83,69 @@ class TestSceneMetadata:
         assert meta.duration_seconds == 1935.5
         assert len(meta.stash_ids) == 1
 
+    def test_captures_performer_names(self):
+        from duplicate_detection.models import SceneMetadata
+
+        stash_data = {
+            "id": "123",
+            "performers": [
+                {"id": "p1", "name": "Performer One"},
+                {"id": "p2", "name": "Performer Two"},
+            ],
+        }
+
+        meta = SceneMetadata.from_stash(stash_data)
+
+        assert meta.performer_names == ["Performer One", "Performer Two"]
+
+    def test_captures_file_path(self):
+        from duplicate_detection.models import SceneMetadata
+
+        stash_data = {
+            "id": "123",
+            "files": [{"duration": 1800, "path": "/media/videos/scene.mp4"}],
+        }
+
+        meta = SceneMetadata.from_stash(stash_data)
+
+        assert meta.file_path == "/media/videos/scene.mp4"
+
+    def test_to_summary_returns_card_data(self):
+        from duplicate_detection.models import SceneMetadata
+
+        stash_data = {
+            "id": "123",
+            "title": "Amazing Scene",
+            "date": "2024-01-15",
+            "studio": {"id": "s1", "name": "Great Studio"},
+            "performers": [
+                {"id": "p1", "name": "Alice"},
+                {"id": "p2", "name": "Bob"},
+            ],
+            "files": [{"duration": 1800, "path": "/media/videos/scene.mp4"}],
+        }
+
+        meta = SceneMetadata.from_stash(stash_data)
+        summary = meta.to_summary()
+
+        assert summary["title"] == "Amazing Scene"
+        assert summary["studio"] == "Great Studio"
+        assert summary["performers"] == ["Alice", "Bob"]
+        assert summary["path"] == "/media/videos/scene.mp4"
+        assert summary["duration"] == 1800
+
+    def test_to_summary_handles_missing_fields(self):
+        from duplicate_detection.models import SceneMetadata
+
+        meta = SceneMetadata.from_stash({"id": "999"})
+        summary = meta.to_summary()
+
+        assert summary["title"] is None
+        assert summary["studio"] is None
+        assert summary["performers"] == []
+        assert summary["path"] is None
+        assert summary["duration"] is None
+
     def test_handles_missing_fields(self):
         from duplicate_detection.models import SceneMetadata
 
@@ -93,4 +156,6 @@ class TestSceneMetadata:
         assert meta.scene_id == "999"
         assert meta.studio_id is None
         assert meta.performer_ids == set()
+        assert meta.performer_names == []
+        assert meta.file_path is None
         assert meta.duration_seconds is None

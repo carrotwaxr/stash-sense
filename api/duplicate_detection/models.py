@@ -43,15 +43,19 @@ class SceneMetadata:
     studio_id: Optional[str] = None
     studio_name: Optional[str] = None
     performer_ids: set[str] = field(default_factory=set)
+    performer_names: list[str] = field(default_factory=list)
     duration_seconds: Optional[float] = None
+    file_path: Optional[str] = None
     stash_ids: list[StashID] = field(default_factory=list)
 
     @classmethod
     def from_stash(cls, data: dict) -> "SceneMetadata":
         """Create from Stash GraphQL response."""
         performer_ids = set()
+        performer_names = []
         if data.get("performers"):
             performer_ids = {p["id"] for p in data["performers"]}
+            performer_names = [p["name"] for p in data["performers"] if p.get("name")]
 
         stash_ids = []
         if data.get("stash_ids"):
@@ -61,8 +65,10 @@ class SceneMetadata:
             ]
 
         duration = None
+        file_path = None
         if data.get("files") and len(data["files"]) > 0:
             duration = data["files"][0].get("duration")
+            file_path = data["files"][0].get("path")
 
         studio_id = None
         studio_name = None
@@ -77,9 +83,21 @@ class SceneMetadata:
             studio_id=studio_id,
             studio_name=studio_name,
             performer_ids=performer_ids,
+            performer_names=performer_names,
             duration_seconds=duration,
+            file_path=file_path,
             stash_ids=stash_ids,
         )
+
+    def to_summary(self) -> dict:
+        """Return a compact dict for embedding in recommendation details."""
+        return {
+            "title": self.title,
+            "studio": self.studio_name,
+            "performers": self.performer_names,
+            "path": self.file_path,
+            "duration": self.duration_seconds,
+        }
 
 
 @dataclass
