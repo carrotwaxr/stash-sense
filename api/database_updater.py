@@ -184,7 +184,7 @@ class DatabaseUpdater:
                     download_size_mb = round(size_bytes / 1_000_000)
                 break
 
-        update_available = current is not None and latest_tag > current
+        update_available = current is None or latest_tag > current
 
         result: dict[str, Any] = {
             "update_available": update_available,

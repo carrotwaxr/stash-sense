@@ -68,7 +68,7 @@ class HealthResponse(BaseModel):
 
 
 class CheckUpdateResponse(BaseModel):
-    current_version: str
+    current_version: Optional[str] = None
     latest_version: Optional[str] = None
     update_available: bool
     release_name: Optional[str] = None

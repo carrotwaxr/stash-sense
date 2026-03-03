@@ -162,6 +162,30 @@ class TestCheckUpdate:
         assert result["current_version"] == "2026.02.15"
         assert result["latest_version"] == "2026.02.15"
 
+    async def test_fresh_install_no_manifest(self, tmp_path):
+        """On fresh install (no manifest), update should be available."""
+        updater = DatabaseUpdater(data_dir=tmp_path, reload_fn=MagicMock(return_value=True))
+
+        release_json = _github_release_json(tag="2026.02.15")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = release_json
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("database_updater.httpx.AsyncClient") as MockClient:
+            client_instance = AsyncMock()
+            client_instance.get.return_value = mock_response
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await updater.check_update()
+
+        assert result["update_available"] is True
+        assert result["current_version"] is None
+        assert result["latest_version"] == "2026.02.15"
+        assert result["download_url"] == "https://github.com/fake/download.zip"
+
     async def test_cache_prevents_repeated_api_calls(self, tmp_path):
         _write_manifest(tmp_path, version="2026.02.12")
         updater = DatabaseUpdater(data_dir=tmp_path, reload_fn=MagicMock(return_value=True))
