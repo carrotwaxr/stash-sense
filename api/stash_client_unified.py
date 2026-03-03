@@ -890,6 +890,7 @@ class StashClientUnified:
                 name
               }
               files {
+                path
                 duration
               }
               stash_ids {

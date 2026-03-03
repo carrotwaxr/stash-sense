@@ -319,6 +319,8 @@ class DuplicateScenesAnalyzer(BaseAnalyzer):
                             "confidence": match.confidence,
                             "reasoning": match.reasoning,
                             "signal_breakdown": asdict(match.signal_breakdown),
+                            "scene_a_summary": scene_a.to_summary(),
+                            "scene_b_summary": scene_b.to_summary(),
                         },
                         confidence=match.confidence / 100.0,
                     )
