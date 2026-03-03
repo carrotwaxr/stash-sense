@@ -1,33 +1,35 @@
 # Core
-python-dotenv>=1.0.0
-requests>=2.28.0
-tqdm>=4.65.0
+python-dotenv>=1.0.0,<2
+requests>=2.28.0,<3
+tqdm>=4.65.0,<5
 
 # ML - PyTorch with CUDA 12.8 (for Blackwell GPUs)
+# Only used in dev for tattoo detection; Docker image uses ONNX Runtime instead
 --extra-index-url https://download.pytorch.org/whl/nightly/cu128
-torch
-torchvision
+torch>=2.5.0
+torchvision>=0.20.0
 
 # Face recognition
 deepface>=0.0.93
-insightface>=0.7.0  # RetinaFace detection (GPU via ONNX Runtime)
-onnxruntime-gpu>=1.15.0  # GPU support for InsightFace
-voyager>=2.0.0
+insightface>=0.7.0,<1  # RetinaFace detection (GPU via ONNX Runtime)
+onnxruntime-gpu>=1.15.0,<2  # GPU support for InsightFace
+voyager>=2.0.0,<3
 
 # Body pose estimation
 mediapipe>=0.10.9
 
 # API (for sidecar)
-fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
-httpx>=0.25.0
+fastapi>=0.100.0,<1
+uvicorn[standard]>=0.23.0,<1
+httpx>=0.25.0,<1
 
 # Image processing
-pillow>=10.0.0
-numpy<2
+pillow>=12.1.1,<13
+numpy>=1.24,<2
+opencv-python-headless>=4.8.0,<5
 
 # Utilities
-pydantic>=2.0.0
+pydantic>=2.0.0,<3
 
 # Model downloads
-gdown>=4.7.0
+gdown>=4.7.0,<6

@@ -2,15 +2,16 @@
 # Excludes: onnxruntime-gpu, insightface, voyager, mediapipe, torch, deepface, cv2
 
 # Runtime
-fastapi>=0.100.0
-httpx>=0.25.0
-uvicorn[standard]>=0.23.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-requests>=2.28.0
-numpy<2
-pillow>=10.0.0
-tqdm>=4.65.0
+fastapi>=0.100.0,<1
+httpx>=0.25.0,<1
+uvicorn[standard]>=0.23.0,<1
+pydantic>=2.0.0,<3
+python-dotenv>=1.0.0,<2
+requests>=2.28.0,<3
+numpy>=1.24,<2
+pillow>=12.1.1,<13
+tqdm>=4.65.0,<5
+# cloudscraper: needed by stashbox_client.py to bypass Cloudflare on some stash-box instances
 cloudscraper
 
 # Test tooling

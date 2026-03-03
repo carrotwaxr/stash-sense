@@ -1,27 +1,28 @@
 # Docker runtime requirements
 # TensorFlow: NOT included (only needed by convert_models_to_onnx.py)
 # DeepFace: NOT included (only needed by convert_models_to_onnx.py)
-# PyTorch: NOT included (tattoo detection uses ONNX Runtime)
+# PyTorch: NOT included (tattoo detection disabled in Docker; uses ONNX Runtime)
+# torch/torchvision: NOT included for same reason
 
 # Face recognition
-insightface>=0.7.0
-onnxruntime-gpu>=1.15.0
-voyager>=2.0.0
+insightface>=0.7.0,<1
+onnxruntime-gpu>=1.15.0,<2
+voyager>=2.0.0,<3
 
 # Body proportion detection
 mediapipe>=0.10.9
 
 # API
-fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
-httpx>=0.25.0
+fastapi>=0.100.0,<1
+uvicorn[standard]>=0.23.0,<1
+httpx>=0.25.0,<1
 
 # Image processing
-pillow>=10.0.0
-numpy<2
-opencv-python-headless>=4.8.0
+pillow>=12.1.1,<13
+numpy>=1.24,<2
+opencv-python-headless>=4.8.0,<5
 
 # Utilities
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-tqdm>=4.65.0
+pydantic>=2.0.0,<3
+python-dotenv>=1.0.0,<2
+tqdm>=4.65.0,<5
