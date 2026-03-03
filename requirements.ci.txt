@@ -1,0 +1,19 @@
+# CI test dependencies - lightweight, no ML/GPU packages
+# Excludes: onnxruntime-gpu, insightface, voyager, mediapipe, torch, deepface, cv2
+
+# Runtime
+fastapi>=0.100.0
+httpx>=0.25.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+numpy<2
+pillow>=10.0.0
+tqdm>=4.65.0
+cloudscraper
+
+# Test tooling
+pytest>=9.0.0
+pytest-asyncio>=0.24.0
+ruff>=0.5.0

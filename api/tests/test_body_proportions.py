@@ -3,6 +3,8 @@
 import pytest
 import numpy as np
 
+pytestmark = pytest.mark.heavy
+
 try:
     import mediapipe
     _has_mediapipe = True

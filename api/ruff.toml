@@ -1,0 +1,12 @@
+# Ruff linter configuration for stash-sense sidecar API
+#
+# Ignores pre-existing patterns across the codebase:
+# - E401: Multiple imports on one line
+# - E402: Module-level imports not at top (load_dotenv, sys.modules mocking)
+# - F401: Imported but unused (re-exports, conditional usage)
+# - F541: f-string without placeholders
+# - F821: Undefined name (forward-reference type annotations in quotes)
+# - F841: Local variable assigned but never used (unpacking patterns)
+
+[lint]
+ignore = ["E401", "E402", "F401", "F541", "F821", "F841"]

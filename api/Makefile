@@ -15,7 +15,7 @@ GREEN := \033[32m
 YELLOW := \033[33m
 RESET := \033[0m
 
-.PHONY: help venv install test sidecar sidecar-prod status clean shell
+.PHONY: help venv install test test-fast test-ci test-heavy sidecar sidecar-prod status lint lint-fix clean shell
 
 # Default target
 help:
@@ -36,7 +36,10 @@ help:
 	@echo "$(GREEN)Development:$(RESET)"
 	@echo "  make test        Run all tests"
 	@echo "  make test-fast   Run tests (fail fast)"
+	@echo "  make test-ci     Run CI tests (no ML/GPU)"
+	@echo "  make test-heavy  Run heavy tests (ML/GPU only)"
 	@echo "  make lint        Run linter"
+	@echo "  make lint-fix    Run linter with auto-fix"
 	@echo ""
 	@echo "$(GREEN)Utilities:$(RESET)"
 	@echo "  make clean       Remove cache files"
@@ -97,9 +100,21 @@ test-fast:
 	@echo "$(CYAN)Running fast tests...$(RESET)"
 	$(PYTHON) -m pytest tests/ -v -x --tb=short
 
+test-ci:
+	@echo "$(CYAN)Running CI tests (no ML/GPU)...$(RESET)"
+	$(PYTHON) -m pytest tests/ -m "not heavy" -v --tb=short
+
+test-heavy:
+	@echo "$(CYAN)Running heavy tests (ML/GPU only)...$(RESET)"
+	$(PYTHON) -m pytest tests/ -m "heavy" -v
+
 lint:
 	@echo "$(CYAN)Running linter...$(RESET)"
 	$(PYTHON) -m ruff check .
+
+lint-fix:
+	@echo "$(CYAN)Running linter with auto-fix...$(RESET)"
+	$(PYTHON) -m ruff check --fix .
 
 shell:
 	@echo "$(CYAN)Opening Python shell...$(RESET)"

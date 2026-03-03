@@ -5,6 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.heavy
+
 from model_manager import ModelManager, init_model_manager
 from model_router import router, init_model_router
 

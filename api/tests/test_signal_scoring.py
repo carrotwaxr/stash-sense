@@ -1,5 +1,8 @@
 """Tests for signal scoring functions."""
 
+import pytest
+
+pytestmark = pytest.mark.heavy
 
 from body_proportions import BodyProportions
 from tattoo_detector import TattooResult, TattooDetection

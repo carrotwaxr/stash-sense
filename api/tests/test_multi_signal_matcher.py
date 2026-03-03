@@ -4,6 +4,9 @@ import sys
 from unittest.mock import Mock
 
 import numpy as np
+import pytest
+
+pytestmark = pytest.mark.heavy
 
 # Mock the voyager module before importing anything that depends on it
 sys.modules['voyager'] = Mock()
