@@ -304,8 +304,16 @@
 
         // Render multi-frame persons (high confidence clusters)
         for (const person of multiFrame) {
-          const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
-          personsDiv.appendChild(personDiv);
+          try {
+            const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
+            personsDiv.appendChild(personDiv);
+          } catch (renderErr) {
+            console.error('[Stash Sense] Failed to render person:', renderErr);
+            const fallback = document.createElement('div');
+            fallback.className = 'ss-person ss-render-error';
+            fallback.textContent = 'Failed to load person data';
+            personsDiv.appendChild(fallback);
+          }
         }
 
         // Render single-frame detections collapsed by default
@@ -319,8 +327,16 @@
           const innerDiv = document.createElement('div');
           innerDiv.className = 'ss-singleton-list';
           for (const person of singleFrame) {
-            const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
-            innerDiv.appendChild(personDiv);
+            try {
+              const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
+              innerDiv.appendChild(personDiv);
+            } catch (renderErr) {
+              console.error('[Stash Sense] Failed to render person:', renderErr);
+              const fallback = document.createElement('div');
+              fallback.className = 'ss-person ss-render-error';
+              fallback.textContent = 'Failed to load person data';
+              innerDiv.appendChild(fallback);
+            }
           }
           details.appendChild(innerDiv);
           singletonsDiv.appendChild(details);
@@ -552,12 +568,17 @@
         return personDiv;
       },
 
+      _cleanupSearchPanel(panel) {
+        if (panel._cleanup) panel._cleanup();
+        panel.remove();
+      },
+
       _openSearchPanel(triggerBtn) {
         // Close any existing panel
         const existing = document.querySelector('.ss-search-panel');
         if (existing) {
           const wasSameTrigger = existing._triggerBtn === triggerBtn;
-          existing.remove();
+          this._cleanupSearchPanel(existing);
           if (wasSameTrigger) return; // Toggle off
         }
 
@@ -592,6 +613,7 @@
         const self = this;
 
         let debounceTimer;
+
         input.addEventListener('input', () => {
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(async () => {
@@ -646,6 +668,7 @@
 
                     if (linkResult.error) throw new Error(linkResult.error);
 
+                    if (panel._cleanup) panel._cleanup();
                     panel.remove();
                     triggerBtn.style.display = 'none';
                     // Hide the create button next to it
@@ -674,11 +697,16 @@
         // Close on Escape
         const escHandler = (e) => {
           if (e.key === 'Escape') {
-            panel.remove();
-            document.removeEventListener('keydown', escHandler);
+            this._cleanupSearchPanel(panel);
           }
         };
         document.addEventListener('keydown', escHandler);
+
+        // Store cleanup function for use when panel is removed externally
+        panel._cleanup = () => {
+          clearTimeout(debounceTimer);
+          document.removeEventListener('keydown', escHandler);
+        };
       },
 
       showError(modal, message) {
@@ -1172,7 +1200,12 @@
           btn.addEventListener('click', async (e) => {
             const performerId = btn.dataset.performerId;
             const targetGalleryId = btn.dataset.galleryId;
-            const imageIds = JSON.parse(btn.dataset.imageIds);
+            let imageIds;
+            try {
+              imageIds = JSON.parse(btn.dataset.imageIds);
+            } catch (_) {
+              imageIds = [];
+            }
             const tagImages = btn.closest('.ss-gallery-performer-actions')
               ?.querySelector('.ss-tag-images-toggle')?.checked || false;
 
@@ -1327,16 +1360,27 @@
       });
 
       // Periodic health check — guard against duplicate intervals
-      if (!window._ssHealthCheckInterval) {
-        window._ssHealthCheckInterval = setInterval(async () => {
-          const health = await SS.checkHealth();
+      if (window._ssHealthCheckInterval) {
+        clearInterval(window._ssHealthCheckInterval);
+      }
+      window._ssHealthCheckInterval = setInterval(async () => {
+        try {
+          const health = await Promise.race([
+            SS.checkHealth(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+          ]);
           const newStatus = health ? true : false;
           if (newStatus !== SS.getSidecarStatus()) {
             SS.setSidecarStatus(newStatus);
             FaceRecognition.updateButtonStatus(newStatus);
           }
-        }, 60000);
-      }
+        } catch (_) {
+          if (SS.getSidecarStatus()) {
+            SS.setSidecarStatus(false);
+            FaceRecognition.updateButtonStatus(false);
+          }
+        }
+      }, 60000);
 
       console.log(`[${SS.PLUGIN_NAME}] Initialized`);
     }
