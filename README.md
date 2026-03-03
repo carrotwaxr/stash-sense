@@ -35,7 +35,27 @@ docker run -d \
   carrotwaxr/stash-sense:latest
 ```
 
-> **No NVIDIA GPU?** Remove `--gpus all` — the sidecar auto-detects and falls back to CPU mode.
+Or using an env file (`cp api/.env.example .env`, fill in values, then):
+
+```bash
+docker run -d \
+  --name stash-sense \
+  --gpus all \
+  -p 6960:5000 \
+  --env-file .env \
+  -v ./stash-sense-data:/data \
+  -v stash-sense-insightface:/root/.insightface \
+  carrotwaxr/stash-sense:latest
+```
+
+**Volume mounts:**
+
+| Mount | Container Path | Purpose |
+|-------|---------------|---------|
+| `./stash-sense-data` | `/data` | Databases, recommendations, settings (persists across updates) |
+| `stash-sense-insightface` | `/root/.insightface` | InsightFace model cache (downloaded on first run) |
+
+> **No NVIDIA GPU?** Remove `--gpus all` — the sidecar auto-detects and falls back to CPU mode. See [GPU Troubleshooting](#gpu-troubleshooting) below.
 
 ### 2. Verify it's running
 
@@ -111,6 +131,17 @@ Full documentation: **[https://carrotwaxr.github.io/stash-sense](https://carrotw
 | Docker | With `nvidia-container-toolkit` (for GPU) |
 | GPU | NVIDIA with 4GB+ VRAM (optional — CPU fallback available) |
 | Disk | ~2.5 GB for face recognition data, models, and working space |
+
+## GPU Troubleshooting
+
+The `--gpus all` flag requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) to be installed on the host.
+
+| Problem | Solution |
+|---------|----------|
+| `docker: Error response from daemon: could not select device driver "" with capabilities: [[gpu]]` | Install `nvidia-container-toolkit` and restart Docker |
+| GPU not detected inside container | Verify with `nvidia-smi` on the host; ensure the toolkit is configured: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker` |
+| Non-NVIDIA GPU (AMD/Intel) | Remove `--gpus all` — CPU mode works for all features, just slower for face recognition |
+| unRAID | Add `--runtime=nvidia --gpus all` in **Extra Parameters** on the Docker container config page |
 
 ## Support
 
