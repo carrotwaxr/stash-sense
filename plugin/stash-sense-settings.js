@@ -260,10 +260,22 @@
               try {
                 await apiCall('models_download', { model_name: model.name });
 
-                // Poll for progress
+                // Poll for progress with timeout
+                const pollStart = Date.now();
+                const POLL_TIMEOUT_MS = 300000; // 5 minutes
+                let pollErrors = 0;
                 const pollInterval = setInterval(async () => {
+                  // Timeout: stop polling if exceeded
+                  if (Date.now() - pollStart > POLL_TIMEOUT_MS) {
+                    clearInterval(pollInterval);
+                    dlBtn.textContent = 'Timeout';
+                    dlBtn.disabled = false;
+                    dlBtn.className = 'ss-btn ss-btn-danger ss-btn-sm';
+                    return;
+                  }
                   try {
                     const progress = await apiCall('models_progress');
+                    pollErrors = 0;
                     const dl = progress.progress?.[model.name] || progress.current;
 
                     if (dl && dl.percent !== undefined) {
@@ -289,7 +301,13 @@
                       dlBtn.className = 'ss-btn ss-btn-danger ss-btn-sm';
                     }
                   } catch (pollErr) {
-                    // Ignore poll errors, keep polling
+                    pollErrors++;
+                    if (pollErrors >= 5) {
+                      clearInterval(pollInterval);
+                      dlBtn.textContent = 'Error';
+                      dlBtn.disabled = false;
+                      dlBtn.className = 'ss-btn ss-btn-danger ss-btn-sm';
+                    }
                   }
                 }, 1000);
               } catch (err) {
@@ -328,10 +346,21 @@
           try {
             await apiCall('models_download_all');
 
-            // Poll for progress
+            // Poll for progress with timeout
+            const pollStart = Date.now();
+            const POLL_TIMEOUT_MS = 300000; // 5 minutes
+            let pollErrors = 0;
             const pollInterval = setInterval(async () => {
+              if (Date.now() - pollStart > POLL_TIMEOUT_MS) {
+                clearInterval(pollInterval);
+                downloadAllBtn.textContent = 'Timeout';
+                downloadAllBtn.disabled = false;
+                downloadAllBtn.className = 'ss-btn ss-btn-danger';
+                return;
+              }
               try {
                 const progressResult = await apiCall('models_progress');
+                pollErrors = 0;
                 const entries = Object.values(progressResult.progress || {});
 
                 if (entries.length > 0) {
@@ -362,7 +391,13 @@
                   }
                 }
               } catch (pollErr) {
-                // Ignore poll errors
+                pollErrors++;
+                if (pollErrors >= 5) {
+                  clearInterval(pollInterval);
+                  downloadAllBtn.textContent = 'Error';
+                  downloadAllBtn.disabled = false;
+                  downloadAllBtn.className = 'ss-btn ss-btn-danger';
+                }
               }
             }, 1000);
           } catch (err) {

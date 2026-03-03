@@ -368,31 +368,32 @@
 
     try {
       const [counts, sidecarStatus, fpStatus, dbInfo, updateInfo] = await Promise.all([
-        RecommendationsAPI.getCounts(),
+        RecommendationsAPI.getCounts().catch(() => null),
         RecommendationsAPI.getSidecarStatus(),
-        RecommendationsAPI.getFingerprintStatus(),
+        RecommendationsAPI.getFingerprintStatus().catch(() => null),
         RecommendationsAPI.getDatabaseInfo().catch(() => null),
         RecommendationsAPI.checkUpdate().catch(() => null),
       ]);
 
-      currentState.counts = counts;
+      currentState.counts = counts || {};
 
       // Update the persistent status area in the app header
       const statusArea = document.getElementById('ss-status-area');
       if (statusArea) {
-        statusArea.className = `ss-app-header-right ${sidecarStatus.connected ? 'connected' : 'disconnected'}`;
+        const connected = sidecarStatus?.connected || false;
+        statusArea.className = `ss-app-header-right ${connected ? 'connected' : 'disconnected'}`;
         statusArea.innerHTML = `
           <span class="ss-status-dot"></span>
-          <span class="ss-status-label">${sidecarStatus.connected ? 'Connected' : 'Disconnected'}</span>
-          ${sidecarStatus.url ? `<span class="ss-status-url">${sidecarStatus.url}</span>` : ''}
-          ${sidecarStatus.error ? `<span class="ss-status-error">${sidecarStatus.error}</span>` : ''}
+          <span class="ss-status-label">${connected ? 'Connected' : 'Disconnected'}</span>
+          ${sidecarStatus?.url ? `<span class="ss-status-url">${sidecarStatus.url}</span>` : ''}
+          ${sidecarStatus?.error ? `<span class="ss-status-error">${sidecarStatus.error}</span>` : ''}
         `;
       }
 
       // Build identification database stats
-      const fpCoverage = fpStatus.complete_fingerprints || 0;
-      const fpNeedsRefresh = fpStatus.needs_refresh_count || 0;
-      const dbVersion = fpStatus.current_db_version || dbInfo?.version || 'N/A';
+      const fpCoverage = (fpStatus && fpStatus.complete_fingerprints) || 0;
+      const fpNeedsRefresh = (fpStatus && fpStatus.needs_refresh_count) || 0;
+      const dbVersion = (fpStatus && fpStatus.current_db_version) || dbInfo?.version || 'N/A';
       const performerCount = dbInfo?.performer_count || 0;
       const faceCount = dbInfo?.face_count || 0;
       const tattooCount = dbInfo?.tattoo_embedding_count || 0;
@@ -1335,7 +1336,7 @@
     } else if (rec.type === 'scene_fingerprint_match') {
       renderFingerprintMatchDetail(content, rec);
     } else {
-      content.innerHTML = `<p>Unknown recommendation type: ${rec.type}</p>`;
+      content.innerHTML = `<p>Unknown recommendation type: ${escapeHtml(rec.type)}</p>`;
     }
   }
 
@@ -1829,24 +1830,27 @@
       if (storageKey && dontAskCheckbox && dontAskCheckbox.checked) {
         localStorage.setItem(`ss-skip-confirm-${storageKey}`, '1');
       }
-      overlay.remove();
+      closeOverlay();
       onConfirm();
     });
 
     cancelBtn.addEventListener('click', () => {
-      overlay.remove();
+      closeOverlay();
     });
 
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) closeOverlay();
     });
 
     const escHandler = (e) => {
-      if (e.key === 'Escape') {
-        overlay.remove();
-        document.removeEventListener('keydown', escHandler);
-      }
+      if (e.key === 'Escape') closeOverlay();
     };
+
+    function closeOverlay() {
+      document.removeEventListener('keydown', escHandler);
+      overlay.remove();
+    }
+
     document.addEventListener('keydown', escHandler);
   }
 
@@ -1951,7 +1955,7 @@
     closeBtn.style.cssText = 'background:none;border:none;font-size:1.5rem;color:#888;cursor:pointer;padding:0;line-height:1;';
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '\u00d7';
-    closeBtn.addEventListener('click', () => overlay.remove());
+    closeBtn.addEventListener('click', () => closeOverlay());
     header.appendChild(titleEl);
     header.appendChild(closeBtn);
 
@@ -1965,15 +1969,18 @@
     document.body.appendChild(overlay);
 
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) closeOverlay();
     });
 
     const escHandler = (e) => {
-      if (e.key === 'Escape') {
-        overlay.remove();
-        document.removeEventListener('keydown', escHandler);
-      }
+      if (e.key === 'Escape') closeOverlay();
     };
+
+    function closeOverlay() {
+      document.removeEventListener('keydown', escHandler);
+      overlay.remove();
+    }
+
     document.addEventListener('keydown', escHandler);
   }
 
@@ -2143,6 +2150,22 @@
     const details = rec.details;
     const rawChanges = details.changes || [];
     const performerId = details.performer_id;
+
+    // Check if performer still exists in Stash (may have been deleted)
+    try {
+      const performer = await SS.getPerformer(performerId);
+      if (!performer) {
+        try {
+          await RecommendationsAPI.resolve(rec.id, 'auto_resolved', { note: 'Performer was deleted from Stash' });
+        } catch (_) {}
+        currentState.view = 'list';
+        currentState.selectedRec = null;
+        renderCurrentView(document.getElementById('ss-recommendations'));
+        return;
+      }
+    } catch (_) {
+      // If query fails, proceed with rendering — the update will fail with a clear error
+    }
 
     const changes = filterRealChanges(rawChanges);
 
