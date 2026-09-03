@@ -77,8 +77,19 @@ Results are split into two groups:
 
 ### Result Actions
 
-| Button | Action |
-|--------|--------|
-| Add to Scene | Links the performer to the scene |
-| Already tagged on scene | Shown instead of "Add to Scene" for performers already tagged |
-| View on Stash-Box | Opens the performer's page on the source Stash-Box endpoint |
+Identification works on scene, image and gallery pages. Each match offers the
+actions that fit its state:
+
+| Button | Shown when | Action |
+|--------|------------|--------|
+| Add to Scene / Image / Gallery | The performer is already in your library (matched by stash-box ID) | Links the existing performer to the item |
+| Add to Stash + Scene / Image / Gallery | The performer is not in your library | Creates the performer from the stash-box record (name, aliases, image, URL, stash-box ID, ...) and links it. If a performer with that stash-box ID already exists it is linked instead of creating a duplicate |
+| Add as... | The performer is not in your library | Search your library and link an existing performer under a different name; optionally adds the stash-box ID to that performer |
+| Already tagged on scene | The performer is already tagged on the scene | Nothing to do |
+| View on Stash-Box | Always | Opens the performer's page on the source Stash-Box endpoint |
+
+The same actions are available under **Other possible matches** for the
+lower-ranked candidates of each face.
+
+On gallery results, **Also tag individual images** applies the chosen action to
+every image the performer was found in as well as to the gallery itself.
