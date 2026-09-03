@@ -2,14 +2,14 @@
 
 Provides routes for fetching performer data from StashBox, searching
 local Stash performers, creating performers from StashBox data, and
-linking performers to scenes.
+linking performers to scenes, images and galleries.
 """
 
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from stashbox_utils import _get_stashbox_client, _get_endpoint_url
 
@@ -69,23 +69,52 @@ class SearchPerformerResult(BaseModel):
     image_path: Optional[str] = None
 
 
+# Identify results can be applied to a scene, an image or a gallery.
+# Requests name exactly one of these targets.
+_TARGET_FIELDS = ("scene_id", "image_id", "gallery_id")
+
+
+def _require_single_target(request: BaseModel) -> None:
+    provided = [field for field in _TARGET_FIELDS if getattr(request, field, None)]
+    if len(provided) != 1:
+        raise ValueError("Exactly one of scene_id, image_id or gallery_id is required")
+
+
 class CreatePerformerRequest(BaseModel):
-    scene_id: str
+    """Create a performer from StashBox data and add it to one scene, image or gallery."""
     endpoint: str
     stashdb_id: str
+    scene_id: Optional[str] = None
+    image_id: Optional[str] = None
+    gallery_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_target(self):
+        _require_single_target(self)
+        return self
 
 
 class CreatePerformerResponse(BaseModel):
     performer_id: str
     name: str
     success: bool
+    # False when a performer with this stash-box ID already existed and was linked instead
+    created: bool = True
 
 
 class LinkPerformerRequest(BaseModel):
-    scene_id: str
+    """Add an existing Stash performer to one scene, image or gallery."""
     performer_id: str
+    scene_id: Optional[str] = None
+    image_id: Optional[str] = None
+    gallery_id: Optional[str] = None
     stash_ids: list[dict] = []
     update_metadata: bool = False
+
+    @model_validator(mode="after")
+    def _validate_target(self):
+        _require_single_target(self)
+        return self
 
 
 class LinkPerformerResponse(BaseModel):
@@ -167,6 +196,60 @@ def _map_stashbox_to_stash(performer: dict, endpoint_url: str, stashdb_id: str) 
     )
 
 
+def _get_target(request: BaseModel) -> tuple[str, str]:
+    """Return ("scene" | "image" | "gallery", id) for the request's single target."""
+    for field in _TARGET_FIELDS:
+        value = getattr(request, field, None)
+        if value:
+            return field[: -len("_id")], str(value)
+    raise HTTPException(status_code=400, detail="One of scene_id, image_id or gallery_id is required")
+
+
+# Stash GraphQL query name and StashClientUnified update method per target type
+_TARGET_STASH_OPS = {
+    "scene": ("findScene", "update_scene_performers"),
+    "image": ("findImage", "update_image_performers"),
+    "gallery": ("findGallery", "update_gallery_performers"),
+}
+
+
+async def _add_performer_to_target(stash_client, target_type: str, target_id: str, performer_id: str) -> bool:
+    """Append a performer to a scene/image/gallery. Returns False if it was already there."""
+    find_query, update_method = _TARGET_STASH_OPS[target_type]
+    query = f"""
+    query GetTargetPerformers($id: ID!) {{
+        {find_query}(id: $id) {{ performers {{ id }} }}
+    }}
+    """
+    data = await stash_client._execute(query, {"id": target_id})
+    target = data.get(find_query)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"{target_type.capitalize()} {target_id} not found")
+
+    current_ids = [p["id"] for p in (target.get("performers") or [])]
+    if performer_id in current_ids:
+        return False
+    current_ids.append(performer_id)
+    await getattr(stash_client, update_method)(target_id, current_ids)
+    return True
+
+
+async def _find_performer_by_stash_id(stash_client, endpoint_url: str, stashdb_id: str) -> Optional[dict]:
+    """Find a local performer already carrying this stash-box ID, if any."""
+    query = """
+    query FindPerformerByStashId($endpoint: String!, $stash_id: String!) {
+        findPerformers(performer_filter: {
+            stash_id_endpoint: { endpoint: $endpoint, stash_id: $stash_id, modifier: EQUALS }
+        }) {
+            performers { id name }
+        }
+    }
+    """
+    data = await stash_client._execute(query, {"endpoint": endpoint_url, "stash_id": stashdb_id})
+    performers = (data.get("findPerformers") or {}).get("performers") or []
+    return performers[0] if performers else None
+
+
 # ==================== Route Handlers ====================
 
 
@@ -214,28 +297,50 @@ async def search_stash_performers(request: SearchPerformersRequest):
 
 @router.post("/stash/create-performer", response_model=CreatePerformerResponse)
 async def create_performer_from_stashbox(request: CreatePerformerRequest):
-    """Create a performer in Stash from StashBox data, then add to scene."""
+    """Create a performer in Stash from StashBox data, then add it to a scene, image or gallery.
+
+    If the library already has a performer with this stash-box ID, that performer is
+    linked instead and ``created`` is False in the response.
+    """
     if not _stash_url:
         raise HTTPException(status_code=400, detail="STASH_URL not configured")
 
-    # 1. Fetch performer data from StashBox
     client = _get_stashbox_client(request.endpoint)
     if not client:
         raise HTTPException(status_code=400, detail=f"Unknown or unconfigured endpoint: {request.endpoint}")
 
+    endpoint_url = _get_endpoint_url(request.endpoint)
+    if not endpoint_url:
+        raise HTTPException(status_code=400, detail=f"Unknown endpoint: {request.endpoint}")
+
+    target_type, target_id = _get_target(request)
+
+    from stash_client_unified import StashClientUnified
+    stash_client = StashClientUnified(_stash_url, _stash_api_key)
+
+    # 1. Reuse an existing performer that already carries this stash-box ID
+    existing = await _find_performer_by_stash_id(stash_client, endpoint_url, request.stashdb_id)
+    if existing:
+        logger.info(
+            "Performer %s (#%s) already linked to %s; adding to %s %s instead of creating a duplicate",
+            existing["name"], existing["id"], request.stashdb_id, target_type, target_id,
+        )
+        await _add_performer_to_target(stash_client, target_type, target_id, existing["id"])
+        return CreatePerformerResponse(
+            performer_id=existing["id"],
+            name=existing["name"],
+            success=True,
+            created=False,
+        )
+
+    # 2. Fetch performer data from StashBox
     performer = await client.get_performer(request.stashdb_id)
     if not performer:
         raise HTTPException(status_code=404, detail="Performer not found on StashBox")
 
-    endpoint_url = _get_endpoint_url(request.endpoint)
-    if not endpoint_url:
-        raise HTTPException(status_code=400, detail=f"Unknown endpoint: {request.endpoint}")
     mapped = _map_stashbox_to_stash(performer, endpoint_url, request.stashdb_id)
 
-    # 2. Create performer in Stash
-    from stash_client_unified import StashClientUnified
-    stash_client = StashClientUnified(_stash_url, _stash_api_key)
-
+    # 3. Create performer in Stash
     create_input = {
         "name": mapped.name,
         "stash_ids": mapped.stash_ids,
@@ -287,45 +392,29 @@ async def create_performer_from_stashbox(request: CreatePerformerRequest):
     data = await stash_client._execute(create_query, {"input": create_input}, priority=Priority.CRITICAL)
     new_performer = data["performerCreate"]
 
-    # 3. Add performer to scene
-    get_query = """
-    query GetScene($id: ID!) {
-        findScene(id: $id) { performers { id } }
-    }
-    """
-    scene_data = await stash_client._execute(get_query, {"id": request.scene_id})
-    current_ids = [p["id"] for p in scene_data["findScene"]["performers"]]
-    if new_performer["id"] not in current_ids:
-        current_ids.append(new_performer["id"])
-        await stash_client.update_scene_performers(request.scene_id, current_ids)
+    # 4. Add performer to the target
+    await _add_performer_to_target(stash_client, target_type, target_id, new_performer["id"])
 
     return CreatePerformerResponse(
         performer_id=new_performer["id"],
         name=new_performer["name"],
         success=True,
+        created=True,
     )
 
 
 @router.post("/stash/link-performer", response_model=LinkPerformerResponse)
-async def link_performer_to_scene(request: LinkPerformerRequest):
-    """Add an existing Stash performer to a scene. Optionally update stash_ids."""
+async def link_performer(request: LinkPerformerRequest):
+    """Add an existing Stash performer to a scene, image or gallery. Optionally update stash_ids."""
     if not _stash_url:
         raise HTTPException(status_code=400, detail="STASH_URL not configured")
+
+    target_type, target_id = _get_target(request)
 
     from stash_client_unified import StashClientUnified
     stash_client = StashClientUnified(_stash_url, _stash_api_key)
 
-    # Add performer to scene
-    get_query = """
-    query GetScene($id: ID!) {
-        findScene(id: $id) { performers { id } }
-    }
-    """
-    scene_data = await stash_client._execute(get_query, {"id": request.scene_id})
-    current_ids = [p["id"] for p in scene_data["findScene"]["performers"]]
-    if request.performer_id not in current_ids:
-        current_ids.append(request.performer_id)
-        await stash_client.update_scene_performers(request.scene_id, current_ids)
+    await _add_performer_to_target(stash_client, target_type, target_id, request.performer_id)
 
     # Optionally update performer's stash_ids
     if request.update_metadata and request.stash_ids:

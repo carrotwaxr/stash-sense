@@ -30,7 +30,9 @@ Navigate to **`/plugins/stash-sense`** in your Stash UI to access the Stash Sens
    - Detected face thumbnails grouped by person
    - Best match from the performer database
    - Distance score (lower is better)
-5. Click **"Add to Scene"** to link the performer
+5. Click **"Add to Scene"** to link a performer already in your library, **"Add to Stash + Scene"** to create it from the stash-box record, or **"Add as..."** to pick an existing performer by name
+
+The same **Identify** button is available on image and gallery pages, with matching **Add to Image** / **Add to Gallery** actions.
 
 See [Performer Identification](features/performer-identification.md) for details on how matching works and how to interpret results.
 
