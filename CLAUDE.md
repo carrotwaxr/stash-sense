@@ -68,3 +68,10 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `plugin/stash-sense-operations.js` - Operation queue UI
 - `plugin/stash-sense.css` - All styles
 - `plugin/stash_sense_backend.py` - Plugin backend proxy
+
+## Pitfalls
+
+- Stash only picks up a subtitle as English when it is named `<video>.en.srt`; a plain `.srt` is not recognized as English.
+- Whisper `large-v3-turbo` ignores `task=translate` and returns the source language. Translation needs `large-v3`.
+- The unRAID host has no `python3` or `ffmpeg`: parse JSON with bash/sed there and run ffmpeg as `docker exec stash ffmpeg ...`.
+- Scene file paths can contain smart apostrophes (U+2019); fetch paths from the Stash API instead of typing them.
