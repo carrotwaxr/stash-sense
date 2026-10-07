@@ -2,7 +2,7 @@
  * Stash Sense Main Entry Point
  *
  * Loads core module and feature modules:
- * - Face recognition (scene page integration)
+ * - Face recognition (scene, image and gallery page integration)
  * - Recommendations dashboard (plugin page)
  */
 (function() {
@@ -22,6 +22,13 @@
   waitForCore(() => {
     const SS = window.StashSense;
 
+    // Stash GraphQL names and UI label for each kind of item identify results apply to
+    const TARGET_TYPES = {
+      scene:   { find: 'findScene',   update: 'sceneUpdate',   label: 'Scene' },
+      image:   { find: 'findImage',   update: 'imageUpdate',   label: 'Image' },
+      gallery: { find: 'findGallery', update: 'galleryUpdate', label: 'Gallery' },
+    };
+
     // ==================== Face Recognition Module ====================
 
     const FaceRecognition = {
@@ -29,6 +36,11 @@
       distanceToConfidence(distance) {
         const clamped = Math.max(0, Math.min(1, distance));
         return Math.round((1 - clamped) * 100);
+      },
+
+      // Describe the scene/image/gallery that results will be applied to
+      _target(type, id) {
+        return { type, id, label: TARGET_TYPES[type]?.label || type };
       },
 
       // Get scene's existing performer StashDB IDs
@@ -88,39 +100,50 @@
         return result;
       },
 
-      // Add performer to scene
-      async addPerformerToScene(sceneId, performerId) {
+      // Add performer to a scene, image or gallery via Stash's GraphQL API
+      async addPerformerToTarget(target, performerId) {
+        const gql = TARGET_TYPES[target.type];
+        if (!gql) {
+          console.error(`Unknown target type: ${target.type}`);
+          return false;
+        }
+
         const getQuery = `
-          query GetScene($id: ID!) {
-            findScene(id: $id) {
+          query GetTargetPerformers($id: ID!) {
+            ${gql.find}(id: $id) {
               performers { id }
             }
           }
         `;
 
         const updateQuery = `
-          mutation UpdateScene($id: ID!, $performer_ids: [ID!]) {
-            sceneUpdate(input: { id: $id, performer_ids: $performer_ids }) {
+          mutation UpdateTargetPerformers($id: ID!, $performer_ids: [ID!]) {
+            ${gql.update}(input: { id: $id, performer_ids: $performer_ids }) {
               id
             }
           }
         `;
 
         try {
-          const getResult = await SS.stashQuery(getQuery, { id: sceneId });
-          const currentPerformers = getResult?.findScene?.performers || [];
+          const getResult = await SS.stashQuery(getQuery, { id: target.id });
+          const currentPerformers = getResult?.[gql.find]?.performers || [];
           const currentIds = currentPerformers.map(p => p.id);
 
           if (!currentIds.includes(performerId)) {
             currentIds.push(performerId);
           }
 
-          await SS.stashQuery(updateQuery, { id: sceneId, performer_ids: currentIds });
+          await SS.stashQuery(updateQuery, { id: target.id, performer_ids: currentIds });
           return true;
         } catch (e) {
-          console.error('Failed to add performer:', e);
+          console.error(`Failed to add performer to ${target.type}:`, e);
           return false;
         }
+      },
+
+      // Add performer to scene
+      addPerformerToScene(sceneId, performerId) {
+        return this.addPerformerToTarget(this._target('scene', sceneId), performerId);
       },
 
       // Call the face recognition API for a single image
@@ -141,38 +164,8 @@
       },
 
       // Add performer to image
-      async addPerformerToImage(imageId, performerId) {
-        const getQuery = `
-          query GetImage($id: ID!) {
-            findImage(id: $id) {
-              performers { id }
-            }
-          }
-        `;
-
-        const updateQuery = `
-          mutation UpdateImage($id: ID!, $performer_ids: [ID!]) {
-            imageUpdate(input: { id: $id, performer_ids: $performer_ids }) {
-              id
-            }
-          }
-        `;
-
-        try {
-          const getResult = await SS.stashQuery(getQuery, { id: imageId });
-          const currentPerformers = getResult?.findImage?.performers || [];
-          const currentIds = currentPerformers.map(p => p.id);
-
-          if (!currentIds.includes(performerId)) {
-            currentIds.push(performerId);
-          }
-
-          await SS.stashQuery(updateQuery, { id: imageId, performer_ids: currentIds });
-          return true;
-        } catch (e) {
-          console.error('Failed to add performer to image:', e);
-          return false;
-        }
+      addPerformerToImage(imageId, performerId) {
+        return this.addPerformerToTarget(this._target('image', imageId), performerId);
       },
 
       // Create the results modal
@@ -250,6 +243,7 @@
         const loading = modal.querySelector('.ss-loading');
         const resultsDiv = modal.querySelector('.ss-results');
         const errorDiv = modal.querySelector('.ss-error');
+        const target = this._target('scene', sceneId);
 
         loading.style.display = 'none';
 
@@ -305,7 +299,7 @@
         // Render multi-frame persons (high confidence clusters)
         for (const person of multiFrame) {
           try {
-            const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
+            const personDiv = await this._renderPerson(person, target, taggedStashDBIds, scenePerformerLocalIds);
             personsDiv.appendChild(personDiv);
           } catch (renderErr) {
             console.error('[Stash Sense] Failed to render person:', renderErr);
@@ -328,7 +322,7 @@
           innerDiv.className = 'ss-singleton-list';
           for (const person of singleFrame) {
             try {
-              const personDiv = await this._renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds);
+              const personDiv = await this._renderPerson(person, target, taggedStashDBIds, scenePerformerLocalIds);
               innerDiv.appendChild(personDiv);
             } catch (renderErr) {
               console.error('[Stash Sense] Failed to render person:', renderErr);
@@ -342,72 +336,7 @@
           singletonsDiv.appendChild(details);
         }
 
-        // Add click handlers for "Add to Scene" buttons
-        resultsDiv.querySelectorAll('.ss-btn-add').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            const performerId = e.target.dataset.performerId;
-            const targetSceneId = e.target.dataset.sceneId;
-            btn.disabled = true;
-            btn.textContent = 'Adding...';
-
-            const success = await this.addPerformerToScene(targetSceneId, performerId);
-            if (success) {
-              btn.textContent = 'Added!';
-              btn.classList.add('ss-btn-success');
-            } else {
-              btn.textContent = 'Failed';
-              btn.classList.add('ss-btn-error');
-              btn.disabled = false;
-            }
-          });
-        });
-
-        // "Add to Stash + Scene" handlers
-        resultsDiv.querySelectorAll('.ss-btn-create').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const { endpoint, stashdbId, sceneId: targetSceneId } = btn.dataset;
-            btn.disabled = true;
-            btn.textContent = 'Creating...';
-
-            try {
-              const settings = await SS.getSettings();
-              const result = await SS.runPluginOperation('create_performer_from_stashbox', {
-                endpoint,
-                stashdb_id: stashdbId,
-                scene_id: targetSceneId,
-                sidecar_url: settings.sidecarUrl,
-              });
-
-              if (result.error) throw new Error(result.error);
-
-              btn.textContent = 'Added!';
-              btn.classList.add('ss-btn-success');
-              // Hide the "Add as..." button next to it
-              const linkAsBtn = btn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-btn-link-as');
-              if (linkAsBtn) linkAsBtn.style.display = 'none';
-              // Update "Not in library" text
-              const notInLib = btn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-not-in-library');
-              if (notInLib) {
-                notInLib.textContent = `Created: ${result.name || 'performer'}`;
-                notInLib.classList.remove('ss-not-in-library');
-              }
-            } catch (err) {
-              btn.textContent = 'Failed';
-              btn.classList.add('ss-btn-error');
-              btn.disabled = false;
-              console.error('Failed to create performer:', err);
-            }
-          });
-        });
-
-        // "Add as..." handlers
-        resultsDiv.querySelectorAll('.ss-btn-link-as').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this._openSearchPanel(btn);
-          });
-        });
+        this._bindActionHandlers(resultsDiv);
 
         resultsDiv.style.display = 'block';
       },
@@ -424,7 +353,147 @@
         return `https://${domain}/graphql`;
       },
 
-      async _renderPerson(person, sceneId, taggedStashDBIds, scenePerformerLocalIds) {
+      // Action buttons for one match, depending on whether the performer is
+      // already in the library / already on the target. Shared by the scene,
+      // image and gallery renderers; wired up by _bindActionHandlers().
+      _actionsHtml({ endpoint, stashdbId, localPerformer, alreadyTagged, target, small = false, addButtonClass = '', extraAttrs = '' }) {
+        const sizeClass = small ? ' ss-btn-sm' : '';
+        const targetAttrs = `data-target-type="${target.type}" data-target-id="${target.id}" ${extraAttrs}`;
+
+        if (alreadyTagged) {
+          return `<span class="ss-local-status ss-already-tagged">Already tagged${small ? '' : ` on ${target.type}`}</span>`;
+        }
+
+        if (localPerformer) {
+          return `
+            <button class="ss-btn ss-btn-add${sizeClass} ${addButtonClass}" data-performer-id="${localPerformer.id}" ${targetAttrs}>
+              Add to ${target.label}
+            </button>
+            ${small ? '' : `<span class="ss-local-status">In library as: ${localPerformer.name}</span>`}`;
+        }
+
+        return `
+          <button class="ss-btn ss-btn-create${sizeClass}"
+                  data-endpoint="${endpoint}"
+                  data-stashdb-id="${stashdbId}"
+                  ${targetAttrs}>
+            Add to Stash + ${target.label}
+          </button>
+          <button class="ss-btn ss-btn-link-as${sizeClass}"
+                  data-endpoint="${endpoint}"
+                  data-stashdb-id="${stashdbId}"
+                  ${targetAttrs}>
+            Add as...
+          </button>
+          ${small ? '' : '<span class="ss-local-status ss-not-in-library">Not in library</span>'}`;
+      },
+
+      // Wire up the buttons rendered by _actionsHtml()
+      _bindActionHandlers(resultsDiv) {
+        // "Add to Scene/Image/Gallery" for performers already in the library
+        resultsDiv.querySelectorAll('.ss-btn-add').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const { performerId, targetType, targetId } = btn.dataset;
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+
+            const success = await this.addPerformerToTarget(this._target(targetType, targetId), performerId);
+            if (!success) {
+              btn.textContent = 'Failed';
+              btn.classList.add('ss-btn-error');
+              btn.disabled = false;
+              return;
+            }
+
+            const taggedImages = await this._tagGalleryImages(btn, performerId);
+            btn.textContent = this._addedText(targetType, taggedImages);
+            btn.classList.add('ss-btn-success');
+          });
+        });
+
+        // "Add to Stash + Scene/Image/Gallery": create from stash-box, then link
+        resultsDiv.querySelectorAll('.ss-btn-create').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const { endpoint, stashdbId, targetType, targetId } = btn.dataset;
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
+            try {
+              const settings = await SS.getSettings();
+              const result = await SS.runPluginOperation('create_performer_from_stashbox', {
+                endpoint,
+                stashdb_id: stashdbId,
+                [`${targetType}_id`]: targetId,
+                sidecar_url: settings.sidecarUrl,
+              });
+
+              if (result.error) throw new Error(result.error);
+
+              const taggedImages = await this._tagGalleryImages(btn, result.performer_id);
+              btn.textContent = this._addedText(targetType, taggedImages);
+              btn.classList.add('ss-btn-success');
+              this._markResolved(btn, result.created === false
+                ? `Already in library as: ${result.name || 'performer'}`
+                : `Created: ${result.name || 'performer'}`);
+            } catch (err) {
+              btn.textContent = 'Failed';
+              btn.classList.add('ss-btn-error');
+              btn.disabled = false;
+              console.error('Failed to create performer:', err);
+            }
+          });
+        });
+
+        // "Add as...": link an existing library performer under another name
+        resultsDiv.querySelectorAll('.ss-btn-link-as').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._openSearchPanel(btn);
+          });
+        });
+      },
+
+      _addedText(targetType, taggedImages) {
+        if (taggedImages !== null) return `Added to gallery + ${taggedImages} images`;
+        return targetType === 'gallery' ? 'Added to gallery!' : 'Added!';
+      },
+
+      // After a create/link: hide the sibling buttons and replace the "Not in library" label
+      _markResolved(btn, statusText) {
+        const actions = btn.closest('.ss-actions, .ss-alt-match-actions');
+        actions?.querySelectorAll('.ss-btn-create, .ss-btn-link-as').forEach(other => {
+          if (other !== btn) other.style.display = 'none';
+        });
+        const notInLib = actions?.querySelector('.ss-not-in-library');
+        if (notInLib) {
+          notInLib.textContent = statusText;
+          notInLib.classList.remove('ss-not-in-library');
+        }
+      },
+
+      // Gallery results only: honour the "Also tag individual images" toggle.
+      // Returns the number of images tagged, or null when not applicable.
+      async _tagGalleryImages(btn, performerId) {
+        const container = btn.closest('.ss-gallery-performer-actions');
+        if (!container || !btn.dataset.imageIds) return null;
+        if (!container.querySelector('.ss-tag-images-toggle')?.checked) return null;
+
+        let imageIds;
+        try {
+          imageIds = JSON.parse(btn.dataset.imageIds);
+        } catch (_) {
+          imageIds = [];
+        }
+
+        btn.textContent = 'Tagging images...';
+        for (const imgId of imageIds) {
+          await this.addPerformerToImage(imgId, performerId);
+        }
+        return imageIds.length;
+      },
+
+      async _renderPerson(person, target, taggedStashDBIds, scenePerformerLocalIds) {
         const personDiv = document.createElement('div');
         personDiv.className = 'ss-person';
 
@@ -453,31 +522,13 @@
         const isLocallyTagged = localPerformer && scenePerformerLocalIds.has(localPerformer.id);
         const showAlreadyTagged = isAlreadyTagged || isLocallyTagged;
 
-        let actionsHtml;
-        if (showAlreadyTagged) {
-          actionsHtml = `<span class="ss-local-status ss-already-tagged">Already tagged on scene</span>`;
-        } else if (localPerformer) {
-          actionsHtml = `
-            <button class="ss-btn ss-btn-add" data-performer-id="${localPerformer.id}" data-scene-id="${sceneId}">
-              Add to Scene
-            </button>
-            <span class="ss-local-status">In library as: ${localPerformer.name}</span>`;
-        } else {
-          actionsHtml = `
-            <button class="ss-btn ss-btn-create"
-                    data-endpoint="${endpoint}"
-                    data-stashdb-id="${match.stashdb_id}"
-                    data-scene-id="${sceneId}">
-              Add to Stash + Scene
-            </button>
-            <button class="ss-btn ss-btn-link-as"
-                    data-endpoint="${endpoint}"
-                    data-stashdb-id="${match.stashdb_id}"
-                    data-scene-id="${sceneId}">
-              Add as...
-            </button>
-            <span class="ss-local-status ss-not-in-library">Not in library</span>`;
-        }
+        const actionsHtml = this._actionsHtml({
+          endpoint,
+          stashdbId: match.stashdb_id,
+          localPerformer,
+          alreadyTagged: showAlreadyTagged,
+          target,
+        });
 
         personDiv.innerHTML = `
           <div class="ss-person-header">
@@ -523,29 +574,14 @@
             const altIsLocallyTagged = altLocalPerformer && scenePerformerLocalIds.has(altLocalPerformer.id);
             const altShowAlreadyTagged = altTagged || altIsLocallyTagged;
 
-            let altActionsHtml;
-            if (altShowAlreadyTagged) {
-              altActionsHtml = `<span class="ss-local-status ss-already-tagged">Already tagged</span>`;
-            } else if (altLocalPerformer) {
-              altActionsHtml = `
-                <button class="ss-btn ss-btn-add ss-btn-sm" data-performer-id="${altLocalPerformer.id}" data-scene-id="${sceneId}">
-                  Add to Scene
-                </button>`;
-            } else {
-              altActionsHtml = `
-                <button class="ss-btn ss-btn-create ss-btn-sm"
-                        data-endpoint="${altEndpoint}"
-                        data-stashdb-id="${m.stashdb_id}"
-                        data-scene-id="${sceneId}">
-                  Add to Stash + Scene
-                </button>
-                <button class="ss-btn ss-btn-link-as ss-btn-sm"
-                        data-endpoint="${altEndpoint}"
-                        data-stashdb-id="${m.stashdb_id}"
-                        data-scene-id="${sceneId}">
-                  Add as...
-                </button>`;
-            }
+            const altActionsHtml = this._actionsHtml({
+              endpoint: altEndpoint,
+              stashdbId: m.stashdb_id,
+              localPerformer: altLocalPerformer,
+              alreadyTagged: altShowAlreadyTagged,
+              target,
+              small: true,
+            });
 
             const li = document.createElement('li');
             li.className = 'ss-alt-match-item';
@@ -585,9 +621,7 @@
         const panel = document.createElement('div');
         panel.className = 'ss-search-panel';
         panel._triggerBtn = triggerBtn;
-        const endpoint = triggerBtn.dataset.endpoint;
-        const stashdbId = triggerBtn.dataset.stashdbId;
-        const sceneId = triggerBtn.dataset.sceneId;
+        const { endpoint, stashdbId, targetType, targetId } = triggerBtn.dataset;
         const graphqlUrl = this._stashboxGraphqlUrl(endpoint);
 
         panel.innerHTML = `
@@ -659,7 +693,7 @@
                     const stashIds = updateMeta ? [{ endpoint: graphqlUrl, stash_id: stashdbId }] : [];
                     const settings = await SS.getSettings();
                     const linkResult = await SS.runPluginOperation('link_performer_stashbox', {
-                      scene_id: sceneId,
+                      [`${targetType}_id`]: targetId,
                       performer_id: performerId,
                       stash_ids: stashIds,
                       update_metadata: updateMeta,
@@ -668,18 +702,12 @@
 
                     if (linkResult.error) throw new Error(linkResult.error);
 
+                    const taggedImages = await self._tagGalleryImages(triggerBtn, performerId);
+
                     if (panel._cleanup) panel._cleanup();
                     panel.remove();
                     triggerBtn.style.display = 'none';
-                    // Hide the create button next to it
-                    const createBtn = triggerBtn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-btn-create');
-                    if (createBtn) createBtn.style.display = 'none';
-                    // Update status text
-                    const notInLib = triggerBtn.closest('.ss-actions, .ss-alt-match-actions')?.querySelector('.ss-not-in-library');
-                    if (notInLib) {
-                      notInLib.textContent = `Added as: ${performerName}`;
-                      notInLib.classList.remove('ss-not-in-library');
-                    }
+                    self._markResolved(triggerBtn, `Added as: ${performerName}${taggedImages ? ` (+${taggedImages} images)` : ''}`);
                   } catch (err) {
                     panel.innerHTML = `<div class="ss-search-error">Failed: ${SS.escapeHtml(err.message)}</div>`;
                     console.error('Failed to link performer:', err);
@@ -790,6 +818,7 @@
         const loading = modal.querySelector('.ss-loading');
         const resultsDiv = modal.querySelector('.ss-results');
         const errorDiv = modal.querySelector('.ss-error');
+        const target = this._target('image', imageId);
 
         loading.style.display = 'none';
 
@@ -837,6 +866,14 @@
             const imgGraphqlUrl = this._stashboxGraphqlUrl(imgEndpoint);
             const localPerformer = await SS.findPerformerByStashDBId(match.stashdb_id, imgGraphqlUrl);
 
+            const actionsHtml = this._actionsHtml({
+              endpoint: imgEndpoint,
+              stashdbId: match.stashdb_id,
+              localPerformer,
+              alreadyTagged: false,
+              target,
+            });
+
             personDiv.innerHTML = `
               <div class="ss-person-header">
                 <span class="ss-person-label">Face ${i + 1}</span>
@@ -855,19 +892,13 @@
                     </a>
                   </div>
                   <div class="ss-actions">
-                    ${localPerformer
-                      ? `<button class="ss-btn ss-btn-add" data-performer-id="${localPerformer.id}" data-image-id="${imageId}">
-                           Add to Image
-                         </button>
-                         <span class="ss-local-status">In library as: ${localPerformer.name}</span>`
-                      : `<span class="ss-local-status ss-not-in-library">Not in library</span>`
-                    }
+                    ${actionsHtml}
                   </div>
                 </div>
               </div>
             `;
 
-            // Build alt matches with endpoint-aware links
+            // Build alt matches with endpoint-aware links and action buttons
             if (face.matches.length > 1) {
               const details = document.createElement('details');
               details.className = 'ss-other-matches';
@@ -877,12 +908,27 @@
                 const altConf = this.distanceToConfidence(m.distance);
                 const altEp = m.endpoint || 'stashdb.org';
                 const altUrl = this._stashboxPerformerUrl(altEp, m.stashdb_id);
+                const altGraphqlUrl = this._stashboxGraphqlUrl(altEp);
+                const altLocalPerformer = await SS.findPerformerByStashDBId(m.stashdb_id, altGraphqlUrl);
+
+                const altActionsHtml = this._actionsHtml({
+                  endpoint: altEp,
+                  stashdbId: m.stashdb_id,
+                  localPerformer: altLocalPerformer,
+                  alreadyTagged: false,
+                  target,
+                  small: true,
+                });
+
                 const li = document.createElement('li');
                 li.className = 'ss-alt-match-item';
                 li.innerHTML = `
                   <div class="ss-alt-match-left">
                     <a href="${altUrl}" target="_blank" rel="noopener">${m.name}</a>
                     <span class="ss-alt-confidence">${altConf}%</span>
+                  </div>
+                  <div class="ss-alt-match-actions">
+                    ${altActionsHtml}
                   </div>
                 `;
                 ul.appendChild(li);
@@ -895,25 +941,7 @@
           personsDiv.appendChild(personDiv);
         }
 
-        // Add click handlers for "Add to Image" buttons
-        resultsDiv.querySelectorAll('.ss-btn-add').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            const performerId = e.target.dataset.performerId;
-            const targetImageId = e.target.dataset.imageId;
-            btn.disabled = true;
-            btn.textContent = 'Adding...';
-
-            const success = await this.addPerformerToImage(targetImageId, performerId);
-            if (success) {
-              btn.textContent = 'Added!';
-              btn.classList.add('ss-btn-success');
-            } else {
-              btn.textContent = 'Failed';
-              btn.classList.add('ss-btn-error');
-              btn.disabled = false;
-            }
-          });
-        });
+        this._bindActionHandlers(resultsDiv);
 
         resultsDiv.style.display = 'block';
       },
@@ -1042,38 +1070,8 @@
       },
 
       // Add performer to gallery
-      async addPerformerToGallery(galleryId, performerId) {
-        const getQuery = `
-          query GetGallery($id: ID!) {
-            findGallery(id: $id) {
-              performers { id }
-            }
-          }
-        `;
-
-        const updateQuery = `
-          mutation UpdateGallery($id: ID!, $performer_ids: [ID!]) {
-            galleryUpdate(input: { id: $id, performer_ids: $performer_ids }) {
-              id
-            }
-          }
-        `;
-
-        try {
-          const getResult = await SS.stashQuery(getQuery, { id: galleryId });
-          const currentPerformers = getResult?.findGallery?.performers || [];
-          const currentIds = currentPerformers.map(p => p.id);
-
-          if (!currentIds.includes(performerId)) {
-            currentIds.push(performerId);
-          }
-
-          await SS.stashQuery(updateQuery, { id: galleryId, performer_ids: currentIds });
-          return true;
-        } catch (e) {
-          console.error('Failed to add performer to gallery:', e);
-          return false;
-        }
+      addPerformerToGallery(galleryId, performerId) {
+        return this.addPerformerToTarget(this._target('gallery', galleryId), performerId);
       },
 
       async handleIdentifyGallery() {
@@ -1102,6 +1100,7 @@
         const loading = modal.querySelector('.ss-loading');
         const resultsDiv = modal.querySelector('.ss-results');
         const errorDiv = modal.querySelector('.ss-error');
+        const target = this._target('gallery', galleryId);
 
         loading.style.display = 'none';
 
@@ -1148,6 +1147,17 @@
           const galGraphqlUrl = this._stashboxGraphqlUrl(galEndpoint);
           const localPerformer = await SS.findPerformerByStashDBId(performer.performer_id, galGraphqlUrl);
 
+          // data-image-ids lets every action also tag the images the performer was found in
+          const actionsHtml = this._actionsHtml({
+            endpoint: galEndpoint,
+            stashdbId: performer.performer_id,
+            localPerformer,
+            alreadyTagged: false,
+            target,
+            addButtonClass: 'ss-gallery-accept-btn',
+            extraAttrs: `data-image-ids='${JSON.stringify(performer.image_ids || [])}'`,
+          });
+
           personDiv.innerHTML = `
             <div class="ss-person-header">
               <span class="ss-person-label">${performer.name}</span>
@@ -1165,29 +1175,17 @@
                     View on ${galEndpoint}
                   </a>
                 </div>
-                ${localPerformer ? `
-                  <div class="ss-gallery-performer-actions" data-performer-id="${localPerformer.id}" data-stashdb-id="${performer.performer_id}">
-                    <div class="ss-gallery-tag-toggle">
-                      <label class="ss-toggle-label">
-                        <input type="checkbox" class="ss-tag-images-toggle" />
-                        <span>Also tag individual images</span>
-                      </label>
-                    </div>
-                    <div class="ss-actions">
-                      <button class="ss-btn ss-btn-add ss-gallery-accept-btn"
-                              data-performer-id="${localPerformer.id}"
-                              data-gallery-id="${galleryId}"
-                              data-image-ids='${JSON.stringify(performer.image_ids)}'>
-                        Add to Gallery
-                      </button>
-                      <span class="ss-local-status">In library as: ${localPerformer.name}</span>
-                    </div>
+                <div class="ss-gallery-performer-actions" data-stashdb-id="${performer.performer_id}">
+                  <div class="ss-gallery-tag-toggle">
+                    <label class="ss-toggle-label">
+                      <input type="checkbox" class="ss-tag-images-toggle" />
+                      <span>Also tag individual images</span>
+                    </label>
                   </div>
-                ` : `
                   <div class="ss-actions">
-                    <span class="ss-local-status ss-not-in-library">Not in library</span>
+                    ${actionsHtml}
                   </div>
-                `}
+                </div>
               </div>
             </div>
           `;
@@ -1195,44 +1193,9 @@
           personsDiv.appendChild(personDiv);
         }
 
-        // Click handlers for individual accept buttons
-        resultsDiv.querySelectorAll('.ss-gallery-accept-btn').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            const performerId = btn.dataset.performerId;
-            const targetGalleryId = btn.dataset.galleryId;
-            let imageIds;
-            try {
-              imageIds = JSON.parse(btn.dataset.imageIds);
-            } catch (_) {
-              imageIds = [];
-            }
-            const tagImages = btn.closest('.ss-gallery-performer-actions')
-              ?.querySelector('.ss-tag-images-toggle')?.checked || false;
+        this._bindActionHandlers(resultsDiv);
 
-            btn.disabled = true;
-            btn.textContent = 'Adding...';
-
-            let success = await this.addPerformerToGallery(targetGalleryId, performerId);
-
-            if (success && tagImages) {
-              btn.textContent = `Tagging images...`;
-              for (const imgId of imageIds) {
-                await this.addPerformerToImage(imgId, performerId);
-              }
-            }
-
-            if (success) {
-              btn.textContent = tagImages ? `Added to gallery + ${imageIds.length} images` : 'Added to gallery!';
-              btn.classList.add('ss-btn-success');
-            } else {
-              btn.textContent = 'Failed';
-              btn.classList.add('ss-btn-error');
-              btn.disabled = false;
-            }
-          });
-        });
-
-        // Accept All handler
+        // Accept All: add every performer that is already in the library
         resultsDiv.querySelector('.ss-accept-all-btn')?.addEventListener('click', async (e) => {
           const acceptAllBtn = e.target;
           acceptAllBtn.disabled = true;

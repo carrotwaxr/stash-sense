@@ -306,3 +306,125 @@ class TestSearchStashPerformers:
             data = resp.json()
             assert len(data) == 1
             assert data[0]["name"] == "Test"
+
+
+# ==================== Target handling (scene / image / gallery) ====================
+
+
+def _mock_stash(find_performers=None, target_performers=None, target_found=True):
+    """AsyncMock StashClientUnified whose _execute answers by query name."""
+    mock_stash = AsyncMock()
+
+    async def execute(query, variables=None, **kwargs):
+        if "findPerformers" in query:
+            return {"findPerformers": {"performers": find_performers or []}}
+        if "performerCreate" in query:
+            return {"performerCreate": {"id": "new-1", "name": "Created Performer"}}
+        for find in ("findScene", "findImage", "findGallery"):
+            if find in query:
+                if not target_found:
+                    return {find: None}
+                return {find: {"performers": [{"id": pid} for pid in (target_performers or [])]}}
+        if "findPerformer" in query:
+            return {"findPerformer": {"stash_ids": []}}
+        raise AssertionError(f"unexpected query: {query}")
+
+    mock_stash._execute.side_effect = execute
+    return mock_stash
+
+
+def _mock_stashbox():
+    client = AsyncMock()
+    client.get_performer.return_value = {"name": "Created Performer", "gender": "MALE"}
+    return client
+
+
+@pytest.fixture
+def configured_client(stashbox_client):
+    sb_mod._stash_url = "http://localhost:9999"
+    sb_mod._stash_api_key = "test-key"
+    return stashbox_client
+
+
+class TestCreatePerformerTargets:
+    """Test POST /stash/create-performer with scene_id / image_id / gallery_id."""
+
+    def _create(self, client, mock_stash, body, stashbox=None):
+        with patch("stashbox_router._get_stashbox_client", return_value=stashbox or _mock_stashbox()), \
+             patch("stashbox_router._get_endpoint_url", return_value="https://stashdb.org/graphql"), \
+             patch("stash_client_unified.StashClientUnified", return_value=mock_stash):
+            return client.post("/stash/create-performer", json={"endpoint": "stashdb.org", "stashdb_id": "abc", **body})
+
+    def test_requires_a_target(self, configured_client):
+        resp = self._create(configured_client, _mock_stash(), {})
+        assert resp.status_code == 422
+
+    def test_rejects_multiple_targets(self, configured_client):
+        resp = self._create(configured_client, _mock_stash(), {"scene_id": "1", "image_id": "2"})
+        assert resp.status_code == 422
+
+    def test_scene_target_still_works(self, configured_client):
+        mock_stash = _mock_stash(target_performers=["5"])
+        resp = self._create(configured_client, mock_stash, {"scene_id": "9"})
+        assert resp.status_code == 200
+        assert resp.json() == {"performer_id": "new-1", "name": "Created Performer", "success": True, "created": True}
+        mock_stash.update_scene_performers.assert_awaited_once_with("9", ["5", "new-1"])
+
+    def test_image_target_uses_image_update(self, configured_client):
+        mock_stash = _mock_stash()
+        resp = self._create(configured_client, mock_stash, {"image_id": "42"})
+        assert resp.status_code == 200
+        assert resp.json()["created"] is True
+        mock_stash.update_image_performers.assert_awaited_once_with("42", ["new-1"])
+        mock_stash.update_scene_performers.assert_not_called()
+
+    def test_gallery_target_uses_gallery_update(self, configured_client):
+        mock_stash = _mock_stash(target_performers=["3"])
+        resp = self._create(configured_client, mock_stash, {"gallery_id": "7"})
+        assert resp.status_code == 200
+        mock_stash.update_gallery_performers.assert_awaited_once_with("7", ["3", "new-1"])
+
+    def test_existing_stash_id_is_linked_instead_of_duplicated(self, configured_client):
+        mock_stash = _mock_stash(find_performers=[{"id": "77", "name": "Existing"}], target_performers=["1"])
+        stashbox = _mock_stashbox()
+        resp = self._create(configured_client, mock_stash, {"scene_id": "9"}, stashbox=stashbox)
+        assert resp.status_code == 200
+        assert resp.json() == {"performer_id": "77", "name": "Existing", "success": True, "created": False}
+        stashbox.get_performer.assert_not_called()
+        mock_stash.update_scene_performers.assert_awaited_once_with("9", ["1", "77"])
+        assert not any("performerCreate" in call.args[0] for call in mock_stash._execute.await_args_list)
+
+
+class TestLinkPerformerTargets:
+    """Test POST /stash/link-performer with scene_id / image_id / gallery_id."""
+
+    def _link(self, client, mock_stash, body):
+        with patch("stash_client_unified.StashClientUnified", return_value=mock_stash):
+            return client.post("/stash/link-performer", json={"performer_id": "5", **body})
+
+    def test_requires_a_target(self, configured_client):
+        assert self._link(configured_client, _mock_stash(), {}).status_code == 422
+
+    def test_link_to_image(self, configured_client):
+        mock_stash = _mock_stash(target_performers=["3"])
+        resp = self._link(configured_client, mock_stash, {"image_id": "42"})
+        assert resp.status_code == 200
+        assert resp.json() == {"success": True}
+        mock_stash.update_image_performers.assert_awaited_once_with("42", ["3", "5"])
+
+    def test_link_to_gallery(self, configured_client):
+        mock_stash = _mock_stash()
+        resp = self._link(configured_client, mock_stash, {"gallery_id": "7"})
+        assert resp.status_code == 200
+        mock_stash.update_gallery_performers.assert_awaited_once_with("7", ["5"])
+
+    def test_already_linked_performer_is_not_rewritten(self, configured_client):
+        mock_stash = _mock_stash(target_performers=["5"])
+        resp = self._link(configured_client, mock_stash, {"scene_id": "9"})
+        assert resp.status_code == 200
+        mock_stash.update_scene_performers.assert_not_called()
+
+    def test_missing_target_returns_404(self, configured_client):
+        resp = self._link(configured_client, _mock_stash(target_found=False), {"scene_id": "999"})
+        assert resp.status_code == 404
+        assert "Scene 999 not found" in resp.json()["detail"]

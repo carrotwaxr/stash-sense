@@ -52,13 +52,13 @@ def main():
         result = sidecar_post(sidecar_url, "/stash/search-performers", {"query": query})
     elif mode == "create_performer_from_stashbox":
         result = sidecar_post(sidecar_url, "/stash/create-performer", {
-            "scene_id": str(args.get("scene_id", "")),
+            **_target_args(args),
             "endpoint": args.get("endpoint", ""),
             "stashdb_id": args.get("stashdb_id", ""),
         }, timeout=30)
     elif mode == "link_performer_stashbox":
         result = sidecar_post(sidecar_url, "/stash/link-performer", {
-            "scene_id": str(args.get("scene_id", "")),
+            **_target_args(args),
             "performer_id": str(args.get("performer_id", "")),
             "stash_ids": args.get("stash_ids", []),
             "update_metadata": args.get("update_metadata", False),
@@ -100,6 +100,11 @@ def _log_prefix(level_char):
 def log(message):
     """Log an info message to Stash."""
     print(_log_prefix(b'i') + f"[Stash Sense] {message}\n", file=sys.stderr, flush=True)
+
+
+def _target_args(args):
+    """Pass through whichever of scene_id / image_id / gallery_id the UI supplied."""
+    return {key: str(args[key]) for key in ("scene_id", "image_id", "gallery_id") if args.get(key)}
 
 
 def health_check(sidecar_url):
