@@ -68,6 +68,7 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `plugin/stash-sense-operations.js` - Operation queue UI
 - `plugin/stash-sense.css` - All styles
 - `plugin/stash_sense_backend.py` - Plugin backend proxy
+- `api/benchmark/failure/` - Face recognition failure-analysis benchmark (#139); runs in the container, see `docs/research/failure-analysis.md`
 
 ## Pitfalls
 
