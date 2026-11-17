@@ -109,10 +109,12 @@ Translation: `recommendations_router.py:update_performer_fields()`
 
 ## Related Skills
 
-- `deploy-dev-plugin` — SCP plugin files to Unraid
-- `db-import-export` — Copy face DB from trainer to sidecar
-- `create-ticket` — Plan and create GitHub Issues
-- `work-ticket` — Pick up and implement a GitHub Issue
-- `git-preferences` — Branching, commits, PR conventions
-- `python-fastapi` — FastAPI patterns used in this project
-- `stash` / `stash-box` / `stash-plugin-dev` — Stash ecosystem references
+Typed-only skills are ones I run; suggest them rather than calling them.
+
+- `/stash:deploy-stash-sense` (typed only): copy the plugin files to production Stash
+- `/stash:create-ticket` (typed only): plan and create GitHub Issues
+- `/stash:work-ticket` (typed only): pick up and implement a GitHub Issue
+- `db-import-export`: copy the face DB from the trainer to the sidecar
+- `fluffer:git-pr`: branching, commits, PR conventions
+- `stash:stash` / `stash:stash-box`: the Stash and StashDB API references
+- `stash:stash-plugin-dev`: the plugin manifest and PluginApi reference; its deploy and publish steps are for the stash-plugins repo, not this one
