@@ -9,7 +9,7 @@ pydantic>=2.0.0,<3
 python-dotenv>=1.0.0,<2
 requests>=2.28.0,<3
 numpy>=1.24,<2
-pillow>=12.1.1,<13
+pillow>=13.0.0,<14
 tqdm>=4.65.0,<5
 # cloudscraper: needed by stashbox_client.py to bypass Cloudflare on some stash-box instances
 cloudscraper

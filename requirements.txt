@@ -24,7 +24,7 @@ uvicorn[standard]>=0.23.0,<1
 httpx>=0.25.0,<1
 
 # Image processing
-pillow>=12.1.1,<13
+pillow>=13.0.0,<14
 numpy>=1.24,<2
 opencv-python-headless>=4.8.0,<5
 
