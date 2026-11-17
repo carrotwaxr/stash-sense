@@ -41,6 +41,8 @@ Only user overrides are stored. Absence means "use the tier default."
 | `embedding_batch_size` | int | 1-128 | Faces processed per GPU inference call |
 | `frame_extraction_concurrency` | int | 1-16 | Parallel ffmpeg processes for frame extraction |
 | `detection_size` | int | 160-1280 | Face detection input resolution (pixels) |
+| `media_job_nice` | int | 0-19 | Nice level for ffmpeg run by CPU-heavy jobs (default 10; 19 yields to everything else) |
+| `media_job_threads` | int | 0-64 | Thread cap per ffmpeg run by CPU-heavy jobs (default 0 = ffmpeg decides) |
 
 ### Rate Limits
 
@@ -62,6 +64,12 @@ Only user overrides are stored. Absence means "use the tier default."
 |---------|------|-------------|
 | `body_signal_enabled` | bool | Use body proportion analysis |
 | `tattoo_signal_enabled` | bool | Use tattoo detection (requires model) |
+
+### Features
+
+| Setting | Type | Description |
+|---------|------|-------------|
+| `show_unfinished_features` | bool | Show job types, recommendation types and pages that are not production-ready yet (default off). While off, the API rejects hidden job types. `GET /system/features` lists what is hidden. |
 
 ## Settings API
 

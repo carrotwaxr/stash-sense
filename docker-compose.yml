@@ -9,10 +9,15 @@ services:
     volumes:
       - ./api/data:/data
       - stash-sense-insightface:/root/.insightface
+      # Media library, read-only unless a file-writing feature (subtitles) is on
+      - ${MEDIA_LIBRARY:-./media}:/media:ro
     environment:
       - STASH_URL=${STASH_URL:-http://stash:9999}
       - STASH_API_KEY=${STASH_API_KEY}
       - DATA_DIR=/data
+      - MEDIA_PATH_MAP=${MEDIA_PATH_MAP:-/data=/media}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - PYTHONUNBUFFERED=1
     deploy:
       resources:
