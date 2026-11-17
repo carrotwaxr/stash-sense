@@ -33,6 +33,7 @@ from scene_matcher import (
     frequency_based_matching,
     clustered_frequency_matching,
     hybrid_matching,
+    recognize_detected_faces,
 )
 from stashbox_utils import _get_stashbox_client, _extract_endpoint
 from recommendations_router import save_scene_fingerprint, save_image_fingerprint
@@ -254,6 +255,25 @@ def distance_to_confidence(distance: float) -> float:
     # Cosine distance ranges from 0 (identical) to 2 (opposite)
     # Map to confidence: 0 distance -> 1.0 confidence, 1.0 distance -> 0.0 confidence
     return max(0.0, min(1.0, 1.0 - distance))
+
+
+async def fetch_screenshot_image(url: str, api_key: str, video_width: int):
+    """Fetch a scene's screenshot and upscale it to roughly video width.
+
+    Stash serves a thumbnail at paths.screenshot; faces in it are too small
+    for detection unless scaled up. Returns an RGB array, or None on non-200.
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"ApiKey": api_key})
+    if resp.status_code != 200:
+        return None
+    image = load_image(resp.content)
+    img_h, img_w = image.shape[:2]
+    if img_w < video_width * 0.8:
+        import cv2
+        scale = video_width / img_w
+        image = cv2.resize(image, (int(img_w * scale), int(img_h * scale)), interpolation=cv2.INTER_LANCZOS4)
+    return image
 
 
 def _match_to_response(m, **overrides) -> PerformerMatchResponse:
@@ -885,71 +905,32 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
     filtered_faces = len(detected_faces)
     print(f"[identify_scene] [{time.time()-t_start:.1f}s] Detection: {t_detect_total:.1f}s | {total_faces} detected, {filtered_faces} after filter")
 
-    # Phase 2: Batch generate embeddings for ALL faces (2 model calls total)
+    # Phase 2+3: batch-embed all faces, then match each against the index
     t_embed = time.time()
-    if detected_faces:
-        face_images = [face.image for _, face in detected_faces]
-        embeddings = _recognizer.generator.get_embeddings_batch(face_images)
-    else:
-        embeddings = []
+    all_results: list[tuple[int, RecognitionResult]] = recognize_detected_faces(
+        _recognizer, detected_faces, match_config
+    )
     t_embed_total = time.time() - t_embed
-    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Batch embedding: {t_embed_total:.1f}s for {len(embeddings)} faces ({t_embed_total*1000/max(1,len(embeddings)):.1f}ms/face)")
-
-    # Phase 3: Match each face against the index using pre-computed embeddings
-    all_results: list[tuple[int, RecognitionResult]] = []
-    t_recognize_total = 0.0
-
-    for (frame_idx, face), embedding in zip(detected_faces, embeddings):
-        t_rec = time.time()
-        matches, _match_result, _ = _recognizer.recognize_face_v2(face, match_config, embedding=embedding)
-        t_recognize_total += time.time() - t_rec
-
-        result = RecognitionResult(face=face, matches=matches, embedding=embedding)
-        all_results.append((frame_idx, result))
+    t_recognize_total = t_embed_total
 
     t_face_loop_total = time.time() - t_face_loop
-    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Matching: {t_recognize_total:.1f}s | Total face pipeline: {t_face_loop_total:.1f}s")
+    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Embed+match: {t_embed_total:.1f}s for {len(all_results)} faces | Total face pipeline: {t_face_loop_total:.1f}s")
 
     # Process screenshot if available (high-quality cover image often has clear faces)
-    # Stash serves thumbnails via paths.screenshot, so we scale up if needed
-    screenshot_faces = 0
     if screenshot_url:
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                headers = {"ApiKey": api_key}
-                screenshot_resp = await client.get(screenshot_url, headers=headers)
-                if screenshot_resp.status_code == 200:
-                    screenshot_image = load_image(screenshot_resp.content)
-                    img_h, img_w = screenshot_image.shape[:2]
-
-                    # Scale up thumbnail if significantly smaller than video resolution
-                    video_width = file_info.get("width", 1920)
-                    if img_w < video_width * 0.8:
-                        import cv2
-                        scale_factor = video_width / img_w
-                        new_w = int(img_w * scale_factor)
-                        new_h = int(img_h * scale_factor)
-                        screenshot_image = cv2.resize(screenshot_image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-                        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot upscaled: {img_w}x{img_h} -> {new_w}x{new_h}")
-                        img_w, img_h = new_w, new_h
-
-                    screenshot_detected = _recognizer.generator.detect_faces(
-                        screenshot_image,
-                        min_confidence=request.min_face_confidence,
-                    )
-                    # Filter and batch-embed screenshot faces
-                    ss_faces = [f for f in screenshot_detected
-                                if f.bbox["w"] >= request.min_face_size and f.bbox["h"] >= request.min_face_size]
-                    if ss_faces:
-                        ss_embeddings = _recognizer.generator.get_embeddings_batch([f.image for f in ss_faces])
-                        for face, emb in zip(ss_faces, ss_embeddings):
-                            matches, _, _ = _recognizer.recognize_face_v2(face, match_config, embedding=emb)
-                            result = RecognitionResult(face=face, matches=matches, embedding=emb)
-                            all_results.append((-1, result))
-                            screenshot_faces += 1
-                            top_match = matches[0].name if matches else "no match"
-                            print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot face: {face.bbox['w']}x{face.bbox['h']}px -> {top_match}")
-                    print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot ({img_w}x{img_h}): {len(screenshot_detected)} faces, {screenshot_faces} usable")
+            screenshot_image = await fetch_screenshot_image(
+                screenshot_url, api_key, file_info.get("width") or 1920
+            )
+            if screenshot_image is not None:
+                screenshot_detected = _recognizer.generator.detect_faces(
+                    screenshot_image,
+                    min_confidence=request.min_face_confidence,
+                )
+                ss_faces = [(-1, f) for f in screenshot_detected
+                            if f.bbox["w"] >= request.min_face_size and f.bbox["h"] >= request.min_face_size]
+                all_results.extend(recognize_detected_faces(_recognizer, ss_faces, match_config))
+                print(f"[identify_scene] [{time.time()-t_start:.1f}s] Screenshot: {len(screenshot_detected)} faces, {len(ss_faces)} usable")
         except Exception as e:
             print(f"[identify_scene] Screenshot processing failed: {e}")
 

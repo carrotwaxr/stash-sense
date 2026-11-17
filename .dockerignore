@@ -35,7 +35,7 @@ api/test_output/
 api/validation/
 api/profile_test/
 api/benchmark_results/
-api/benchmark/
+# api/benchmark/ ships: the failure-analysis CLI (#139) runs in the container.
 api/tests/
 docs/
 
