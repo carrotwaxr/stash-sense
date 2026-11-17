@@ -5,13 +5,16 @@ Also provides system info (hardware profile, version, uptime).
 """
 
 import json
+import os
 import time
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from features import feature_state
 from hardware import get_hardware_profile
+from media_library import get_media_library
 from recommendations_router import get_rec_db
 from settings import get_settings_manager, SETTING_DEFS
 from stashbox_connection_manager import get_connection_manager
@@ -286,7 +289,15 @@ async def get_system_info():
             "tier": profile.tier,
             "summary": profile.summary(),
         },
+        "process": {"uid": os.getuid(), "gid": os.getgid()},
+        "media": get_media_library().status(),
     }
+
+
+@router.get("/system/features")
+async def get_features():
+    """Which job types, recommendation types and pages are hidden as unfinished."""
+    return feature_state()
 
 
 # ==================== StashBox connections ====================

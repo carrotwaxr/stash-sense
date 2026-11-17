@@ -60,11 +60,20 @@ COPY api/models.json ./models.json
 # Copy application code
 COPY api/ ./
 
-# Create data directory mount point
-RUN mkdir -p /data
+# Mount points. /root stays traversable so the non-root user can reach the
+# InsightFace cache at its existing mount path (/root/.insightface).
+RUN mkdir -p /data /media /root/.insightface && chmod 711 /root
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh
 
 # Environment defaults
 ENV DATA_DIR=/data
+ENV MEDIA_DIR=/media
+ENV INSIGHTFACE_HOME=/root/.insightface
+ENV PUID=99
+ENV PGID=100
+ENV UMASK=022
 ENV PYTHONUNBUFFERED=1
 ENV ENABLE_TATTOO_SIGNAL=auto
 
@@ -75,4 +84,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
 
 STOPSIGNAL SIGTERM
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]

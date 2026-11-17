@@ -12,10 +12,17 @@ if TYPE_CHECKING:
 class JobContext:
     """Execution context passed to jobs, providing stop signaling, yielding, and progress reporting."""
 
-    def __init__(self, job_id: int, db: RecommendationsDB, queue_manager: Any) -> None:
+    def __init__(
+        self,
+        job_id: int,
+        db: RecommendationsDB,
+        queue_manager: Any,
+        job_type: Optional[str] = None,
+    ) -> None:
         self._job_id = job_id
         self._db = db
         self._queue_manager = queue_manager
+        self._job_type = job_type
         self._stop_requested = False
 
     @property
@@ -44,6 +51,20 @@ class JobContext:
         self._db.update_job_progress(
             self._job_id, items_processed=items_processed, cursor=cursor
         )
+
+    async def run_media_command(self, cmd: list[str], timeout: Optional[float] = None):
+        """Run an ffmpeg/ffprobe command for this job.
+
+        CPU-heavy jobs get the media_job_nice / media_job_threads settings
+        applied; other jobs run the command unchanged.
+        """
+        from job_models import JOB_REGISTRY, ResourceType
+        from media_exec import media_job_command, run_command
+
+        defn = JOB_REGISTRY.get(self._job_type) if self._job_type else None
+        if defn is not None and defn.resource == ResourceType.CPU_HEAVY:
+            cmd = media_job_command(cmd)
+        return await run_command(cmd, timeout=timeout)
 
     async def report_progress(self, items_processed: int, items_total: Optional[int] = None) -> None:
         """Report current progress without saving a resumption cursor."""

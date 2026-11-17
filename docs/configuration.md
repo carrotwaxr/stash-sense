@@ -77,9 +77,35 @@ See [Settings Reference](settings-system.md) for the full list of adjustable opt
 |----------------|---------|------|
 | `/data` | Database files, models, and local data (`stash_sense.db`) | **Read-write** |
 | `/root/.insightface` | Cached face detection model weights (~500 MB) | Read-write |
+| `/media` | Your media library, the same files Stash reads | Read-only (read-write only for features that write files) |
 
 !!! warning
     The `/data` volume **must** be read-write. The sidecar writes `stash_sense.db` (recommendations, settings, analysis history) here, and in-app database updates download files to this directory.
+
+### Media library
+
+Features that read video files directly (audio fingerprints, frame sampling) and features that write next to them (subtitles) need the library mounted into the container. Mount it read-only unless you turn on a feature that writes files. Those features check the mount and refuse to run with a message naming the fix when it is read-only.
+
+Stash and the sidecar usually see the library at different paths. `MEDIA_PATH_MAP` maps Stash's paths to the sidecar's:
+
+| Stash sees | Sidecar mount | `MEDIA_PATH_MAP` |
+|---|---|---|
+| `/data/Studio/a.mp4` | `/media` | `/data=/media` |
+| `/data` and `/archive` | `/media`, `/media2` | `/data=/media,/archive=/media2` |
+
+Without a map, Stash's paths are used unchanged, which works when you mount the library at the same container path Stash uses. The plugin's **Settings** tab and `GET /health` report each mount and whether it is `rw`, `ro` or `missing`.
+
+### File ownership (PUID / PGID)
+
+The container starts as root, hands `/data` and the InsightFace cache to `PUID:PGID`, then drops to that user. Everything the sidecar creates (database, models, subtitles) is owned by `PUID:PGID`. The defaults, `99:100`, match unRAID's `nobody:users`. On other hosts use the owner of your library (`id -u`, `id -g`). `PUID=0` keeps the old run-as-root behaviour. `UMASK` (default `022`) sets the file mode mask.
+
+The media library is never chowned. In read-write mode `PUID:PGID` needs write permission on the folders it writes into.
+
+### CPU and GPU
+
+CPU-heavy jobs run ffmpeg under `nice` with an optional thread cap, both set in **Settings > Performance** (`media_job_nice`, `media_job_threads`). To keep the whole container off some cores, add `--cpuset-cpus=2-7` (your core list) to the template's Extra Parameters or `cpuset: "2-7"` in compose.
+
+The GPU tier comes from the card's VRAM, read through NVML (bundled in the image) or `nvidia-smi`. Both need the NVIDIA runtime (`--runtime=nvidia`, or the compose `deploy.resources` block). Without it, the sidecar reports **No GPU** and uses the CPU tier.
 
 ---
 
@@ -130,6 +156,7 @@ The following environment variables have been replaced by runtime settings. If d
 Environment variables that remain (connection strings):
 
 - `STASH_URL`, `STASH_API_KEY`, `DATA_DIR`, `LOG_LEVEL`
+- `MEDIA_PATH_MAP`, `MEDIA_DIR` (default `/media`), `PUID`, `PGID`, `UMASK`
 
 ---
 
@@ -140,3 +167,5 @@ Environment variables that remain (connection strings):
 - [ ] Stash-Box endpoints configured in Stash's **Settings > Metadata Providers** (for upstream sync and scene tagging)
 - [ ] `/data` volume mounted read-write
 - [ ] `/root/.insightface` volume mounted (prevents re-downloading detection model on restart)
+- [ ] Media library mounted at `/media` (read-only) and `MEDIA_PATH_MAP` set if Stash uses a different path
+- [ ] `PUID` / `PGID` match the owner of your library

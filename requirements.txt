@@ -33,3 +33,7 @@ pydantic>=2.0.0,<3
 
 # Model downloads
 gdown>=4.7.0,<6
+
+# Hardware detection (GPU VRAM for the tier, memory)
+nvidia-ml-py>=12.535,<14
+psutil>=5.9,<8

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from frame_extractor import check_ffmpeg_available
+from media_library import get_media_library
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class HealthResponse(BaseModel):
     database_loaded: bool
     performer_count: int = 0
     face_count: int = 0
+    media: Optional[dict] = None
 
 
 class CheckUpdateResponse(BaseModel):
@@ -102,10 +104,12 @@ async def health_check():
     side effects. The face recognition database loads on first
     /identify request.
     """
+    media = get_media_library().status()
     if _recognizer is None:
         return HealthResponse(
             status="degraded",
             database_loaded=False,
+            media=media,
         )
 
     return HealthResponse(
@@ -113,6 +117,7 @@ async def health_check():
         database_loaded=True,
         performer_count=len(_recognizer.performers),
         face_count=len(_recognizer.faces),
+        media=media,
     )
 
 

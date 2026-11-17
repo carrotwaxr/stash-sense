@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 import face_config
+from features import HiddenFeatureError, hidden_job_types, hidden_recommendation_types
+from media_library import MediaNotWritableError
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer, UpstreamSceneAnalyzer
@@ -323,12 +325,16 @@ async def list_recommendations(
 ):
     """List recommendations with optional filtering."""
     db = get_rec_db()
+    hidden = hidden_recommendation_types()
+    if type in hidden:
+        return RecommendationListResponse(recommendations=[], total=0)
     recs = db.get_recommendations(
         status=status,
         type=type,
         target_type=target_type,
         limit=limit,
         offset=offset,
+        exclude_types=hidden,
     )
     return RecommendationListResponse(
         recommendations=[
@@ -345,7 +351,9 @@ async def list_recommendations(
             )
             for r in recs
         ],
-        total=db.count_recommendations(status=status, type=type, target_type=target_type),
+        total=db.count_recommendations(
+            status=status, type=type, target_type=target_type, exclude_types=hidden,
+        ),
     )
 
 
@@ -353,7 +361,8 @@ async def list_recommendations(
 async def get_recommendation_counts():
     """Get recommendation counts by type and status."""
     db = get_rec_db()
-    counts = db.get_recommendation_counts()
+    hidden = hidden_recommendation_types()
+    counts = {t: c for t, c in db.get_recommendation_counts().items() if t not in hidden}
     total_pending = sum(
         type_counts.get("pending", 0)
         for type_counts in counts.values()
@@ -366,7 +375,7 @@ async def get_recommendation(rec_id: int):
     """Get a single recommendation."""
     db = get_rec_db()
     rec = db.get_recommendation(rec_id)
-    if not rec:
+    if not rec or rec.type in hidden_recommendation_types():
         raise HTTPException(status_code=404, detail="Recommendation not found")
     return RecommendationResponse(
         id=rec.id,
@@ -421,7 +430,10 @@ async def list_analysis_types():
     """List available analysis types."""
     db = get_rec_db()
     types = []
+    hidden = hidden_job_types()
     for type_name in ANALYZERS.keys():
+        if type_name in hidden:
+            continue
         settings = db.get_settings(type_name)
         types.append({
             "type": type_name,
@@ -442,11 +454,14 @@ async def run_analysis(type: str, full: bool = False):
         raise HTTPException(status_code=503, detail="Queue manager not initialized")
 
     from job_models import JobPriority
-    job_id = _queue_manager.submit(
-        type_id=type,
-        triggered_by="user",
-        priority=JobPriority.HIGH,
-    )
+    try:
+        job_id = _queue_manager.submit(
+            type_id=type,
+            triggered_by="user",
+            priority=JobPriority.HIGH,
+        )
+    except (HiddenFeatureError, MediaNotWritableError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if job_id is None:
         raise HTTPException(status_code=409, detail=f"Analysis '{type}' is already running or queued")
 
@@ -690,11 +705,14 @@ async def start_fingerprint_generation(request: FingerprintGenerateRequest):
     if _queue_manager is None:
         raise HTTPException(status_code=503, detail="Queue manager not initialized")
 
-    job_id = _queue_manager.submit(
-        type_id="fingerprint_generation",
-        triggered_by="user",
-        priority=JobPriority.HIGH,
-    )
+    try:
+        job_id = _queue_manager.submit(
+            type_id="fingerprint_generation",
+            triggered_by="user",
+            priority=JobPriority.HIGH,
+        )
+    except (HiddenFeatureError, MediaNotWritableError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if job_id is None:
         raise HTTPException(status_code=409, detail="Fingerprint generation already running or queued")
 

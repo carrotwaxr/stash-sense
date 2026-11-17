@@ -27,6 +27,11 @@ Go to **Docker → Add Container → Template → User Templates → stash-sense
 | Stash URL | `http://stash:9999` or your Stash IP/hostname |
 | Stash API Key | From Stash: Settings → Security → API Key |
 | Data Directory | Path to extracted database files |
+| Media Library | The share Stash reads your videos from. Keep Access Mode **Read Only** unless you enable a feature that writes files (subtitles) |
+| MEDIA_PATH_MAP | `stash_path=/media`. If Stash's template maps your library to `/data`, use `/data=/media` |
+| PUID / PGID | `99` / `100` (unRAID's `nobody:users`); files the sidecar creates get this owner |
+
+To keep CPU-heavy jobs off some cores, add `--cpuset-cpus=2-7` (your core list) to **Extra Parameters**. After starting, the plugin's **Settings** tab shows the GPU tier and each media mount with its mode.
 
 ### 4. Apply
 
@@ -61,9 +66,13 @@ services:
       - STASH_URL=http://stash:9999
       - STASH_API_KEY=your-api-key
       - NVIDIA_VISIBLE_DEVICES=all
+      - PUID=99
+      - PGID=100
+      - MEDIA_PATH_MAP=/data=/media
     volumes:
-      - /mnt/user/appdata/stash-sense/data:/data:ro
+      - /mnt/user/appdata/stash-sense/data:/data
       - /mnt/user/appdata/stash-sense/models:/root/.insightface
+      - /mnt/user/media:/media:ro
     deploy:
       resources:
         reservations:

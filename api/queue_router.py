@@ -6,7 +6,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from features import HiddenFeatureError, hidden_job_types, is_job_type_visible
 from job_models import JOB_REGISTRY, JobPriority
+from media_library import MediaNotWritableError
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -73,7 +75,10 @@ async def get_queue_status():
 @router.get("/types", response_model=JobTypesResponse)
 async def get_job_types():
     types = []
+    hidden = hidden_job_types()
     for defn in JOB_REGISTRY.values():
+        if defn.type_id in hidden:
+            continue
         types.append({
             "type_id": defn.type_id,
             "display_name": defn.display_name,
@@ -82,6 +87,8 @@ async def get_job_types():
             "default_priority": int(defn.default_priority),
             "supports_incremental": defn.supports_incremental,
             "schedulable": defn.schedulable,
+            "production_ready": defn.production_ready,
+            "writes_media": defn.writes_media,
             "default_interval_hours": defn.default_interval_hours,
             "allowed_intervals": [
                 {"hours": hours, "label": label}
@@ -92,12 +99,13 @@ async def get_job_types():
 
 @router.get("/schedules", response_model=ScheduleListResponse)
 async def list_schedules():
-    return {"schedules": _mgr()._db.get_all_job_schedules()}
+    hidden = hidden_job_types()
+    return {"schedules": [s for s in _mgr()._db.get_all_job_schedules() if s["type"] not in hidden]}
 
 @router.put("/schedules/{type_id}", response_model=MessageResponse)
 async def update_schedule(type_id: str, request: UpdateScheduleRequest):
     defn = JOB_REGISTRY.get(type_id)
-    if not defn:
+    if not defn or not is_job_type_visible(type_id):
         raise HTTPException(status_code=404, detail=f"Unknown job type: {type_id}")
     priority = request.priority if request.priority is not None else int(defn.default_priority)
     _mgr()._db.upsert_job_schedule(
@@ -131,7 +139,7 @@ async def submit_job(request: SubmitJobRequest):
             priority=priority,
             cursor=request.cursor,
         )
-    except ValueError as e:
+    except (ValueError, MediaNotWritableError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     if job_id is None:
@@ -171,11 +179,14 @@ async def retry_job(job_id: int):
     defn = JOB_REGISTRY.get(job["type"])
     if not defn:
         raise HTTPException(status_code=400, detail=f"Unknown job type: {job['type']}")
-    new_id = _mgr().submit(
-        type_id=job["type"],
-        triggered_by="user",
-        cursor=job.get("cursor"),
-    )
+    try:
+        new_id = _mgr().submit(
+            type_id=job["type"],
+            triggered_by="user",
+            cursor=job.get("cursor"),
+        )
+    except (HiddenFeatureError, MediaNotWritableError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if new_id is None:
         raise HTTPException(status_code=409, detail="Job already queued")
     return {"job_id": new_id, "message": "Job re-queued"}

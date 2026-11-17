@@ -2594,6 +2594,16 @@ a.ss-upstream-endpoint-badge:hover {
   color: var(--bs-secondary-color, #888);
 }
 
+.ss-hw-media {
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.ss-media-rw { color: #51cf66; }
+.ss-media-ro { color: var(--bs-secondary-color, #888); }
+.ss-media-missing,
+.ss-hw-media-error { color: #ff922b; }
+
 /* Settings Categories */
 .ss-settings-category {
   margin-bottom: 28px;

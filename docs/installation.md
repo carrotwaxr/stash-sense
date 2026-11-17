@@ -22,8 +22,11 @@ docker run -d \
   -p 6960:5000 \
   -e STASH_URL=http://your-stash-host:9999 \
   -e STASH_API_KEY=your-api-key \
+  -e PUID=1000 -e PGID=1000 \
+  -e MEDIA_PATH_MAP=/data=/media \
   -v /path/to/stash-sense-data:/data \
   -v stash-sense-insightface:/root/.insightface \
+  -v /path/to/your/library:/media:ro \
   carrotwaxr/stash-sense:latest
 ```
 
@@ -35,10 +38,15 @@ docker run -d \
   -p 6960:5000 \
   -e STASH_URL=http://your-stash-host:9999 \
   -e STASH_API_KEY=your-api-key \
+  -e PUID=1000 -e PGID=1000 \
+  -e MEDIA_PATH_MAP=/data=/media \
   -v /path/to/stash-sense-data:/data \
   -v stash-sense-insightface:/root/.insightface \
+  -v /path/to/your/library:/media:ro \
   carrotwaxr/stash-sense:latest
 ```
+
+`PUID`/`PGID` should be the owner of your library (`id -u`, `id -g`); unRAID uses `99`/`100`. `MEDIA_PATH_MAP` maps the path Stash reports for a file to the path inside this container. See [Configuration](configuration.md#media-library) for both.
 
 !!! warning "The `/data` volume must be read-write"
     The sidecar writes `stash_sense.db` (your recommendations, settings, and analysis history) to `/data`, and in-app database updates also write here. Do **not** mount with `:ro`.
@@ -57,9 +65,13 @@ docker run -d \
         volumes:
           - /path/to/stash-sense-data:/data
           - stash-sense-insightface:/root/.insightface
+          - /path/to/your/library:/media:ro
         environment:
           - STASH_URL=http://your-stash-host:9999
           - STASH_API_KEY=your-api-key
+          - PUID=1000
+          - PGID=1000
+          - MEDIA_PATH_MAP=/data=/media
         deploy:
           resources:
             reservations:

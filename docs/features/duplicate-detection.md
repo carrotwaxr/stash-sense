@@ -1,5 +1,8 @@
 # Duplicate Detection
 
+!!! note "Hidden as unfinished"
+    Duplicate Scene Detection, Duplicate Scene File Detection and the face Fingerprint Generation job that feeds them are hidden until they pass the production-ready checklist. Duplicate detection v2 ([#130](https://github.com/carrotwaxr/stash-sense/issues/130)) replaces them. To use them now, turn on **Settings > Features > Show Unfinished Features** and reload the page. Existing recommendations are kept and reappear when the setting is on.
+
 Stash Sense finds duplicate scenes that Stash's built-in phash matching misses — different intros/outros, trimming, aspect ratio changes, or watermarks.
 
 ## Prerequisites

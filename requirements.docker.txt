@@ -26,3 +26,7 @@ opencv-python-headless>=4.8.0,<5
 pydantic>=2.0.0,<3
 python-dotenv>=1.0.0,<2
 tqdm>=4.65.0,<5
+
+# Hardware detection (GPU VRAM for the tier, memory)
+nvidia-ml-py>=12.535,<14
+psutil>=5.9,<8
