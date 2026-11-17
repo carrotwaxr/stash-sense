@@ -32,10 +32,13 @@ getent passwd "$PUID" >/dev/null || \
 
 # Hand the app's own directories to PUID:PGID. Only files with other owners
 # are touched, so this is cheap after the first start. The media library is
-# never chowned.
+# never chowned. If chown fails (NFS root squash, read-only mount) it only
+# warns, so the app starts and reports what it can't write instead of
+# crash-looping.
 for dir in "$DATA_DIR" "$INSIGHTFACE_HOME" "$APP_HOME"; do
-    mkdir -p "$dir"
-    find "$dir" \( ! -uid "$PUID" -o ! -gid "$PGID" \) -exec chown -h "$PUID:$PGID" {} +
+    mkdir -p "$dir" 2>/dev/null || true
+    find "$dir" \( ! -uid "$PUID" -o ! -gid "$PGID" \) -exec chown -h "$PUID:$PGID" {} + \
+        || echo "[entrypoint] warning: could not hand $dir to $PUID:$PGID; files there may not be writable"
 done
 
 echo "[entrypoint] running as uid=$PUID gid=$PGID umask=$UMASK"

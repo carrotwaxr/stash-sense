@@ -163,6 +163,17 @@ class TestMediaWrites:
         assert resp.status_code == 400
         assert resp.json()["detail"].startswith("Subtitles writes files into the media library")
 
+    def test_analysis_run_on_read_only_mount_is_400(self, client, monkeypatch, tmp_path):
+        monkeypatch.setitem(
+            JOB_REGISTRY, "duplicate_performer",
+            dataclasses.replace(JOB_REGISTRY["duplicate_performer"], writes_media=True),
+        )
+        monkeypatch.setattr(media_library, "_library",
+                            media_library.MediaLibrary([], media_dir=str(tmp_path / "absent")))
+        resp = client.post("/recommendations/analysis/duplicate_performer/run")
+        assert resp.status_code == 400
+        assert "writes files into the media library" in resp.json()["detail"]
+
     def test_read_jobs_unaffected_by_read_only_mount(self, client, monkeypatch, tmp_path):
         monkeypatch.setattr(media_library, "_library",
                             media_library.MediaLibrary([], media_dir=str(tmp_path / "absent")))

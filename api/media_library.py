@@ -135,12 +135,21 @@ class MediaLibrary:
         """Translate a file path as Stash reports it into the sidecar's path."""
         if self.config_error:
             raise MediaPathError(self.config_error)
+        if not stash_path.startswith("/"):
+            raise MediaPathError(f"{stash_path} is not an absolute path")
+        # Collapse "..", "." and doubled slashes so a path can't climb out of
+        # its mapping (matters once features write files).
+        stash_path = os.path.normpath(stash_path)
         if not self.mappings:
             return stash_path
         for m in self.mappings:
             if _under(stash_path, m.stash_prefix):
                 rest = stash_path[len(m.stash_prefix):] if m.stash_prefix != "/" else stash_path
-                return m.local_prefix.rstrip("/") + "/" + rest.lstrip("/")
+                rest = rest.strip("/")
+                local = m.local_prefix if m.local_prefix == "/" else m.local_prefix.rstrip("/")
+                if not rest:
+                    return local
+                return local.rstrip("/") + "/" + rest
         raise MediaPathError(
             f"{stash_path} is outside every MEDIA_PATH_MAP entry "
             f"({', '.join(m.stash_prefix for m in self.mappings)})"

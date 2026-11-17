@@ -123,6 +123,20 @@ class TestRunCommand:
         with pytest.raises(TimeoutError):
             await run_command(["sleep", "5"], timeout=0.2)
 
+    async def test_cancellation_kills_child(self, tmp_path):
+        pidfile = tmp_path / "pid"
+        task = asyncio.create_task(run_command(["sh", "-c", f"echo $$ > {pidfile}; exec sleep 30"]))
+        for _ in range(100):
+            if pidfile.exists() and pidfile.read_text().strip():
+                break
+            await asyncio.sleep(0.05)
+        pid = int(pidfile.read_text())
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+
     async def test_returns_output(self):
         result = await run_command(["sh", "-c", "echo out; echo err >&2; exit 3"])
         assert (result.returncode, result.stdout, result.stderr) == (3, b"out\n", b"err\n")

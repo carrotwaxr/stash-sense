@@ -35,6 +35,7 @@ from stashbox_router import router as stashbox_router, init_stashbox_router
 from database_health_router import router as database_health_router, init_database_health_router, update_database_health_globals
 from database_updater import DatabaseUpdater
 from hardware import init_hardware
+from media_library import init_media_library
 from settings import init_settings, migrate_env_vars
 from settings_router import router as settings_router, init_settings_router
 from stashbox_connection_manager import init_connection_manager
@@ -251,6 +252,9 @@ async def lifespan(app: FastAPI):
 
     # Detect hardware and classify tier
     hw_profile = init_hardware(str(data_dir))
+
+    # Media library mount: log each mount's mode and any MEDIA_PATH_MAP error
+    init_media_library()
 
     # Initialize model manager
     manifest_path = Path(__file__).parent / "models.json"

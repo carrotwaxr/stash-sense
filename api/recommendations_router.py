@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 import face_config
 from features import HiddenFeatureError, hidden_job_types, hidden_recommendation_types
+from media_library import MediaNotWritableError
 from recommendations_db import RecommendationsDB
 from stash_client_unified import StashClientUnified
 from analyzers import DuplicatePerformerAnalyzer, DuplicateSceneFilesAnalyzer, DuplicateScenesAnalyzer, UpstreamPerformerAnalyzer, UpstreamTagAnalyzer, UpstreamStudioAnalyzer, UpstreamSceneAnalyzer
@@ -459,7 +460,7 @@ async def run_analysis(type: str, full: bool = False):
             triggered_by="user",
             priority=JobPriority.HIGH,
         )
-    except HiddenFeatureError as e:
+    except (HiddenFeatureError, MediaNotWritableError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     if job_id is None:
         raise HTTPException(status_code=409, detail=f"Analysis '{type}' is already running or queued")
@@ -710,7 +711,7 @@ async def start_fingerprint_generation(request: FingerprintGenerateRequest):
             triggered_by="user",
             priority=JobPriority.HIGH,
         )
-    except HiddenFeatureError as e:
+    except (HiddenFeatureError, MediaNotWritableError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     if job_id is None:
         raise HTTPException(status_code=409, detail="Fingerprint generation already running or queued")

@@ -54,6 +54,21 @@ class TestToLocal:
         lib = MediaLibrary(parse_path_map("/=/host"))
         assert lib.to_local("/data/a.mp4") == "/host/data/a.mp4"
 
+    def test_dotdot_cannot_escape_mapping(self):
+        lib = MediaLibrary(parse_path_map("/data=/media"))
+        with pytest.raises(MediaPathError, match="outside every MEDIA_PATH_MAP entry"):
+            lib.to_local("/data/../etc/passwd")
+        assert lib.to_local("/data/a/../b//c.mp4") == "/media/b/c.mp4"
+
+    def test_exact_prefix_maps_to_mount_root(self):
+        lib = MediaLibrary(parse_path_map("/data=/media"))
+        assert lib.to_local("/data") == "/media"
+        assert lib.to_local("/data/") == "/media"
+
+    def test_relative_path_rejected(self):
+        with pytest.raises(MediaPathError, match="not an absolute path"):
+            MediaLibrary(parse_path_map("/data=/media")).to_local("data/a.mp4")
+
     def test_no_map_uses_stash_paths_as_is(self):
         assert MediaLibrary([]).to_local("/data/a.mp4") == "/data/a.mp4"
 

@@ -59,14 +59,16 @@ class CommandResult:
 
 
 async def run_command(cmd: list[str], timeout: Optional[float] = None) -> CommandResult:
-    """Run cmd without blocking the event loop; kill it on timeout."""
+    """Run cmd without blocking the event loop; kill it on timeout or cancellation."""
     proc = await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
+    except BaseException:
+        # Timeout, or the job task was cancelled: don't leave ffmpeg running.
+        if proc.returncode is None:
+            proc.kill()
+            await asyncio.shield(proc.wait())
         raise
     return CommandResult(cmd, proc.returncode, stdout, stderr)
