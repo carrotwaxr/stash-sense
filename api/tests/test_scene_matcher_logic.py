@@ -1,10 +1,6 @@
 """Tests for scene_matcher.py pure functions - cosine distance and cluster merging."""
 
-import sys
 from unittest.mock import Mock
-
-# Mock recognizer before importing scene_matcher
-sys.modules['recognizer'] = Mock()
 
 import numpy as np
 import pytest
