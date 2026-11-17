@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Face detection labeler</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #15171a; color: #e6e6e6;
+         display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline;
+           padding: 8px 12px; background: #1f2226; border-bottom: 1px solid #2e3238; }
+  header .progress { font-weight: 600; font-size: 15px; }
+  header .meta { color: #a8adb5; font-family: ui-monospace, monospace; font-size: 12px; }
+  header .status { padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .status.reviewed { background: #1f4d2e; color: #9fe0b0; }
+  .status.unreviewed { background: #4d3d1f; color: #f0d08a; }
+  .status.dirty { background: #4d1f2a; color: #f0a0b0; }
+  .policy { width: 100%; color: #cfd3d8; }
+  .keys { width: 100%; color: #8a9099; font-size: 12px; }
+  kbd { background: #2e3238; border-radius: 3px; padding: 0 4px; font-family: ui-monospace, monospace; }
+  main { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  canvas { background: #000; cursor: crosshair; }
+  #msg { position: fixed; bottom: 12px; right: 12px; padding: 6px 10px; border-radius: 4px;
+         background: #2e3238; display: none; }
+  #msg.error { background: #6b1f2a; }
+</style>
+</head>
+<body>
+<header>
+  <span class="progress" id="progress">loading...</span>
+  <span class="status" id="status"></span>
+  <span class="meta" id="meta"></span>
+  <div class="policy"><b>Policy:</b> Box every human face where at least one eye is visible, any size, any angle.
+    Accept a frame with zero boxes if it has no faces.</div>
+  <div class="keys">
+    Click a box to select, <kbd>Delete</kbd>/<kbd>Backspace</kbd> removes it.
+    Click a dashed candidate to make it a box. Drag on empty space to draw a box.
+    <kbd>Enter</kbd>/<kbd>a</kbd> save as reviewed &amp; next &middot;
+    <kbd>n</kbd>/<kbd>&rarr;</kbd> next &middot; <kbd>p</kbd>/<kbd>&larr;</kbd> prev &middot;
+    <kbd>u</kbd> first unreviewed &middot; <kbd>Esc</kbd> deselect
+  </div>
+</header>
+<main><canvas id="canvas"></canvas></main>
+<div id="msg"></div>
+<script>
+"use strict";
+const PREFILL_SCORE = 0.4;   // proposals at or above this start as boxes
+const MIN_DRAG_PX = 4;       // display pixels; smaller drags are clicks
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let frames = [];
+let idx = 0;
+let img = null;           // loaded Image for frames[idx]
+let scale = 1;
+let boxes = [];           // working boxes, source pixels {x,y,w,h}
+let candidates = [];      // faint proposals, source pixels {x,y,w,h,score}
+let selected = -1;
+let dirty = false;
+let drag = null;          // {x0,y0,x1,y1} in source pixels while drawing
+const drafts = {};        // file -> {boxes, candidates} for unsaved edits
+
+function iou(a, b) {
+  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const inter = ix * iy, union = a.w * a.h + b.w * b.h - inter;
+  return union > 0 ? inter / union : 0;
+}
+const plain = b => ({x: b.x, y: b.y, w: b.w, h: b.h});
+
+function initialBoxes(f) {
+  if (drafts[f.file]) return drafts[f.file];
+  if (f.reviewed) {
+    const saved = f.boxes.map(plain);
+    // Proposals not covered by a saved box stay visible as hints.
+    const cands = f.proposals.filter(p => saved.every(b => iou(b, p) < 0.3));
+    return {boxes: saved, candidates: cands};
+  }
+  return {
+    boxes: f.proposals.filter(p => p.score >= PREFILL_SCORE).map(plain),
+    candidates: f.proposals.filter(p => p.score < PREFILL_SCORE),
+  };
+}
+
+function stash() {
+  if (dirty && frames[idx]) drafts[frames[idx].file] = {boxes, candidates};
+}
+
+function show(i) {
+  if (!frames.length) return;
+  stash();
+  idx = Math.max(0, Math.min(frames.length - 1, i));
+  const f = frames[idx];
+  const init = initialBoxes(f);
+  boxes = init.boxes.map(b => ({...b}));
+  candidates = init.candidates.map(b => ({...b}));
+  dirty = !!drafts[f.file];
+  selected = -1;
+  drag = null;
+  img = new Image();
+  img.onload = () => { layout(); draw(); };
+  img.src = "/img/" + encodeURIComponent(f.file);
+  if (frames[idx + 1]) new Image().src = "/img/" + encodeURIComponent(frames[idx + 1].file);
+  updateHeader();
+}
+
+function layout() {
+  if (!img || !img.naturalWidth) return;
+  const main = canvas.parentElement;
+  const availW = main.clientWidth - 16, availH = main.clientHeight - 16;
+  scale = Math.min(availW / img.naturalWidth, availH / img.naturalHeight);
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+}
+
+function rect(b) { return [b.x * scale, b.y * scale, b.w * scale, b.h * scale]; }
+
+function draw() {
+  if (!img || !img.naturalWidth) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (const c of candidates) {
+    ctx.strokeStyle = "rgba(120, 200, 255, 0.55)";
+    ctx.strokeRect(...rect(c));
+    ctx.fillStyle = "rgba(120, 200, 255, 0.75)";
+    ctx.font = "10px sans-serif";
+    ctx.fillText(c.score.toFixed(2), c.x * scale + 2, c.y * scale - 2);
+  }
+  ctx.setLineDash([]);
+  boxes.forEach((b, i) => {
+    ctx.lineWidth = i === selected ? 3 : 2;
+    ctx.strokeStyle = i === selected ? "#ff4fa0" : "#39ff7a";
+    ctx.strokeRect(...rect(b));
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.font = "11px sans-serif";
+    ctx.fillText(Math.min(b.w, b.h) + "px", b.x * scale + 2, (b.y + b.h) * scale + 11);
+  });
+  if (drag) {
+    const b = normal(drag);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "#ffe14f";
+    ctx.strokeRect(...rect(b));
+  }
+}
+
+function updateHeader() {
+  const done = frames.filter(f => f.reviewed).length;
+  document.getElementById("progress").textContent = `reviewed ${done} / ${frames.length}`;
+  const f = frames[idx];
+  if (!f) return;
+  const st = document.getElementById("status");
+  if (dirty) { st.textContent = "unsaved"; st.className = "status dirty"; }
+  else if (f.reviewed) { st.textContent = "reviewed"; st.className = "status reviewed"; }
+  else { st.textContent = "not reviewed"; st.className = "status unreviewed"; }
+  document.getElementById("meta").textContent =
+    `#${idx + 1}  ${f.file}  scene ${f.scene_id} @ ${Number(f.timestamp).toFixed(1)}s  ` +
+    `${f.width}x${f.height} ${f.resolution}  boxes ${boxes.length}`;
+}
+
+function toSource(ev) {
+  const r = canvas.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / scale, y = (ev.clientY - r.top) / scale;
+  return {x: Math.max(0, Math.min(frames[idx].width, x)), y: Math.max(0, Math.min(frames[idx].height, y))};
+}
+function contains(b, p) { return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; }
+function smallestHit(list, p) {
+  let best = -1, area = Infinity;
+  list.forEach((b, i) => { if (contains(b, p) && b.w * b.h < area) { best = i; area = b.w * b.h; } });
+  return best;
+}
+function normal(d) {
+  return {x: Math.round(Math.min(d.x0, d.x1)), y: Math.round(Math.min(d.y0, d.y1)),
+          w: Math.round(Math.abs(d.x1 - d.x0)), h: Math.round(Math.abs(d.y1 - d.y0))};
+}
+function changed() { dirty = true; updateHeader(); draw(); }
+
+canvas.addEventListener("mousedown", ev => {
+  if (!frames.length || ev.button !== 0) return;
+  const p = toSource(ev);
+  const hit = smallestHit(boxes, p);
+  if (hit >= 0) { selected = hit; draw(); return; }
+  const cand = smallestHit(candidates, p);
+  if (cand >= 0) {
+    boxes.push(plain(candidates[cand]));
+    candidates.splice(cand, 1);
+    selected = boxes.length - 1;
+    changed();
+    return;
+  }
+  selected = -1;
+  drag = {x0: p.x, y0: p.y, x1: p.x, y1: p.y};
+  draw();
+});
+window.addEventListener("mousemove", ev => {
+  if (!drag) return;
+  const p = toSource(ev);
+  drag.x1 = p.x; drag.y1 = p.y;
+  draw();
+});
+window.addEventListener("mouseup", () => {
+  if (!drag) return;
+  const b = normal(drag);
+  drag = null;
+  if (b.w * scale >= MIN_DRAG_PX && b.h * scale >= MIN_DRAG_PX && b.w > 0 && b.h > 0) {
+    boxes.push(b);
+    selected = boxes.length - 1;
+    changed();
+  } else {
+    draw();
+  }
+});
+
+async function save() {
+  const f = frames[idx];
+  const res = await fetch("/api/label", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({file: f.file, boxes: boxes.map(plain), reviewed: true}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    flash("Save failed: " + (err.error || res.status), true);
+    return false;
+  }
+  const entry = await res.json();
+  f.reviewed = true;
+  f.boxes = entry.boxes;
+  f.updated_at = entry.updated_at;
+  delete drafts[f.file];
+  dirty = false;
+  return true;
+}
+
+function firstUnreviewed() { return frames.findIndex(f => !f.reviewed); }
+
+let msgTimer = null;
+function flash(text, error) {
+  const el = document.getElementById("msg");
+  el.textContent = text;
+  el.className = error ? "error" : "";
+  el.style.display = "block";
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => { el.style.display = "none"; }, error ? 5000 : 1500);
+}
+
+let saving = false;
+window.addEventListener("keydown", async ev => {
+  if (!frames.length || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const k = ev.key;
+  if (k === "Delete" || k === "Backspace") {
+    ev.preventDefault();
+    if (selected >= 0) { boxes.splice(selected, 1); selected = -1; changed(); }
+  } else if (k === "Enter" || k === "a") {
+    ev.preventDefault();
+    if (saving) return;
+    saving = true;
+    try {
+      if (await save()) {
+        if (idx === frames.length - 1) {
+          updateHeader();
+          const u = firstUnreviewed();
+          flash(u < 0 ? "All frames reviewed" : "Saved (last frame)");
+        } else {
+          show(idx + 1);
+        }
+      }
+    } finally { saving = false; }
+  } else if (k === "n" || k === "ArrowRight") {
+    ev.preventDefault(); show(idx + 1);
+  } else if (k === "p" || k === "ArrowLeft") {
+    ev.preventDefault(); show(idx - 1);
+  } else if (k === "u") {
+    const u = firstUnreviewed();
+    if (u < 0) flash("All frames reviewed"); else show(u);
+  } else if (k === "Escape") {
+    selected = -1; draw();
+  }
+});
+window.addEventListener("resize", () => { layout(); draw(); });
+window.addEventListener("beforeunload", ev => {
+  if (dirty || Object.keys(drafts).length) { ev.preventDefault(); ev.returnValue = ""; }
+});
+
+(async () => {
+  const res = await fetch("/api/state");
+  const state = await res.json();
+  frames = state.frames;
+  if (!frames.length) { document.getElementById("progress").textContent = "No frames in proposals.json"; return; }
+  const u = firstUnreviewed();
+  show(u < 0 ? 0 : u);
+})();
+</script>
+</body>
+</html>
