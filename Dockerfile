@@ -54,6 +54,14 @@ WORKDIR /app
 COPY --from=build /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
+# onnxruntime-gpu's CUDA provider must find this image's CUDA libraries. On a
+# mismatch (e.g. a wheel built for CUDA 13) ONNX Runtime silently falls back
+# to CPU at runtime, so fail the build instead. libcuda.so.1 comes from the
+# host driver at runtime and is absent here, so it is ignored.
+RUN missing=$(ldd /app/venv/lib/python3.11/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so \
+        | grep "not found" | grep -v "libcuda.so.1" || true); \
+    if [ -n "$missing" ]; then echo "onnxruntime CUDA provider cannot load:"; echo "$missing"; exit 1; fi
+
 # Copy bundled model manifest
 COPY api/models.json ./models.json
 

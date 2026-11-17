@@ -12,7 +12,7 @@ torchvision>=0.20.0
 # Face recognition
 deepface>=0.0.93
 insightface>=0.7.0,<1  # RetinaFace detection (GPU via ONNX Runtime)
-onnxruntime-gpu>=1.15.0,<2  # GPU support for InsightFace
+onnxruntime-gpu>=1.15.0,<1.27  # GPU support for InsightFace; 1.27+ needs CUDA 13
 voyager>=2.0.0,<3
 
 # Body pose estimation
