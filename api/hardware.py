@@ -10,6 +10,7 @@ Runs once at startup. All probes have graceful fallbacks.
 import logging
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -50,44 +51,107 @@ def _classify_tier(gpu_available: bool, gpu_vram_mb: Optional[int]) -> str:
     return "gpu-low"
 
 
+def _probe_nvml() -> Optional[tuple[int, Optional[str], Optional[int]]]:
+    """Query NVML for (device_count, name, vram_mb) of device 0.
+
+    Returns None when NVML cannot be used (pynvml missing or the driver
+    library not mounted into the container).
+    """
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+    except Exception as e:
+        logger.debug("NVML unavailable: %s", e)
+        return None
+    try:
+        count = pynvml.nvmlDeviceGetCount()
+        if count == 0:
+            return 0, None, None
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        name = pynvml.nvmlDeviceGetName(handle)
+        if isinstance(name, bytes):
+            name = name.decode("utf-8")
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        return count, name, mem_info.total // (1024 * 1024)
+    except Exception as e:
+        logger.debug("NVML query failed: %s", e)
+        return None
+    finally:
+        try:
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass
+
+
+def _probe_nvidia_smi() -> Optional[tuple[str, int]]:
+    """Query nvidia-smi for (name, vram_mb) of the first GPU, or None."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug("nvidia-smi unavailable: %s", e)
+        return None
+    if result.returncode != 0:
+        logger.debug("nvidia-smi failed: %s", result.stderr.strip())
+        return None
+    line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    name, _, mem = line.rpartition(",")
+    try:
+        return name.strip(), int(float(mem.strip()))
+    except ValueError:
+        logger.debug("Unparseable nvidia-smi output: %r", line)
+        return None
+
+
+def _nvidia_device_nodes_present() -> bool:
+    """True when the NVIDIA runtime has exposed GPU device nodes."""
+    return any(Path("/dev").glob("nvidia[0-9]*"))
+
+
 def _probe_gpu() -> tuple[bool, Optional[str], Optional[int]]:
-    """Probe GPU via ONNX Runtime providers and pynvml.
+    """Probe GPU via ONNX Runtime providers, NVML and nvidia-smi.
+
+    onnxruntime-gpu lists CUDAExecutionProvider whenever the package is
+    installed, GPU or not, so a device has to be confirmed separately.
+    VRAM decides the tier, so NVML and nvidia-smi are tried in turn.
 
     Returns:
         (gpu_available, gpu_name, gpu_vram_mb)
     """
-    # Check if ONNX Runtime has CUDA
-    gpu_available = False
     try:
         import onnxruntime as ort
-        providers = ort.get_available_providers()
-        gpu_available = "CUDAExecutionProvider" in providers
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            return False, None, None
     except Exception as e:
         logger.debug("ONNX Runtime CUDA probe failed: %s", e)
-
-    if not gpu_available:
         return False, None, None
 
-    # Try pynvml for detailed GPU info
-    gpu_name = None
-    gpu_vram_mb = None
-    try:
-        import pynvml
-        pynvml.nvmlInit()
-        try:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            gpu_name = pynvml.nvmlDeviceGetName(handle)
-            if isinstance(gpu_name, bytes):
-                gpu_name = gpu_name.decode("utf-8")
-            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            gpu_vram_mb = mem_info.total // (1024 * 1024)
-        finally:
-            pynvml.nvmlShutdown()
-    except Exception as e:
-        logger.debug(f"pynvml unavailable, using basic GPU detection: {e}")
-        gpu_name = "NVIDIA GPU (details unavailable)"
+    nvml = _probe_nvml()
+    if nvml is not None:
+        count, name, vram_mb = nvml
+        if count == 0:
+            logger.warning("CUDA runtime present but NVML reports no GPU; using CPU tier")
+            return False, None, None
+        return True, name, vram_mb
 
-    return True, gpu_name, gpu_vram_mb
+    smi = _probe_nvidia_smi()
+    if smi is not None:
+        return True, smi[0], smi[1]
+
+    if not _nvidia_device_nodes_present():
+        logger.warning(
+            "CUDA runtime present but no NVIDIA device is visible; using CPU tier. "
+            "Start the container with --runtime=nvidia (unRAID: Extra Parameters)."
+        )
+        return False, None, None
+
+    logger.warning(
+        "NVIDIA device found but VRAM could not be read (no NVML, no nvidia-smi); "
+        "assuming the low GPU tier. Set NVIDIA_DRIVER_CAPABILITIES to include 'utility'."
+    )
+    return True, "NVIDIA GPU (details unavailable)", None
 
 
 def _probe_cpu() -> int:
@@ -108,6 +172,19 @@ def _probe_cpu() -> int:
     return os.cpu_count() or 1
 
 
+def _read_proc_meminfo(path: str = "/proc/meminfo") -> tuple[int, int]:
+    """Read (total_mb, available_mb) from /proc/meminfo; (0, 0) on failure."""
+    values = {}
+    try:
+        for line in Path(path).read_text().splitlines():
+            key, _, rest = line.partition(":")
+            if key in ("MemTotal", "MemAvailable"):
+                values[key] = int(rest.split()[0]) // 1024  # kB -> MB
+    except Exception as e:
+        logger.debug("meminfo probe failed: %s", e)
+    return values.get("MemTotal", 0), values.get("MemAvailable", 0)
+
+
 def _probe_memory() -> tuple[int, int]:
     """Probe total and available memory in MB, respecting cgroup limits.
 
@@ -120,9 +197,8 @@ def _probe_memory() -> tuple[int, int]:
         total_mb = mem.total // (1024 * 1024)
         available_mb = mem.available // (1024 * 1024)
     except Exception as e:
-        logger.debug("psutil memory probe failed: %s", e)
-        total_mb = 0
-        available_mb = 0
+        logger.debug("psutil memory probe failed, reading /proc/meminfo: %s", e)
+        total_mb, available_mb = _read_proc_meminfo()
 
     # Check cgroup v2 memory limit (Docker containers)
     try:

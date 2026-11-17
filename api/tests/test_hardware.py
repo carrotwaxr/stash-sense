@@ -10,6 +10,7 @@ from hardware import (
     _probe_cpu,
     _probe_memory,
     _probe_storage,
+    _read_proc_meminfo,
     detect_hardware,
 )
 
@@ -52,32 +53,70 @@ class TestProbeGpu:
         assert name is None
         assert vram is None
 
-    def test_cuda_available_no_pynvml(self):
+    @staticmethod
+    def _cuda_ort():
         mock_ort = MagicMock()
         mock_ort.get_available_providers.return_value = [
             "CUDAExecutionProvider", "CPUExecutionProvider"
         ]
-        with patch.dict("sys.modules", {"onnxruntime": mock_ort, "pynvml": None}):
-            available, name, vram = _probe_gpu()
-        assert available is True
-        assert name == "NVIDIA GPU (details unavailable)"
-        assert vram is None
+        return mock_ort
 
-    def test_cuda_with_pynvml(self):
-        mock_ort = MagicMock()
-        mock_ort.get_available_providers.return_value = [
-            "CUDAExecutionProvider", "CPUExecutionProvider"
-        ]
+    @staticmethod
+    def _pynvml(count=1, name="NVIDIA GeForce RTX 3060", total=12 * 1024**3):
         mock_pynvml = MagicMock()
-        mock_pynvml.nvmlDeviceGetName.return_value = "NVIDIA GeForce GTX 1080"
-        mock_mem = MagicMock()
-        mock_mem.total = 8 * 1024 * 1024 * 1024  # 8GB
-        mock_pynvml.nvmlDeviceGetMemoryInfo.return_value = mock_mem
+        mock_pynvml.nvmlDeviceGetCount.return_value = count
+        mock_pynvml.nvmlDeviceGetName.return_value = name
+        mock_pynvml.nvmlDeviceGetMemoryInfo.return_value = MagicMock(total=total)
+        return mock_pynvml
 
-        with patch.dict("sys.modules", {"onnxruntime": mock_ort, "pynvml": mock_pynvml}):
+    def test_cuda_with_pynvml_reads_vram(self):
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": self._pynvml()}):
             available, name, vram = _probe_gpu()
+        assert (available, name, vram) == (True, "NVIDIA GeForce RTX 3060", 12288)
 
-        assert available is True
+    def test_pynvml_bytes_name_decoded(self):
+        nvml = self._pynvml(name=b"NVIDIA GeForce GTX 1080")
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": nvml}):
+            _, name, _ = _probe_gpu()
+        assert name == "NVIDIA GeForce GTX 1080"
+
+    def test_pynvml_zero_devices_means_cpu(self):
+        nvml = self._pynvml(count=0)
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": nvml}):
+            assert _probe_gpu() == (False, None, None)
+
+    def test_falls_back_to_nvidia_smi_without_pynvml(self):
+        """The bug from #124: no pynvml meant no VRAM, so a 12 GB card landed in gpu-low."""
+        smi = MagicMock(returncode=0, stdout="NVIDIA GeForce RTX 3060, 12288\n", stderr="")
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": None}), \
+                patch("hardware.subprocess.run", return_value=smi) as run:
+            available, name, vram = _probe_gpu()
+        assert (available, name, vram) == (True, "NVIDIA GeForce RTX 3060", 12288)
+        assert run.call_args[0][0][0] == "nvidia-smi"
+        assert _classify_tier(available, vram) == "gpu-high"
+
+    def test_nvml_init_failure_falls_back_to_nvidia_smi(self):
+        nvml = self._pynvml()
+        nvml.nvmlInit.side_effect = RuntimeError("libnvidia-ml.so.1 not found")
+        smi = MagicMock(returncode=0, stdout="Tesla T4, 15360\n", stderr="")
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": nvml}), \
+                patch("hardware.subprocess.run", return_value=smi):
+            assert _probe_gpu() == (True, "Tesla T4", 15360)
+
+    def test_cuda_package_without_device_means_cpu(self):
+        """onnxruntime-gpu lists CUDA even with no GPU; no device nodes means CPU."""
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": None}), \
+                patch("hardware.subprocess.run", side_effect=FileNotFoundError("nvidia-smi")), \
+                patch("hardware._nvidia_device_nodes_present", return_value=False):
+            assert _probe_gpu() == (False, None, None)
+
+    def test_device_present_without_details_is_low_tier(self):
+        with patch.dict("sys.modules", {"onnxruntime": self._cuda_ort(), "pynvml": None}), \
+                patch("hardware.subprocess.run", side_effect=FileNotFoundError("nvidia-smi")), \
+                patch("hardware._nvidia_device_nodes_present", return_value=True):
+            available, name, vram = _probe_gpu()
+        assert (available, name, vram) == (True, "NVIDIA GPU (details unavailable)", None)
+        assert _classify_tier(available, vram) == "gpu-low"
 
     def test_ort_import_fails(self):
         """When onnxruntime can't be imported, GPU is unavailable."""
@@ -112,6 +151,20 @@ class TestProbeMemory:
         assert available >= 0
         if total > 0:
             assert available <= total
+
+
+class TestReadProcMeminfo:
+    """Fallback memory probe used when psutil is missing."""
+
+    def test_parses_total_and_available(self, tmp_path):
+        meminfo = tmp_path / "meminfo"
+        meminfo.write_text(
+            "MemTotal:       32768000 kB\nMemFree:  1000 kB\nMemAvailable:   16384000 kB\n"
+        )
+        assert _read_proc_meminfo(str(meminfo)) == (32000, 16000)
+
+    def test_missing_file_returns_zero(self, tmp_path):
+        assert _read_proc_meminfo(str(tmp_path / "nope")) == (0, 0)
 
 
 class TestProbeStorage:
