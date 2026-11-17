@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -492,6 +492,45 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Volume Mounts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#media-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Media library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-ownership-puid-pgid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File ownership (PUID / PGID)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cpu-and-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CPU and GPU
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1214,6 +1253,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Volume Mounts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#media-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Media library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-ownership-puid-pgid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File ownership (PUID / PGID)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cpu-and-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CPU and GPU
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1390,12 +1468,48 @@
 <td>Cached face detection model weights (~500 MB)</td>
 <td>Read-write</td>
 </tr>
+<tr>
+<td><code>/media</code></td>
+<td>Your media library, the same files Stash reads</td>
+<td>Read-only (read-write only for features that write files)</td>
+</tr>
 </tbody>
 </table>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>The <code>/data</code> volume <strong>must</strong> be read-write. The sidecar writes <code>stash_sense.db</code> (recommendations, settings, analysis history) here, and in-app database updates download files to this directory.</p>
 </div>
+<h3 id="media-library">Media library</h3>
+<p>Features that read video files directly (audio fingerprints, frame sampling) and features that write next to them (subtitles) need the library mounted into the container. Mount it read-only unless you turn on a feature that writes files. Those features check the mount and refuse to run with a message naming the fix when it is read-only.</p>
+<p>Stash and the sidecar usually see the library at different paths. <code>MEDIA_PATH_MAP</code> maps Stash's paths to the sidecar's:</p>
+<table>
+<thead>
+<tr>
+<th>Stash sees</th>
+<th>Sidecar mount</th>
+<th><code>MEDIA_PATH_MAP</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/data/Studio/a.mp4</code></td>
+<td><code>/media</code></td>
+<td><code>/data=/media</code></td>
+</tr>
+<tr>
+<td><code>/data</code> and <code>/archive</code></td>
+<td><code>/media</code>, <code>/media2</code></td>
+<td><code>/data=/media,/archive=/media2</code></td>
+</tr>
+</tbody>
+</table>
+<p>Without a map, Stash's paths are used unchanged, which works when you mount the library at the same container path Stash uses. The plugin's <strong>Settings</strong> tab and <code>GET /health</code> report each mount and whether it is <code>rw</code>, <code>ro</code> or <code>missing</code>.</p>
+<h3 id="file-ownership-puid-pgid">File ownership (PUID / PGID)</h3>
+<p>The container starts as root, hands <code>/data</code> and the InsightFace cache to <code>PUID:PGID</code>, then drops to that user. Everything the sidecar creates (database, models, subtitles) is owned by <code>PUID:PGID</code>. The defaults, <code>99:100</code>, match unRAID's <code>nobody:users</code>. On other hosts use the owner of your library (<code>id -u</code>, <code>id -g</code>). <code>PUID=0</code> keeps the old run-as-root behaviour. <code>UMASK</code> (default <code>022</code>) sets the file mode mask.</p>
+<p>The media library is never chowned. In read-write mode <code>PUID:PGID</code> needs write permission on the folders it writes into.</p>
+<h3 id="cpu-and-gpu">CPU and GPU</h3>
+<p>CPU-heavy jobs run ffmpeg under <code>nice</code> with an optional thread cap, both set in <strong>Settings &gt; Performance</strong> (<code>media_job_nice</code>, <code>media_job_threads</code>). To keep the whole container off some cores, add <code>--cpuset-cpus=2-7</code> (your core list) to the template's Extra Parameters or <code>cpuset: "2-7"</code> in compose.</p>
+<p>The GPU tier comes from the card's VRAM, read through NVML (bundled in the image) or <code>nvidia-smi</code>. Both need the NVIDIA runtime (<code>--runtime=nvidia</code>, or the compose <code>deploy.resources</code> block). Without it, the sidecar reports <strong>No GPU</strong> and uses the CPU tier.</p>
 <hr />
 <h2 id="ports">Ports</h2>
 <p>The sidecar listens on port <strong>5000</strong> inside the container. The recommended host port is <strong>6960</strong>:</p>
@@ -1452,6 +1566,7 @@
 <p>Environment variables that remain (connection strings):</p>
 <ul>
 <li><code>STASH_URL</code>, <code>STASH_API_KEY</code>, <code>DATA_DIR</code>, <code>LOG_LEVEL</code></li>
+<li><code>MEDIA_PATH_MAP</code>, <code>MEDIA_DIR</code> (default <code>/media</code>), <code>PUID</code>, <code>PGID</code>, <code>UMASK</code></li>
 </ul>
 <hr />
 <h2 id="configuration-checklist">Configuration Checklist</h2>
@@ -1461,6 +1576,8 @@
 <li>[ ] Stash-Box endpoints configured in Stash's <strong>Settings &gt; Metadata Providers</strong> (for upstream sync and scene tagging)</li>
 <li>[ ] <code>/data</code> volume mounted read-write</li>
 <li>[ ] <code>/root/.insightface</code> volume mounted (prevents re-downloading detection model on restart)</li>
+<li>[ ] Media library mounted at <code>/media</code> (read-only) and <code>MEDIA_PATH_MAP</code> set if Stash uses a different path</li>
+<li>[ ] <code>PUID</code> / <code>PGID</code> match the owner of your library</li>
 </ul>
 
 
@@ -1527,10 +1644,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>

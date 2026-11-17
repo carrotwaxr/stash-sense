@@ -17,7 +17,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -25,10 +25,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1382,10 +1382,10 @@
 <p>The <code>face_signature_similarity()</code> function must be rewritten:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">face_signature_similarity</span><span class="p">(</span><span class="n">fp_a</span><span class="p">,</span> <span class="n">fp_b</span><span class="p">):</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">shared</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_a</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_b</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">shared</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="s2">&quot;unknown&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">shared</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="s2">"unknown"</span><span class="p">)</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">shared</span><span class="p">:</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        <span class="k">return</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">&quot;No shared performers&quot;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        <span class="k">return</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"No shared performers"</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="c1"># Only score based on actually shared performers</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">proportion_diffs</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1396,8 +1396,8 @@
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">avg_diff</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">proportion_diffs</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">proportion_diffs</span><span class="p">)</span>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="c1"># Jaccard similarity of performer sets (excluding unknown)</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">all_a</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_a</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;unknown&quot;</span><span class="p">}</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">all_b</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_b</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;unknown&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">all_a</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_a</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">-</span> <span class="p">{</span><span class="s2">"unknown"</span><span class="p">}</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">all_b</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">fp_b</span><span class="o">.</span><span class="n">faces</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="o">-</span> <span class="p">{</span><span class="s2">"unknown"</span><span class="p">}</span>
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">jaccard</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_a</span> <span class="o">&amp;</span> <span class="n">all_b</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_a</span> <span class="o">|</span> <span class="n">all_b</span><span class="p">)</span> <span class="k">if</span> <span class="p">(</span><span class="n">all_a</span> <span class="o">|</span> <span class="n">all_b</span><span class="p">)</span> <span class="k">else</span> <span class="mi">0</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="c1"># Score: Jaccard drives the base, proportion similarity is a bonus</span>
@@ -1405,7 +1405,7 @@
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="n">proportion_bonus</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">15.0</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">avg_diff</span> <span class="o">*</span> <span class="mf">4.0</span><span class="p">))</span>  <span class="c1"># 0-15 for close proportions</span>
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>
 <a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">score</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">base</span> <span class="o">+</span> <span class="n">proportion_bonus</span><span class="p">,</span> <span class="mf">75.0</span><span class="p">)</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="k">return</span> <span class="n">score</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shared</span><span class="p">)</span><span class="si">}</span><span class="s2"> shared performers (Jaccard </span><span class="si">{</span><span class="n">jaccard</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2">), </span><span class="si">{</span><span class="n">avg_diff</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> avg proportion diff&quot;</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="k">return</span> <span class="n">score</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shared</span><span class="p">)</span><span class="si">}</span><span class="s2"> shared performers (Jaccard </span><span class="si">{</span><span class="n">jaccard</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2">), </span><span class="si">{</span><span class="n">avg_diff</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> avg proportion diff"</span>
 </code></pre></div>
 <p>Key changes:
 - Returns 0 when no performers are actually shared
@@ -1537,10 +1537,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>
