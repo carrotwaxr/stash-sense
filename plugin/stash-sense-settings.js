@@ -151,6 +151,31 @@
         </div>
       </div>
     `;
+
+    // Media library mounts and the ids files are written as
+    const media = info.media;
+    if (media) {
+      const row = SS.createElement('div', { className: 'ss-hw-details ss-hw-media' });
+      if (media.config_error) {
+        row.appendChild(SS.createElement('span', {
+          className: 'ss-hw-media-error', textContent: media.config_error,
+        }));
+      }
+      for (const m of media.mounts || []) {
+        const label = m.mode === 'missing' ? 'not mounted' : m.mode;
+        row.appendChild(SS.createElement('span', {
+          className: `ss-hw-media-mount ss-media-${m.mode}`,
+          textContent: `Media ${m.path}: ${label}`,
+          attrs: m.reason ? { title: m.reason } : {},
+        }));
+      }
+      if (info.process) {
+        row.appendChild(SS.createElement('span', {
+          textContent: `files owned by ${info.process.uid}:${info.process.gid}`,
+        }));
+      }
+      banner.appendChild(row);
+    }
     return banner;
   }
 
@@ -1246,6 +1271,8 @@
       } else {
         dashboard.insertBefore(tabBar, dashboard.firstChild);
       }
+
+      SS.applyHiddenPages(tabBar);
 
       // Create settings panel
       const settingsPanel = createSettingsContainer();

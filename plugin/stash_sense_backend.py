@@ -74,7 +74,7 @@ def main():
         result = sidecar_get(sidecar_url, "/models/download-progress")
     elif mode == "capabilities":
         result = sidecar_get(sidecar_url, "/capabilities")
-    elif mode.startswith("settings_") or mode == "system_info":
+    elif mode.startswith("settings_") or mode in ("system_info", "system_features"):
         result = handle_settings(mode, args, sidecar_url)
         if result is None:
             result = {"error": f"Unknown settings mode: {mode}"}
@@ -818,6 +818,9 @@ def handle_settings(mode, args, sidecar_url):
 
     elif mode == "system_info":
         return sidecar_get(sidecar_url, "/system/info")
+
+    elif mode == "system_features":
+        return sidecar_get(sidecar_url, "/system/features")
 
     return None
 

@@ -54,6 +54,7 @@ CATEGORIES = {
     "rate_limits": {"label": "Rate Limits", "order": 1},
     "recognition": {"label": "Recognition", "order": 2},
     "signals": {"label": "Signals", "order": 3},
+    "features": {"label": "Features", "order": 4},
 }
 
 
@@ -90,6 +91,14 @@ _define("detection_size", "Detection Resolution",
         "Face detection input resolution (pixels). Higher = more accurate but slower",
         "performance", SettingType.INT, fallback=640, min_val=160, max_val=1280)
 
+_define("media_job_nice", "Media Job Priority (nice)",
+        "Nice level for ffmpeg run by CPU-heavy jobs. 0 = normal, 19 = yield to everything else on the host",
+        "performance", SettingType.INT, fallback=10, min_val=0, max_val=19)
+
+_define("media_job_threads", "Media Job Threads",
+        "Thread cap per ffmpeg run by CPU-heavy jobs. 0 = let ffmpeg decide (one per core)",
+        "performance", SettingType.INT, fallback=0, min_val=0, max_val=64)
+
 # -- Rate Limits --
 _define("stash_api_rate", "Stash API Rate",
         "Maximum requests per second to local Stash instance",
@@ -116,6 +125,12 @@ _define("body_signal_enabled", "Body Proportions",
 _define("tattoo_signal_enabled", "Tattoo Detection",
         "Use tattoo detection as a supplementary identification signal (requires model)",
         "signals", SettingType.BOOL, fallback=False)
+
+# -- Features --
+_define("show_unfinished_features", "Show Unfinished Features",
+        "Show job types, recommendation types and pages that are not yet production-ready. "
+        "Reload the page after changing",
+        "features", SettingType.BOOL, fallback=False)
 
 
 # ============================================================================

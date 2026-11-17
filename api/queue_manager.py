@@ -44,10 +44,21 @@ class QueueManager:
         priority: Optional[JobPriority] = None,
         cursor: Optional[str] = None,
     ) -> Optional[int]:
-        """Submit a job to the queue. Returns job_id or None if duplicate."""
+        """Submit a job to the queue. Returns job_id or None if duplicate.
+
+        Raises ValueError for an unknown type, HiddenFeatureError for an
+        unfinished one while unfinished features are hidden, and
+        MediaNotWritableError for a media-writing job on a read-only mount.
+        """
+        from features import require_visible_job_type
+        from media_library import get_media_library
+
         defn = JOB_REGISTRY.get(type_id)
         if not defn:
             raise ValueError(f"Unknown job type: {type_id}")
+        require_visible_job_type(type_id)
+        if defn.writes_media:
+            get_media_library().require_writable(defn.display_name)
         actual_priority = priority if priority is not None else defn.default_priority
         return self._db.submit_job(
             type=type_id,
@@ -223,10 +234,15 @@ class QueueManager:
                 if defn:
                     running_per_resource[defn.resource] += 1
 
+        from features import hidden_job_types
+
+        hidden = hidden_job_types()
         queued = self._db.get_queued_jobs()
         for job_row in queued:
             defn = JOB_REGISTRY.get(job_row["type"])
-            if not defn:
+            if not defn or defn.type_id in hidden:
+                # Hidden types queued before they were hidden stay queued
+                # until show_unfinished_features is turned on.
                 continue
             resource = defn.resource
             max_slots = self.resource_slots.get(resource, 1)
@@ -252,7 +268,7 @@ class QueueManager:
         from base_job import JobContext
         job_id = job_row["id"]
         self._db.start_job(job_id)
-        ctx = JobContext(job_id=job_id, db=self._db, queue_manager=self)
+        ctx = JobContext(job_id=job_id, db=self._db, queue_manager=self, job_type=defn.type_id)
         self._running_contexts[job_id] = ctx
         task = asyncio.create_task(self._run_job(job_id, job_row, ctx))
         self._running_tasks[job_id] = task
@@ -261,6 +277,11 @@ class QueueManager:
         """Execute a single job and handle completion/failure."""
         type_id = job_row["type"]
         try:
+            defn = JOB_REGISTRY.get(type_id)
+            if defn is not None and defn.writes_media:
+                # The mount can change between submit and run (container restart).
+                from media_library import get_media_library
+                get_media_library().require_writable(defn.display_name)
             job_instance = self._create_job_instance(type_id)
             cursor = job_row.get("cursor")
             final_cursor = await job_instance.run(ctx, cursor=cursor)
@@ -295,10 +316,12 @@ class QueueManager:
 
     def _check_schedules(self):
         """Check for due schedules and submit jobs."""
+        from features import is_job_type_visible
+
         due = self._db.get_due_schedules()
         for schedule in due:
             type_id = schedule["type"]
-            if type_id not in JOB_REGISTRY:
+            if not is_job_type_visible(type_id):
                 continue
             job_id = self._db.submit_job(
                 type=type_id,

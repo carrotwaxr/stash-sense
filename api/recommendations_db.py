@@ -12,7 +12,7 @@ import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Iterator, Any
+from typing import Collection, Optional, Iterator, Any
 
 
 SCHEMA_VERSION = 9
@@ -544,6 +544,7 @@ class RecommendationsDB:
         target_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
+        exclude_types: Optional[Collection[str]] = None,
     ) -> list[Recommendation]:
         """Get recommendations with optional filtering."""
         query = "SELECT * FROM recommendations WHERE 1=1"
@@ -558,6 +559,9 @@ class RecommendationsDB:
         if target_type:
             query += " AND target_type = ?"
             params.append(target_type)
+        if exclude_types:
+            query += f" AND type NOT IN ({','.join('?' * len(exclude_types))})"
+            params.extend(exclude_types)
 
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -566,7 +570,7 @@ class RecommendationsDB:
             rows = conn.execute(query, params).fetchall()
             return [self._row_to_recommendation(row) for row in rows]
 
-    def count_recommendations(self, status=None, type=None, target_type=None) -> int:
+    def count_recommendations(self, status=None, type=None, target_type=None, exclude_types=None) -> int:
         """Count recommendations with optional filtering (for pagination totals)."""
         query = "SELECT COUNT(*) FROM recommendations WHERE 1=1"
         params = []
@@ -579,6 +583,9 @@ class RecommendationsDB:
         if target_type:
             query += " AND target_type = ?"
             params.append(target_type)
+        if exclude_types:
+            query += f" AND type NOT IN ({','.join('?' * len(exclude_types))})"
+            params.extend(exclude_types)
         with self._connection() as conn:
             return conn.execute(query, params).fetchone()[0]
 

@@ -465,6 +465,7 @@
     } else {
       tabBar.appendChild(operationsTab);
     }
+    SS.applyHiddenPages(tabBar);
 
     // Create operations panel
     const operationsPanel = createOperationsContainer();

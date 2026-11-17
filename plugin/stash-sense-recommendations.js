@@ -367,13 +367,16 @@
     `;
 
     try {
-      const [counts, sidecarStatus, fpStatus, dbInfo, updateInfo] = await Promise.all([
+      const [counts, sidecarStatus, fpStatus, dbInfo, updateInfo, features] = await Promise.all([
         RecommendationsAPI.getCounts().catch(() => null),
         RecommendationsAPI.getSidecarStatus(),
         RecommendationsAPI.getFingerprintStatus().catch(() => null),
         RecommendationsAPI.getDatabaseInfo().catch(() => null),
         RecommendationsAPI.checkUpdate().catch(() => null),
+        SS.getFeatures(),
       ]);
+      const hiddenRecTypes = new Set(features.hidden.recommendation_types || []);
+      const showFingerprints = !(features.hidden.job_types || []).includes('fingerprint_generation');
 
       currentState.counts = counts || {};
 
@@ -471,11 +474,13 @@
               <span class="ss-db-stat-label">Tattoos</span>
             </div>
             ` : ''}
+            ${showFingerprints ? `
             <div class="ss-db-stat">
               <span class="ss-db-stat-value">${fpCoverage.toLocaleString()}</span>
               <span class="ss-db-stat-label">Fingerprints</span>
             </div>
-            ${fpNeedsRefresh > 0 ? `
+            ` : ''}
+            ${showFingerprints && fpNeedsRefresh > 0 ? `
             <div class="ss-db-stat ss-db-stat-warning">
               <span class="ss-db-stat-value">${fpNeedsRefresh.toLocaleString()}</span>
               <span class="ss-db-stat-label">Need Refresh</span>
@@ -503,8 +508,8 @@
       // Render type cards
       const typeCards = content.querySelector('.ss-type-cards');
 
-      // Ensure all types are shown, even if no counts yet
-      const allTypes = Object.keys(typeConfigs);
+      // Ensure all types are shown, even if no counts yet (except unfinished ones)
+      const allTypes = Object.keys(typeConfigs).filter(t => !hiddenRecTypes.has(t));
       for (const type of allTypes) {
         const config = typeConfigs[type];
         const typeCounts = counts.counts?.[type] || {};

@@ -96,8 +96,11 @@ class FaceEmbeddingGenerator:
         """Lazy-load InsightFace face analyzer with RetinaFace."""
         if self._face_analyzer is None:
             print(f"Loading RetinaFace detector on {self.device}...")
+            # Explicit root: the container runs as PUID, whose $HOME is not
+            # /root, but the cache is mounted at /root/.insightface.
             self._face_analyzer = FaceAnalysis(
                 name="buffalo_sc",
+                root=os.environ.get("INSIGHTFACE_HOME", "~/.insightface"),
                 providers=self._ort_providers(),
             )
             # Get detection size from settings, fall back to 640

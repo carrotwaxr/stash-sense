@@ -35,7 +35,13 @@ class TestQueueDispatch:
 
     @pytest.fixture
     def mgr(self, db):
-        return QueueManager(db)
+        # These tests use fingerprint_generation as the GPU job; it is hidden
+        # as unfinished, so show unfinished features to exercise slot logic.
+        import settings as settings_mod
+        original = settings_mod._settings_manager
+        settings_mod.init_settings(db, "gpu-high").set("show_unfinished_features", True)
+        yield QueueManager(db)
+        settings_mod._settings_manager = original
 
     @pytest.mark.asyncio
     async def test_dispatch_runs_queued_job(self, mgr):

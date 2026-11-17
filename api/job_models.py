@@ -51,6 +51,12 @@ class JobDefinition:
     schedulable: bool
     default_interval_hours: Optional[int] = None
     allowed_intervals: tuple[tuple[int, str], ...] = ()
+    # False until the job type passes the production-ready checklist (#123).
+    # Unfinished types are hidden unless the show_unfinished_features setting is on.
+    production_ready: bool = True
+    # True for jobs that create or change files in the media library. They
+    # refuse to run when the media mount is read-only.
+    writes_media: bool = False
 
 
 @dataclass
@@ -153,6 +159,8 @@ def _register(
     schedulable: bool = False,
     default_interval_hours: Optional[int] = None,
     allowed_intervals: tuple[tuple[int, str], ...] = (),
+    production_ready: bool = True,
+    writes_media: bool = False,
 ) -> None:
     """Register a job definition in the global registry."""
     JOB_REGISTRY[type_id] = JobDefinition(
@@ -165,6 +173,8 @@ def _register(
         schedulable=schedulable,
         default_interval_hours=default_interval_hours,
         allowed_intervals=allowed_intervals,
+        production_ready=production_ready,
+        writes_media=writes_media,
     )
 
 
@@ -188,6 +198,8 @@ _register(
     schedulable=True,
     default_interval_hours=168,
     allowed_intervals=INTERVALS_INFREQUENT,
+    # Unfinished: the delete confirm doesn't name the files (#123); folded into #130.
+    production_ready=False,
 )
 
 _register(
@@ -199,6 +211,8 @@ _register(
     schedulable=True,
     default_interval_hours=168,
     allowed_intervals=INTERVALS_INFREQUENT,
+    # Unfinished: replaced by duplicate detection v2 (#130).
+    production_ready=False,
 )
 
 _register(
@@ -270,6 +284,8 @@ _register(
     supports_incremental=True,
     schedulable=True,
     allowed_intervals=INTERVALS_INFREQUENT,
+    # Unfinished: only feeds duplicate_scenes; accuracy under study in #139.
+    production_ready=False,
 )
 
 _register(

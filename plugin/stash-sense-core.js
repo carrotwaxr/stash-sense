@@ -518,6 +518,38 @@
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
+  // ==================== Unfinished features ====================
+
+  const NO_HIDDEN_FEATURES = {
+    show_unfinished: false,
+    hidden: { job_types: [], recommendation_types: [], pages: [] },
+  };
+  let cachedFeatures = null;
+
+  /**
+   * Which job types, recommendation types and pages the sidecar hides as
+   * unfinished (Settings > Features > Show Unfinished Features).
+   */
+  async function getFeatures() {
+    if (cachedFeatures) return cachedFeatures;
+    try {
+      const result = await runPluginOperation('system_features');
+      if (result && result.hidden) cachedFeatures = result;
+    } catch (e) {
+      console.warn(`[${PLUGIN_NAME}] Failed to load feature visibility:`, e);
+    }
+    return cachedFeatures || NO_HIDDEN_FEATURES;
+  }
+
+  /** Hide page tabs (.ss-page-tab[data-tab]) the sidecar marks as unfinished. */
+  async function applyHiddenPages(root) {
+    const { hidden } = await getFeatures();
+    for (const page of hidden.pages || []) {
+      root.querySelectorAll(`.ss-page-tab[data-tab="${CSS.escape(page)}"]`)
+        .forEach(el => { el.style.display = 'none'; });
+    }
+  }
+
   // ==================== Export ====================
 
   window.StashSense = {
@@ -536,6 +568,8 @@
     checkHealth,
     getSidecarStatus,
     setSidecarStatus,
+    getFeatures,
+    applyHiddenPages,
 
     // Stash GraphQL
     stashQuery,
