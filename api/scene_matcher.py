@@ -18,6 +18,27 @@ from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
 logger = logging.getLogger(__name__)
 
 
+def recognize_detected_faces(
+    recognizer: FaceRecognizer,
+    detected: list[tuple[int, "DetectedFace"]],
+    match_config,
+) -> list[tuple[int, RecognitionResult]]:
+    """Batch-embed detected faces and match each one against the index.
+
+    ``detected`` is (frame_index, face) pairs; the frame index is carried
+    through so scene aggregation can count unique frames. Used by the scene
+    endpoint and by the failure-analysis benchmark, so both run the same code.
+    """
+    if not detected:
+        return []
+    embeddings = recognizer.generator.get_embeddings_batch([face.image for _, face in detected])
+    results = []
+    for (frame_idx, face), embedding in zip(detected, embeddings):
+        matches, _match_result, _ = recognizer.recognize_face_v2(face, match_config, embedding=embedding)
+        results.append((frame_idx, RecognitionResult(face=face, matches=matches, embedding=embedding)))
+    return results
+
+
 def _extract_scene_signals(
     frames: list,
     detected_faces: list[tuple[int, "DetectedFace"]],
