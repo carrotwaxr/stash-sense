@@ -135,17 +135,30 @@ def test_confidence_profile_judged_is_high(profile):  # (a)
     total = 90 * MIN
     plan = planner.plan_file(_file(total, [22 * MIN, 45 * MIN, 68 * MIN]), total, profile=profile)
     assert [c["t"] for c in plan.cuts] == [22 * MIN, 45 * MIN, 68 * MIN]
-    assert plan.profile_used and not plan.relaxed
+    assert plan.profile_used
     assert plan.confidence == "high"
     assert plan.cuts[0]["kind"] == "black"
     assert plan.cuts[0]["evidence"].startswith("black 1.0 s (min Y 5, from ~100), silence 1.0 s")
 
 
-def test_confidence_unmistakable_without_profile_is_high():  # (b)
+def test_confidence_unmistakable_without_profile_is_medium():  # (b)
     total = 60 * MIN
     plan = planner.plan_file(_file(total, [20 * MIN, 40 * MIN], black_len=3.0, sil_len=1.5), total)
     assert len(plan.cuts) == 2 and not plan.profile_used
-    assert plan.confidence == "high"
+    # No profile and no coverage: unmistakable cuts are not enough for high (regression set, 2026-11-18).
+    assert plan.confidence == "medium"
+
+
+def test_mixed_series_not_high(profile):
+    mixed = {**profile, "transition": "mixed", "detect": {**profile["detect"], "kind": "mixed"}}
+    total = 90 * MIN
+    d = _file(total, [22 * MIN, 45 * MIN, 68 * MIN])
+    ok, _ = profiles.judge([{"t": t * MIN} for t in (22, 45, 68)], mixed, total)
+    assert ok
+    plan = planner.plan_file(d, total, profile=mixed)
+    assert plan.profile_used and [c["t"] for c in plan.cuts] == [22 * MIN, 45 * MIN, 68 * MIN]
+    assert plan.confidence == "medium"
+    assert any("mixes fades and hard cuts" in r for r in plan.reasons)
 
 
 def test_confidence_long_scene_is_not_high():  # (c)
@@ -168,38 +181,6 @@ def test_confidence_no_cuts_is_low():  # (d)
     plan = planner.plan_file(_file(total, []), total)
     assert plan.cuts == [] and plan.confidence == "low"
     assert plan.leave_whole_suggested
-
-
-def _relaxed_file(total, silent_cuts, quiet_cuts):
-    blacks = [(t, 0.6, 5) for t in silent_cuts] + [(t, 1.0, 5) for t in quiet_cuts]
-    return _d(_frames(total, blacks=blacks), [(t, t + 0.5) for t in silent_cuts])
-
-
-def test_relaxed_fallback_used_when_strict_fails_judge(profile):  # (e)
-    total = 72 * MIN
-    # Strict: cuts at 24, 36, 48 min give two 12 min scenes, under the series minimum. Relaxed (blacks >= 0.3 s
-    # with silence) keeps 24 and 48 min: three 24 min scenes, inside the range.
-    d = _relaxed_file(total, [24 * MIN, 48 * MIN], [36 * MIN])
-    plan = planner.plan_file(d, total, profile=profile)
-    assert plan.relaxed
-    assert [c["t"] for c in plan.cuts] == [24 * MIN, 48 * MIN]
-    assert plan.confidence == "high"
-
-
-def test_relaxed_fallback_needs_two_cuts(profile):
-    total = 90 * MIN
-    d = _relaxed_file(total, [30 * MIN], [45 * MIN])
-    plan = planner.plan_file(d, total, profile=profile)
-    assert not plan.relaxed
-    assert [c["t"] for c in plan.cuts] == [30 * MIN, 45 * MIN]
-    assert plan.confidence == "medium"
-
-
-def test_relaxed_fallback_not_used_when_strict_passes(profile):
-    total = 90 * MIN
-    d = _relaxed_file(total, [30 * MIN, 60 * MIN], [])
-    plan = planner.plan_file(d, total, profile=profile)
-    assert not plan.relaxed and plan.confidence == "high"
 
 
 def test_unconfirmed_black_in_overlong_scene_drops_to_medium(profile):  # (f)

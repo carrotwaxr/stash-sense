@@ -89,7 +89,6 @@ def score(records: list[dict]) -> list[dict]:
                 "confidence": plan.confidence,
                 "reasons": list(plan.reasons),
                 "profile_used": plan.profile_used,
-                "relaxed": plan.relaxed,
                 "at_black": at_black,
                 "dist": dist,
                 "exact": exact,
@@ -149,8 +148,12 @@ def render(scored: list[dict]) -> str:
         "Each title is planned leave-one-out: its profile is built (`profiles.build_profile`) from the other titles "
         "of its series that have labelled cuts, using `features_at` on their labelled cuts, with each title's total "
         "taken as its labelled `keep_until` when it has one and its duration otherwise. A series with no other "
-        "labelled title, or a profile with fewer than 3 boundaries, gives no profile (the planner then needs every "
-        "cut to be unmistakable for `high`).",
+        "labelled title, or a profile with fewer than 3 boundaries, gives no profile (the planner then gives at most "
+        "`medium`, unless coverage confirms the plan).",
+        "",
+        "Decision 2026-11-18: `high` needs a fade-type series profile (black rate >= 0.75) or confirmed coverage. "
+        "The relaxed fallback and the no-profile rule were removed after the first run showed 9 of 12 high plans "
+        "missing labels.",
         "",
         "Terms:",
         "",
@@ -163,8 +166,6 @@ def render(scored: list[dict]) -> str:
         "which land a few seconds after the first static burst) and a few labels from before the cut-at-black-start "
         "rule (they sit mid-black). In the tables a label that is not at a black start is marked `*`. This column is "
         "for reading only; the pass/fail rule does not use it.",
-        "- **relaxed**: the plan used the fallback that accepts shorter blacks that carry silence "
-        "(`SplitPlan.relaxed`).",
         "",
         f"Titles: {len(scored)} ({len(labelled)} labelled, {len(whole)} left whole). Labelled cuts: {n_cuts}, of "
         f"which {_rate(n_black, n_cuts)} are at a black start.",
@@ -173,8 +174,8 @@ def render(scored: list[dict]) -> str:
         "",
         "Labelled titles, by plan confidence.",
         "",
-        "| Confidence | Plans | Exact | Recall 2 s | Recall 30 s | Median distance (s) | With profile | Relaxed |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Confidence | Plans | Exact | Recall 2 s | Recall 30 s | Median distance (s) | With profile |",
+        "|---|---|---|---|---|---|---|",
     ]
 
     def totals_row(name: str, rows: list[dict]) -> str:
@@ -186,7 +187,7 @@ def render(scored: list[dict]) -> str:
             f"| {name} | {len(rows)} | {sum(r['exact'] for r in rows)} | "
             f"{_rate(sum(1 for d in dists if d is not None and d <= EXACT_S), n)} | "
             f"{_rate(sum(1 for d in dists if d is not None and d <= NEAR_S), n)} | {med} | "
-            f"{sum(r['profile_used'] for r in rows)} | {sum(r['relaxed'] for r in rows)} |"
+            f"{sum(r['profile_used'] for r in rows)} |"
         )
 
     for lv in LEVELS:
@@ -224,8 +225,8 @@ def render(scored: list[dict]) -> str:
         rows = [r for r in whole if r["confidence"] == lv]
         lines.append(f"| {lv} | {len(rows)} | {sum(1 for r in rows if r['plan'])} | {sum(len(r['plan']) for r in rows)} |")
 
-    cols = "| Title | Series | Label cuts | Plan cuts | Profile | Relaxed | Misses not at a black start | Reasons |"
-    sep = "|---|---|---|---|---|---|---|---|"
+    cols = "| Title | Series | Label cuts | Plan cuts | Profile | Misses not at a black start | Reasons |"
+    sep = "|---|---|---|---|---|---|---|"
 
     def row(r: dict) -> str:
         cells = [
@@ -234,7 +235,6 @@ def render(scored: list[dict]) -> str:
             _ts(r["label"], r["at_black"]),
             _ts(r["plan"]),
             "yes" if r["profile_used"] else "no",
-            "yes" if r["relaxed"] else "no",
             _miss_verdict(r),
             "; ".join(r["reasons"]),
         ]
@@ -259,8 +259,8 @@ def render(scored: list[dict]) -> str:
         "",
         f"## Left-whole titles with a high plan ({len(high_whole)})",
         "",
-        "| Title | Series | Plan cuts | Profile | Relaxed | Reasons |",
-        "|---|---|---|---|---|---|",
+        "| Title | Series | Plan cuts | Profile | Reasons |",
+        "|---|---|---|---|---|",
     ]
     for r in high_whole:
         cells = [
@@ -268,7 +268,6 @@ def render(scored: list[dict]) -> str:
             r["series"],
             _ts(r["plan"]),
             "yes" if r["profile_used"] else "no",
-            "yes" if r["relaxed"] else "no",
             "; ".join(r["reasons"]),
         ]
         lines.append("| " + " | ".join(_cell(c) for c in cells) + " |")

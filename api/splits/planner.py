@@ -5,14 +5,18 @@ A port of the October `rescore3.run` without the catalog-listing branches (no li
 1. A DVD menu loop at the end trims the file at `keep_until`.
 2. Black candidates (`detect.candidates` + `refine`) and static-snow pairs (`static.static_candidates`) go
    through one `detect.plan_cuts`, with the series profile when it has at least 3 known boundaries.
-3. `profiles.judge` confirms the plan against the series; when it fails, the relaxed fallback (only blacks
-   >= 0.3 s with silence) is used if it gives at least 2 cuts that pass.
+3. `profiles.judge` confirms the plan against the series.
 4. Vetoes: a scene longer than any in the series that holds an unconfirmed black, or a 1-frame black in a
    series whose blacks are longer, cancel the profile's confirmation.
 5. Coverage edges (stretches of this file that other scenes' files hold) become cuts, snapped to a black
    run start within 10 s; a detector cut within 15 s of an edge is replaced by it.
 
-Confidence and the 5-60 min medium rule come from `rescore3.run` and `plan_new.py`.
+Confidence (decided 2026-11-18 after the regression set showed 9 of 12 high plans missing labels): `high` needs
+a judged plan from a series profile whose transition is `black` (black rate >= 0.75), or a coverage plan in which
+a detector cut confirms every edge and the file is at least 90% covered. A judged plan from a `mixed` series
+stays `medium`, since a fade-only plan can miss its hard-cut boundaries. Without a profile or coverage the plan
+is `medium` when every scene is 5-60 min (the `plan_new.py` rule), else `low`. October's relaxed fallback is not
+ported (it never ran there) and neither is the invented no-profile `high` rule: both gave wrong high plans.
 """
 
 from dataclasses import dataclass
@@ -22,10 +26,7 @@ from . import detect, profiles, static
 PLANNER_VERSION = 1  # bump when a rule or number below changes; the job then re-plans and reports what moved
 
 PROFILE_MIN_BOUNDARIES = 3  # a series profile is used with at least this many labelled boundaries
-SCENE_MIN_MIN, SCENE_MAX_MIN = 5, 60  # plausible scene lengths (minutes) for medium and no-profile high
-RELAXED_MIN_BLACK_S = 0.3  # relaxed fallback: blacks at least this long ...
-RELAXED_MIN_SIL_S = 0.3  # ... that carry at least this much silence
-RELAXED_MIN_CUTS = 2
+SCENE_MIN_MIN, SCENE_MAX_MIN = 5, 60  # plausible scene lengths (minutes) for medium
 LONG_SCENE_BLACK_S = 0.8  # an unconfirmed black this long inside an over-long scene: probably a missed cut
 ONE_FRAME_S = 0.3  # a cut black shorter than this is a single frame ...
 ONE_FRAME_SERIES_P10 = 0.35  # ... suspicious in a series whose 10th-percentile black is longer
@@ -44,7 +45,6 @@ class SplitPlan:
     reasons: list[str]  # why this confidence, one short sentence each
     leftovers: list[dict]  # strongest non-strong candidates (max 12), shown as hints on the card
     profile_used: bool
-    relaxed: bool
 
     @property
     def leave_whole_suggested(self) -> bool:
@@ -161,22 +161,6 @@ def plan_file(
     pf = profile if profile and profile["n_boundaries"] >= PROFILE_MIN_BOUNDARIES else None
     cuts, left = detect.plan_cuts(cands, pf, eff)
     ok, why = profiles.judge(cuts, pf, eff)
-    relaxed = False
-    if pf and not (cuts and ok):
-        # Blacks shorter than the series' labelled ones (another transfer of the same series) count when they
-        # carry silence and every resulting scene length sits inside the series' range.
-        loose = [
-            c
-            for c in cands
-            if c.get("kind") == "static" or (c["len"] >= RELAXED_MIN_BLACK_S and c["sil"] >= RELAXED_MIN_SIL_S)
-        ]
-        c2, l2 = detect.plan_cuts(loose, pf, eff)
-        ok2, why2 = profiles.judge(c2, pf, eff)
-        if c2 and ok2 and len(c2) >= RELAXED_MIN_CUTS:
-            ids = {id(c) for c in loose}
-            l2 = sorted(l2 + [c for c in cands if id(c) not in ids and c["len"] >= RELAXED_MIN_BLACK_S], key=lambda c: c["t"])
-            cuts, left, ok, why, relaxed = c2, l2, ok2, why2, True
-            reasons.append("blacks shorter than the series' (>= 0.3 s with silence) accepted: every scene fits its range")
     why = list(why)
 
     if pf and ok and pf.get("scene_len_min"):
@@ -207,12 +191,10 @@ def plan_file(
 
     lengths = _lengths_min(cuts, eff)
     plausible = bool(cuts) and all(SCENE_MIN_MIN <= x <= SCENE_MAX_MIN for x in lengths)
-    if cuts and ok and pf:
+    mixed_ok = bool(cuts and ok and pf and pf["transition"] != "black")
+    if cuts and ok and pf and not mixed_ok:
         confidence = "high"
         reasons.append("the series profile confirms the scene count and lengths")
-    elif cuts and not pf and plausible and all(detect.unmistakable(c) for c in cuts):
-        confidence = "high"
-        reasons.append("every cut is an unmistakable black (>= 2.5 s, silence >= 1 s, deep dip) and every scene is 5-60 min")
     elif cuts and cov_high:
         confidence = "high"
         reasons.append("the file is at least 90% covered and a detector cut confirms every coverage edge")
@@ -225,6 +207,8 @@ def plan_file(
     else:
         confidence = "low"
         reasons.append("no transition found: leave whole unless the owner marks cuts")
+    if mixed_ok and confidence != "high":
+        reasons.append("the series mixes fades and hard cuts, so a fade-only plan can miss boundaries")
     if pf:
         reasons += why
 
@@ -237,5 +221,4 @@ def plan_file(
         reasons=reasons,
         leftovers=leftovers,
         profile_used=pf is not None,
-        relaxed=relaxed,
     )

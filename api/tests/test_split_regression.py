@@ -5,8 +5,8 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HIGH_FAILURES = 9  # high plans whose cuts differ from the label (first run, 2026-11-18; the acceptance is 0)
-HIGH_BASELINE = 12  # high plans (first run)
+HIGH_FAILURES = 0  # high plans whose cuts differ from the label (after the 2026-11-18 rule change; the acceptance is 0)
+HIGH_BASELINE = 1  # high plans (after the 2026-11-18 rule change; was 12 with 9 failing)
 
 
 def _report_module():
