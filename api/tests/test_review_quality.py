@@ -80,7 +80,7 @@ async def test_preview_choices_per_raised_flag(db, stash):
     sid, fid = quality_scene(stash)
     p = await RT.preview(rec_for(db, sid, fid), None, stash)
     assert [c["field"] for c in p.choices] == ["broken", "rip"]
-    assert all(c["kind"] == "pick" and c["values"] == ["yes", "no"] and c["label"] for c in p.choices)
+    assert all(c["kind"] == "pick" and [v["value"] for v in c["values"]] == ["yes", "no"] and c["label"] for c in p.choices)
     assert p.default_option == {"broken": "yes", "rip": "yes"}
     assert p.high_confidence is False
     assert p.is_default_option

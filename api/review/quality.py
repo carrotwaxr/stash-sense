@@ -26,6 +26,8 @@ FLAG_LABELS = {
 }
 CONTROL_SUMMARY = "Control sample: is anything wrong with this file?"
 YES, NO = "yes", "no"
+# {value, label} like every other pick choice (the card and driver clients read that shape).
+PICK_VALUES = [{"value": YES, "label": "Yes, the flag is right"}, {"value": NO, "label": "No, it is wrong"}]
 
 
 def _oshash(f: dict) -> str | None:
@@ -95,6 +97,6 @@ class QualityReview(ReviewType):
             "groups": groups,
         }
         summary = "; ".join(FLAG_LABELS[f] for f in FLAG_ORDER if f in raised) if raised else CONTROL_SUMMARY
-        choices = [{"field": f, "label": FLAG_LABELS[f], "kind": "pick", "values": [YES, NO]} for f in asked]
+        choices = [{"field": f, "label": FLAG_LABELS[f], "kind": "pick", "values": PICK_VALUES} for f in asked]
         return Preview(plan=plan, evidence=evidence, choices=choices, default_option=default,
                        high_confidence=False, summary=summary)
