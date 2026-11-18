@@ -200,7 +200,8 @@ class ContentFingerprintJob(BaseJob):
         return {"status": "imported", **out}
 
     async def _fingerprint(self, context, store, kept, ids, local, workers, result) -> str | None:
-        """Phase 1. Returns a cursor when the job yields to a higher-priority job, else None."""
+        """Phase 1. Returns a cursor when the job yields to a higher-priority job or the sidecar is shutting down
+        (so the queue re-queues it), else None."""
         audio_done = store.done_ids("audio_fingerprints", AUDIO_ALGO, AUDIO_ALGO_VERSION)
         video_done = store.done_ids("video_signatures", VIDEO_ALGO, VIDEO_ALGO_VERSION)
         todo = []
@@ -282,12 +283,15 @@ class ContentFingerprintJob(BaseJob):
             await asyncio.gather(*(guarded(item) for item in batch))
         if abort:
             raise RuntimeError(abort[0])
-        return "fingerprint" if yielded else None
+        if yielded or (context.is_stop_requested() and context.is_shutting_down()):
+            return "fingerprint"
+        return None
 
     async def _match(self, context, store, allowed: set[int], index_path: str, result) -> str | None:
         """Phase 2: index the fingerprints and look up the files not yet queried."""
+        resume = "match" if context.is_shutting_down() else None
         if context.is_stop_requested():
-            return None
+            return resume
         ok = store.ok_audio_ids(AUDIO_ALGO, AUDIO_ALGO_VERSION)
         todo = [f for f in store.unqueried(AUDIO_ALGO, AUDIO_ALGO_VERSION) if f in allowed]
         stats = {"to_query": len(todo), "queried": 0, "overlaps_found": 0, "index_rebuilt": False}
@@ -323,7 +327,7 @@ class ContentFingerprintJob(BaseJob):
 
         for i in range(0, len(todo), QUERY_BATCH):
             if context.is_stop_requested():
-                return None
+                return resume
             if await context.should_yield():
                 return "match"
             batch = todo[i:i + QUERY_BATCH]
