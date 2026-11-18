@@ -2,7 +2,7 @@
 
 `better(a, b)` says which of two files is the better one to keep and why. The rules, in order: a rip loses;
 an AI upscale loses to the original; more effective detail; a disfavored codec or container loses a near tie;
-bits per pixel; frame rate; duration (duplicates only); container. Reasons are short plain sentences and only
+bits per pixel (capped); frame rate; duration (duplicates only); container; the smaller file. Reasons are short plain sentences and only
 the disfavored rule may name a codec.
 """
 
@@ -17,13 +17,16 @@ UNKNOWN_CODEC_EFF = 0.8
 UPNAME_RE = re.compile(r"upscal|_\d{3,4}p_\d{8}|tvai|topaz|starlight|proteus|\bai[ -]?enhanced", re.I)
 ENCODER_RE = re.compile(r"topaz|tvai|video ai", re.I)
 GOOD_CONTAINERS = {"mp4", "m4v", "mkv"}
-MODERN_CODECS = {"av1", "hevc", "vp9"}
+UPSCALE_CODECS = {"av1"}  # the size/pixel guess is only trusted for av1; hevc and vp9 releases at HD are real
 
 DETAIL_BAND = 1.15
 BPP_BAND = 1.25
 FPS_RATIO = 1.2
 DURATION_GAP = 60.0
 BITS_PER_PIXEL_FLOOR = 0.08  # bits per pixel per frame a file needs to hold its resolution
+BPP_CAP = 0.08  # same constant as the effective-detail rule; bits beyond it buy no visible detail
+SIZE_BAND = 1.05  # sizes this close count as the same
+SPLIT_FIRST_RATIO = 1.5  # a contained pair whose long file is this much longer than the short one is a multi-scene file
 UPSCALE_PIXEL_RATIO = 1.2
 
 
@@ -76,10 +79,10 @@ def is_upscale(f: FileFeatures, siblings: list[FileFeatures]) -> bool:
     """Whether `f` looks like an AI upscale of one of its siblings (`f` itself in the list is ignored)."""
     if f.upscale_name or f.upscale_path or (f.encoder and ENCODER_RE.search(f.encoder)):
         return True
-    if f.codec not in MODERN_CODECS:
+    if f.codec not in UPSCALE_CODECS:
         return False
     others = [s for s in siblings if s is not f and not (f.key and s.key == f.key)]
-    plain = [s for s in others if s.codec not in MODERN_CODECS]
+    plain = [s for s in others if s.codec not in UPSCALE_CODECS]
     if not plain:
         return False
     px = _px(f)
@@ -142,7 +145,8 @@ def better(
         loser = a if ca else b
         return win(cb, f"avoids the .{loser.ext} container: the other file has about the same detail")
 
-    # 5. bits per pixel
+    # 5. bits per pixel, each side capped
+    ba, bb = min(ba, BPP_CAP), min(bb, BPP_CAP)
     if ba > 0 and bb > 0 and max(ba, bb) > BPP_BAND * min(ba, bb):
         return win(ba > bb, "more bits per pixel at about the same detail (cleaner, fewer blocks)")
 
@@ -161,6 +165,10 @@ def better(
     if ga != gb:
         return win(ga, "same picture; the better container")
 
+    # 9. the smaller file
+    if a.size > 0 and b.size > 0 and max(a.size, b.size) > SIZE_BAND * min(a.size, b.size):
+        return win(a.size < b.size, "same picture; the smaller file saves space")
+
     return "tie", "practically equal: either is fine"
 
 
@@ -169,7 +177,7 @@ class KeeperSuggestion:
     keep: list[str]  # FileFeatures.key, best first
     delete: list[str]
     reason: str  # one sentence shown on the card
-    flags: list[str]  # supercut_candidate, upscale_pair, held_unhealthy, tie
+    flags: list[str]  # supercut_candidate, upscale_pair, held_unhealthy, tie, split_first
     held: bool = False
 
 
@@ -222,13 +230,16 @@ def suggest(
         short, long_ = sorted(fs, key=lambda f: (f.duration, f.key))
         if failed(long_):
             return result([short, long_], "The longer file failed its health check, so both files are kept.", [])
+        if long_.duration >= SPLIT_FIRST_RATIO * short.duration:
+            return result([short, long_], "The longer file probably holds several scenes: split it first, then "
+                                          "merge and delete. Both files are kept.", ["split_first"])
         if failed(short):
             return result([long_], "Its content is inside the longer file, and the shorter file failed its health "
                                    "check.", [])
-        if better(short, long_, **kw)[0] == "a":
-            return result([short, long_], "The shorter file is better quality and the longer one holds extra "
-                                          "content, so both are kept.", [])
-        return result([long_], "Its content is inside the longer file at equal or better quality.", [])
+        if better(long_, short, **kw)[0] == "a":
+            return result([long_], "Its content is inside the longer cut, which is better quality.", [])
+        return result([short, long_], "The shorter file is at least as good as the longer cut, so both are kept.",
+                      [])
 
     flags: list[str] = []
     prefix = ""

@@ -74,7 +74,7 @@ def rec_for(db, cls, scene_ids, *, files=None, moments=None):
 
 def pair(stash, *, a=None, b=None, sa=None, sb=None):
     """Two scenes with one file each; a and b are add_file kwargs, sa and sb add_scene kwargs."""
-    a = {"path": "/m/a.mp4", "size": 2 * GB, "oshash": "aaaa", "md5": "ma", **(a or {})}
+    a = {"path": "/m/a.mp4", "size": 1 * GB, "oshash": "aaaa", "md5": "ma", **(a or {})}
     b = {"path": "/m/b.mp4", "size": 1 * GB, "oshash": "bbbb", "md5": "mb", **(b or {})}
     fa = stash.add_file(a.pop("path"), a.pop("size"), **a)
     fb = stash.add_file(b.pop("path"), b.pop("size"), **b)
@@ -254,9 +254,9 @@ async def test_batch_eligible_only_identical_or_same_encode(stash, db, data_dir)
 
     assert p.evidence["flags"] == ["tie"]  # a tie is fine when the deleted file is identical
 
-    # same encode: codec, size and duration within 1 s; the keeper wins on bits per pixel
+    # same encode: codec, frame size and duration within 1 s; the keeper wins as the smaller file
     s3, s4, f3, f4 = pair(stash, a={"oshash": "c1", "duration": 600.0}, b={"oshash": "c2", "duration": 600.6})
-    stash.files[f4]["bit_rate"] = 8_000_000
+    stash.files[f4]["size"] = GB // 2
     p = await RT.preview(rec_for(db, "duplicate", [s3, s4]), None, stash)
     assert p.default_option["keep"] == "c2" and p.evidence["flags"] == []
     assert p.high_confidence
@@ -332,7 +332,7 @@ async def test_language_variant_keeps_both_files(svc, stash, db):
 
 async def test_contained_keeps_long_file(stash, db):
     # the long file is better: the short one goes
-    s1, s2, fa, fb = pair(stash, a={"duration": 3000.0}, b={"duration": 600.0, "width": 1280, "height": 720})
+    s1, s2, fa, fb = pair(stash, a={"duration": 1000.0}, b={"duration": 800.0, "width": 1280, "height": 720})
     rec = rec_for(db, "contained", [s1, s2])
     p = await RT.preview(rec, None, stash)
     assert [f.file_id for f in p.plan.delete_files] == [fb]
@@ -341,15 +341,16 @@ async def test_contained_keeps_long_file(stash, db):
     assert fa not in p.plan.delete_file_ids and p.plan.delete_files == []
 
     # the short file is better: both kept
-    s3, s4, fc, fd = pair(stash, a={"oshash": "long", "duration": 3000.0, "width": 1280, "height": 720},
-                          b={"oshash": "short", "duration": 600.0})
+    s3, s4, fc, fd = pair(stash, a={"oshash": "long", "duration": 1000.0, "width": 1280, "height": 720},
+                          b={"oshash": "short", "duration": 800.0})
     p = await RT.preview(rec_for(db, "contained", [s3, s4]), None, stash)
     assert p.plan.delete_files == []
     assert not p.high_confidence
 
 
 async def test_no_codec_mention_when_lists_empty(stash, db, monkeypatch):
-    s1, s2, fa, fb = pair(stash, a={"codec": "h264"}, b={"codec": "hevc"})
+    s1, s2, fa, fb = pair(stash, a={"codec": "h264"}, b={"codec": "hevc", "size": GB // 2})
+    stash.files[fb]["bit_rate"] = 3_500_000  # the same effective detail from fewer bits
     rec = rec_for(db, "duplicate", [s1, s2])
 
     p = await RT.preview(rec, None, stash)

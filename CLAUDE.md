@@ -67,7 +67,7 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/duplicates/` - Duplicate detection v2 (#130): keeper rules, sprite tiles, audio check, health check, verdict and pair class, candidate sources, set grouping
 - `api/review/duplicates.py` - The `scene_duplicates` review type: keeper suggestion, merge plan, mislabel choice, batch eligibility
 - `api/analyzers/scene_duplicates.py` - The `scene_duplicates` job: verifies candidates and upserts one recommendation per set in place (driver feed never sees a delete). User docs: `docs/features/duplicate-detection.md`
-- `docs/research/dupes-keeper-regression.md` - The keeper vs the owner's recorded picks (90.3% of 680 non-tie pairs); rerun when `duplicates/keeper.py` changes
+- `docs/research/dupes-keeper-regression.md` - The keeper vs the owner's recorded picks (91.2% of 569 scored pairs); rerun when `duplicates/keeper.py` changes
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client
