@@ -442,6 +442,7 @@ async def test_import_copies_rows_after_the_build_check(tmp_path, monkeypatch):
     assert imp["status"] == "imported" and imp["imported"] == 4 and imp["in_library"] == 4
     assert imp["source_files"] == 5 and imp["checked"] >= 1
     assert (tmp_path / (IMPORT_NAME + ".imported")).exists() and not (tmp_path / IMPORT_NAME).exists()
+    assert not [p for p in os.listdir(tmp_path) if p.startswith(IMPORT_NAME + "-")]   # no orphaned -shm / -wal
     # imported files get no new audio fingerprint, only the video signature and the check's sample
     audio_cmds = [c for c in calls if "chromaprint" in c]
     assert len(audio_cmds) == imp["checked"]

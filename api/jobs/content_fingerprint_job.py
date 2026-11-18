@@ -94,6 +94,16 @@ def _workers() -> int:
         return int(SETTING_DEFS["content_index_workers"].fallback)
 
 
+def _set_aside(path: str, suffix: str) -> None:
+    """Rename the import file so it is tried once; SQLite's -shm / -wal beside it belong to the old name and go."""
+    os.replace(path, path + suffix)
+    for side in ("-shm", "-wal"):
+        try:
+            os.remove(path + side)
+        except FileNotFoundError:
+            pass
+
+
 class ContentFingerprintJob(BaseJob):
     def __init__(self, stash=None, media=None, data_dir: str | None = None, workers: int | None = None,
                  exclusion=None):
@@ -167,10 +177,10 @@ class ContentFingerprintJob(BaseJob):
         try:
             out = await importer.check_and_import(path, store, local, fp, audio.ffmpeg_version())
         except Exception as e:   # refused, or not a store at all: either way, tried once and set aside
-            os.replace(path, path + ".refused")
+            _set_aside(path, ".refused")
             logger.warning("content index: import refused: %s", e)
             return {"status": "refused", "reason": str(e)}
-        os.replace(path, path + ".imported")
+        _set_aside(path, ".imported")
         logger.warning("content index: imported %s", out)
         return {"status": "imported", **out}
 
