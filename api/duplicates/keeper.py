@@ -162,3 +162,104 @@ def better(
         return win(ga, "same picture; the better container")
 
     return "tie", "practically equal: either is fine"
+
+
+@dataclass
+class KeeperSuggestion:
+    keep: list[str]  # FileFeatures.key, best first
+    delete: list[str]
+    reason: str  # one sentence shown on the card
+    flags: list[str]  # supercut_candidate, upscale_pair, held_unhealthy, tie
+    held: bool = False
+
+
+BAD_HEALTH = frozenset({"suspect", "missing"})
+SUPERCUT_MIN_GAP = 60.0
+SUPERCUT_FRACTION = 0.05
+
+
+def _sentence(why: str) -> str:
+    if why.startswith(("keeps", "avoids")):
+        return why[0].upper() + why[1:]
+    return f"Keeps the best copy: {why}"
+
+
+def suggest(
+    files: list[FileFeatures],
+    *,
+    kind: str = "duplicate",
+    health: dict[str, str] | None = None,
+    disfavored_codecs: frozenset[str] | set[str] = frozenset(),
+    disfavored_containers: frozenset[str] | set[str] = frozenset(),
+) -> KeeperSuggestion:
+    """Which files of a duplicate set to keep. Sorted by key first, so the card order never matters."""
+    fs = sorted(files, key=lambda f: f.key)
+    health = health or {}
+    kw = dict(kind=kind, disfavored_codecs=disfavored_codecs, disfavored_containers=disfavored_containers,
+              siblings=fs)
+
+    def failed(f: FileFeatures) -> bool:
+        return health.get(f.key, "ok") in BAD_HEALTH
+
+    def fold(pool: list[FileFeatures]) -> FileFeatures:
+        champ = pool[0]
+        for f in pool[1:]:
+            if better(champ, f, **kw)[0] == "b":  # a tie keeps the current champion
+                champ = f
+        return champ
+
+    def result(keep: list[FileFeatures], reason: str, flags: list[str]) -> KeeperSuggestion:
+        kept = {f.key for f in keep}
+        return KeeperSuggestion([f.key for f in keep], [f.key for f in fs if f.key not in kept], reason, flags)
+
+    healthy = [f for f in fs if not failed(f)]
+    if not healthy:
+        return KeeperSuggestion([f.key for f in fs], [], "No file passed its health check, so nothing is deleted.",
+                                ["held_unhealthy"], held=True)
+
+    # contained: the long file holds extra content and is never deleted
+    if kind == "contained" and len(fs) == 2:
+        short, long_ = sorted(fs, key=lambda f: (f.duration, f.key))
+        if failed(long_):
+            return result([short, long_], "The longer file failed its health check, so both files are kept.", [])
+        if failed(short):
+            return result([long_], "Its content is inside the longer file, and the shorter file failed its health "
+                                   "check.", [])
+        if better(short, long_, **kw)[0] == "a":
+            return result([short, long_], "The shorter file is better quality and the longer one holds extra "
+                                          "content, so both are kept.", [])
+        return result([long_], "Its content is inside the longer file at equal or better quality.", [])
+
+    flags: list[str] = []
+    prefix = ""
+    ups = [f for f in healthy if is_upscale(f, fs)]
+    originals = [f for f in healthy if f not in ups]
+    best_overall = fold(fs)
+
+    if ups and originals:
+        keep = [fold(originals), fold(ups)]
+        flags.append("upscale_pair")
+        reason = "Keeps the best original and the best AI upscale; the other copies are worse."
+        return result(keep, reason, flags)
+
+    champ = fold(healthy)
+    if champ is not best_overall:
+        prefix = "The best file failed its health check, so the next best is kept. "
+    others = [f for f in healthy if f is not champ]
+    if others:
+        runner = fold(others)
+        who, why = better(champ, runner, **kw)
+        if any(better(champ, o, **kw)[0] == "tie" for o in others):
+            flags.append("tie")
+        reason = _sentence(why) if who != "tie" else "Practically equal files: keeps one, either is fine."
+    else:
+        reason = "Keeps the only file that passed its health check."
+    keep = [champ]
+
+    if kind == "duplicate":
+        longest = max(healthy, key=lambda f: f.duration)  # first by key on equal durations
+        if champ.duration < longest.duration - max(SUPERCUT_MIN_GAP, SUPERCUT_FRACTION * longest.duration):
+            keep.append(longest)
+            flags.append("supercut_candidate")
+            reason += " The longest file is kept too because it may hold extra content."
+    return result(keep, prefix + reason, flags)

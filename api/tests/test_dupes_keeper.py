@@ -1,6 +1,8 @@
 """Pairwise keeper rules (#130): one test per rule, each checks the winner and that the reason names the rule."""
 
-from duplicates.keeper import FileFeatures, better, is_upscale
+import itertools
+
+from duplicates.keeper import FileFeatures, better, is_upscale, suggest
 
 CODEC_NAMES = ("h264", "hevc", "av1", "vp9", "mpeg4", "wmv", "vc1", "mpeg2")
 
@@ -153,3 +155,86 @@ def test_from_stash_file():
     assert g.upscale_path and not g.upscale_name and g.bit_rate == 0 and g.key == ""
     h = FileFeatures.from_stash_file({"path": "/data/upscaled/originals/b.mp4"})
     assert not h.upscale_path
+
+
+# ---- set-level suggestion ----
+
+def _720(key, **kw):
+    return mk(key, width=1280, height=720, bit_rate=3_000_000, **kw)
+
+
+def _480(key, **kw):
+    return mk(key, width=854, height=480, bit_rate=1_000_000, **kw)
+
+
+def test_set_keeps_one_file():
+    s = suggest([_480("c"), mk("a"), _720("b")])
+    assert s.keep == ["a"]
+    assert s.delete == ["b", "c"]
+    assert s.reason and not s.held and s.flags == []
+
+
+def test_upscale_set_keeps_two():
+    up = mk("up", codec="av1", width=3840, height=2160, bit_rate=20_000_000, upscale_name=True)
+    s = suggest([up, _720("o2"), mk("o1")])
+    assert set(s.keep) == {"up", "o1"}
+    assert s.delete == ["o2"]
+    assert "upscale_pair" in s.flags
+
+
+def test_longer_but_worse_keeps_both():
+    s = suggest([mk("best", duration=900.0), _720("long", duration=1200.0)])
+    assert set(s.keep) == {"best", "long"}
+    assert s.keep[0] == "best"
+    assert s.delete == []
+    assert "supercut_candidate" in s.flags
+    # a short gap is not a supercut
+    s = suggest([mk("best", duration=1180.0), _720("long", duration=1200.0)])
+    assert s.keep == ["best"] and "supercut_candidate" not in s.flags
+
+
+def test_broken_keeper_falls_through():
+    files = [mk("best"), _720("mid"), _480("low")]
+    s = suggest(files, health={"best": "suspect"})
+    assert s.keep == ["mid"]
+    assert set(s.delete) == {"best", "low"}
+    assert "health check" in s.reason
+    s = suggest(files, health={"best": "missing", "mid": "ok", "low": "warn"})
+    assert s.keep == ["mid"]
+    # warn still counts as healthy
+    s = suggest(files, health={"best": "warn"})
+    assert s.keep == ["best"] and "health check" not in s.reason
+    # nothing healthy: hold everything
+    s = suggest(files, health={"best": "suspect", "mid": "missing", "low": "suspect"})
+    assert s.held and s.delete == []
+    assert set(s.keep) == {"best", "mid", "low"}
+    assert "held_unhealthy" in s.flags
+
+
+def test_contained_tie_keeps_long():
+    long_ = mk("long", duration=1200.0)
+    short = mk("short", duration=600.0)
+    s = suggest([short, long_], kind="contained")
+    assert s.keep == ["long"] and s.delete == ["short"]
+    assert "inside the longer file" in s.reason
+    # a better short file keeps both
+    long_worse = _720("long", duration=1200.0)
+    s = suggest([short, long_worse], kind="contained")
+    assert set(s.keep) == {"long", "short"} and s.delete == []
+    # the long file is never deleted, even when the short one is the unhealthy one's rival
+    s = suggest([short, long_worse], kind="contained", health={"long": "suspect"})
+    assert "long" in s.keep
+
+
+def test_suggestion_is_order_independent():
+    files = [mk("a"), mk("b"), _720("c"), _480("d")]  # a and b tie
+    results = {(tuple(s.keep), tuple(s.delete), s.reason, tuple(s.flags))
+               for s in (suggest(list(p)) for p in itertools.permutations(files))}
+    assert len(results) == 1
+    assert results.pop()[0] == ("a",)
+
+
+def test_tie_flagged():
+    s = suggest([mk("t2"), mk("t1")])
+    assert s.keep == ["t1"] and s.delete == ["t2"]
+    assert "tie" in s.flags
