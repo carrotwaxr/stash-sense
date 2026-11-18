@@ -171,6 +171,24 @@ class FakeStash:
             })
         return out, len(ordered)
 
+    async def get_scenes_with_files(self, page: int, per_page: int = 500,
+                                    min_duration: Optional[float] = None) -> tuple[list[dict], int]:
+        """findScenes sorted by id, paged from 1, with the files' quality fields; ``min_duration`` filters on the
+        primary file's duration (strictly longer), as Stash's duration criterion does."""
+        self._maybe_fail("get_scenes_with_files")
+        ordered = [s for s in sorted(self.scenes.values(), key=lambda s: int(s["id"]))
+                   if min_duration is None
+                   or (s["file_ids"] and self.files[s["file_ids"][0]]["duration"] > min_duration)]
+        chunk = ordered[(page - 1) * per_page: page * per_page]
+        return [{"id": s["id"], "title": s["title"],
+                 "files": [copy.deepcopy(self.files[f]) for f in s["file_ids"]]} for s in chunk], len(ordered)
+
+    async def find_tag_id_by_name(self, name: str) -> Optional[str]:
+        return next((t for t, n in self.tags.items() if n == name), None)
+
+    async def find_group_id_by_name(self, name: str) -> Optional[str]:
+        return next((g for g, n in self.groups.items() if n == name), None)
+
     async def find_duplicate_scenes(self, distance: int = 10) -> list[list[str]]:
         """Scene id groups; the fake returns the groups set on ``phash_groups``."""
         self._maybe_fail("find_duplicate_scenes")
