@@ -227,7 +227,7 @@ class TestRegistryMarks:
 
     def test_unfinished_types(self):
         unfinished = {t for t, d in JOB_REGISTRY.items() if not d.production_ready}
-        assert unfinished == {"duplicate_scenes", "duplicate_scene_files", "fingerprint_generation"}
+        assert unfinished == {"duplicate_scenes", "duplicate_scene_files", "fingerprint_generation", "review_demo"}
 
     def test_fingerprint_generate_endpoint_rejected(self, client):
         resp = client.post("/recommendations/fingerprints/generate", json={})

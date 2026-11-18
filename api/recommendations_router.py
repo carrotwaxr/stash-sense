@@ -413,6 +413,8 @@ async def dismiss_recommendation(rec_id: int, request: DismissRequest = None):
 
 # ==================== Analysis Endpoints ====================
 
+from review.demo import DemoReviewAnalyzer  # noqa: E402
+
 ANALYZERS = {
     "duplicate_performer": DuplicatePerformerAnalyzer,
     "duplicate_scene_files": DuplicateSceneFilesAnalyzer,
@@ -422,6 +424,7 @@ ANALYZERS = {
     "upstream_studio_changes": UpstreamStudioAnalyzer,
     "upstream_scene_changes": UpstreamSceneAnalyzer,
     "scene_fingerprint_match": SceneFingerprintMatchAnalyzer,
+    "review_demo": DemoReviewAnalyzer,
 }
 
 

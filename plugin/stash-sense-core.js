@@ -448,10 +448,14 @@
   /**
    * Escape a string for safe insertion into HTML
    */
+  /** Escape for HTML text *and* quoted attribute values (paths and titles come from Stash). */
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(String(str)));
-    return div.innerHTML;
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // ==================== Tab URL State ====================
@@ -551,6 +555,47 @@
   }
 
   // ==================== Export ====================
+
+  // ==================== Navigation entry point (#115) ====================
+
+  /**
+   * Add "Stash Sense" to Stash's main navigation, built from Stash's own
+   * libraries so it matches the built-in items (and collapses with them).
+   */
+  function registerNavLink() {
+    const api = window.PluginApi;
+    if (!api || !api.patch || !api.libraries) {
+      console.warn(`[${PLUGIN_NAME}] PluginApi unavailable: no nav link`);
+      return;
+    }
+    const { React } = api;
+    const { Nav, Button } = api.libraries.Bootstrap;
+    const { NavLink } = api.libraries.ReactRouterDOM;
+    const { FontAwesomeIcon } = api.libraries.ReactFontAwesome;
+    const icon = api.libraries.FontAwesomeSolid.faWandMagicSparkles || api.libraries.FontAwesomeSolid.faEye;
+
+    api.patch.before('MainNavBar.MenuItems', function (props) {
+      const link = React.createElement(
+        Nav.Link,
+        { key: 'stash-sense', as: 'div', eventKey: '/plugins/stash-sense', className: 'col-4 col-sm-3 col-md-2 col-lg-auto' },
+        React.createElement(
+          Button,
+          {
+            as: NavLink,
+            to: '/plugins/stash-sense',
+            activeClassName: 'active',
+            className: 'minimal p-4 p-xl-2 d-flex d-xl-inline-block flex-column justify-content-between align-items-center',
+            'data-ss-nav': 'stash-sense',
+          },
+          React.createElement(FontAwesomeIcon, { icon, className: 'fa-icon nav-menu-icon d-block d-xl-inline mb-2 mb-xl-0' }),
+          React.createElement('span', null, 'Stash Sense'),
+        ),
+      );
+      return [{ ...props, children: [props.children, link] }];
+    });
+  }
+
+  registerNavLink();
 
   window.StashSense = {
     // Constants

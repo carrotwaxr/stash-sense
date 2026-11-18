@@ -15,7 +15,49 @@ from pathlib import Path
 from typing import Collection, Optional, Iterator, Any
 
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
+
+# Review framework (#127): one row per apply or revert, and the user's
+# corrections to suggestions. Append-only; reads are by recency or by rec.
+REVIEW_TABLES_SQL = """
+    CREATE TABLE IF NOT EXISTS apply_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,                 -- 'apply' | 'revert'
+        status TEXT NOT NULL,                 -- 'applying' | 'applied' | 'failed'
+        rec_id INTEGER,
+        rec_type TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        batch_id TEXT,
+        reverts_id INTEGER REFERENCES apply_log(id),
+        reverted_by INTEGER REFERENCES apply_log(id),
+        option JSON,
+        plan JSON NOT NULL,
+        plan_token TEXT,
+        prior_state JSON NOT NULL,
+        result JSON,
+        error TEXT,
+        trash_path TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_apply_log_rec ON apply_log(rec_id);
+    CREATE INDEX IF NOT EXISTS idx_apply_log_created ON apply_log(created_at);
+
+    CREATE TABLE IF NOT EXISTS review_labels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rec_type TEXT NOT NULL,
+        rec_id INTEGER,
+        target_type TEXT,
+        target_id TEXT,
+        suggested JSON NOT NULL,
+        chosen JSON NOT NULL,
+        evidence JSON NOT NULL,
+        apply_log_id INTEGER REFERENCES apply_log(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_labels_type ON review_labels(rec_type, id);
+"""
 
 
 @dataclass
@@ -310,6 +352,7 @@ class RecommendationsDB:
                 next_run_at TEXT
             );
         """)
+        conn.executescript(REVIEW_TABLES_SQL)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
         """Migrate schema from older version."""
@@ -482,6 +525,9 @@ class RecommendationsDB:
 
                 UPDATE schema_version SET version = 9;
             """)
+
+        if from_version < 10:
+            conn.executescript(REVIEW_TABLES_SQL + "UPDATE schema_version SET version = 10;")
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -774,6 +820,22 @@ class RecommendationsDB:
                 WHERE id = ? AND status = 'dismissed'
                 """,
                 (json.dumps(details), rec_id)
+            )
+            return cursor.rowcount > 0
+
+    def set_recommendation_status(self, rec_id: int, status: str) -> bool:
+        """Force a recommendation's status (used by revert to reopen as pending)."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE recommendations
+                SET status = ?, updated_at = datetime('now'),
+                    resolution_action = CASE WHEN ? = 'pending' THEN NULL ELSE resolution_action END,
+                    resolution_details = CASE WHEN ? = 'pending' THEN NULL ELSE resolution_details END,
+                    resolved_at = CASE WHEN ? = 'pending' THEN NULL ELSE resolved_at END
+                WHERE id = ?
+                """,
+                (status, status, status, status, rec_id),
             )
             return cursor.rowcount > 0
 

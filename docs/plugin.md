@@ -19,7 +19,7 @@ Go to **Settings > Plugins > Stash Sense** and set the **Sidecar URL** to the ad
 
 ### 4. Open the dashboard
 
-Navigate to **`/plugins/stash-sense`** in your Stash UI to access the Stash Sense dashboard.
+Click **Stash Sense** in Stash's top navigation bar, or go to **`/plugins/stash-sense`**, to open the Stash Sense dashboard.
 
 ## Identifying Performers in a Scene
 
