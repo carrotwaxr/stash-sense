@@ -9,7 +9,14 @@ import features
 from recommendations_db import SCHEMA_VERSION, RecommendationsDB
 from review.demo import DEMO_TAG, DemoReviewAnalyzer
 from review.executor import PlanRejected, apply_plan
-from review.plan import FieldChange, FileRef, Plan, PrimaryFileChange
+from review.plan import (
+    FieldChange,
+    FileRef,
+    Plan,
+    PrimaryFileChange,
+    scene_field_values,
+    values_equal,
+)
 from review.service import (
     BatchIneligible,
     ConfirmRequired,
@@ -78,11 +85,65 @@ def rec_for(db, scene_id):
 # ---------------- fake fidelity ----------------
 
 def test_fake_implements_real_client_methods():
+    assert "merge_scenes" in FakeStash.REVIEW_METHODS
     for name in FakeStash.REVIEW_METHODS:
         real = getattr(StashClientUnified, name)
         fake = getattr(FakeStash, name)
         assert inspect.iscoroutinefunction(real) and inspect.iscoroutinefunction(fake)
         assert list(inspect.signature(real).parameters)[1:] == list(inspect.signature(fake).parameters)[1:]
+
+
+async def test_fake_merge_matches_stash(stash):
+    d1 = stash.add_file("/m/d1.mp4", GB)
+    s1 = stash.add_file("/m/s1.mp4", GB)
+    s2 = stash.add_file("/m/s2.mp4", GB)
+    s3 = stash.add_file("/m/s3.mp4", GB)
+    dest = stash.add_scene(d1, title="dest", play_count=2, o_counter=1)
+    a = stash.add_scene(s1, s2, title="a", play_count=3, o_counter=4)
+    b = stash.add_scene(s3, title="b", play_count=1)
+
+    await stash.merge_scenes([a, b], dest, values={"title": "merged", "tag_ids": ["9"]})
+
+    scene = await stash.get_scene_for_review(dest)
+    assert [f["id"] for f in scene["files"]] == [d1, s1, s2, s3]  # own primary first, then sources in order
+    assert scene["title"] == "merged" and scene["tags"] == [{"id": "9"}]
+    assert (scene["play_count"], scene["o_counter"]) == (6, 5)
+    assert a not in stash.scenes and b not in stash.scenes
+    assert set(stash.files) >= {d1, s1, s2, s3}  # files survive the source scenes
+
+    # a destination without files takes the first source file as primary
+    empty = stash.add_scene(title="empty")
+    c = stash.add_scene(stash.add_file("/m/c1.mp4", GB), stash.add_file("/m/c2.mp4", GB))
+    first = stash.scenes[c]["file_ids"][0]
+    await stash.merge_scenes([c], empty, play_history=False, o_history=False)
+    assert (await stash.get_scene_for_review(empty))["files"][0]["id"] == first
+
+    # values cannot change the primary file when the destination has one
+    e = stash.add_scene(stash.add_file("/m/e1.mp4", GB))
+    f = stash.add_scene(stash.add_file("/m/f1.mp4", GB))
+    f_file = stash.scenes[f]["file_ids"][0]
+    await stash.merge_scenes([f], e, values={"primary_file_id": f_file})
+    assert (await stash.get_scene_for_review(e))["files"][-1]["id"] == f_file
+
+    with pytest.raises(FakeStashError, match="destination scene cannot be in source list"):
+        await stash.merge_scenes([e], e)
+
+
+async def test_fake_new_review_fields(stash):
+    fid = stash.add_file("/m/x.mp4", GB)
+    sid = stash.add_scene(fid)
+    await stash.update_scene(sid, groups=[{"group_id": "7", "scene_index": 2}], gallery_ids=["5"])
+    scene = await stash.get_scene_for_review(sid)
+    assert scene["groups"] == [{"group": {"id": "7"}, "scene_index": 2}]
+    assert scene["galleries"] == [{"id": "5"}]
+    assert scene["files"][0]["frame_rate"] == 30.0
+    assert (scene["play_count"], scene["o_counter"], scene["stash_ids"]) == (0, 0, [])
+    values = scene_field_values(scene)
+    assert values["groups"] == [{"group_id": "7", "scene_index": 2}]
+    assert values["gallery_ids"] == ["5"]
+    assert values_equal("gallery_ids", ["1", "2"], ["2", "1"])
+    assert values_equal("groups", [{"group_id": "1", "scene_index": 1}, {"group_id": "2", "scene_index": None}],
+                        [{"group_id": "2", "scene_index": None}, {"group_id": "1", "scene_index": 1}])
 
 
 async def test_fake_refuses_deleting_primary_like_stash(stash, tag):

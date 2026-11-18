@@ -6,6 +6,10 @@ Modelled on Stash v0.32 (internal/api/resolver_mutation_file.go, scene update):
 - deleteFiles is all-or-nothing and refuses any file that is a scene's primary
 - with deleteTrashPath set, deleted files move to trash; otherwise they are gone
 - configurePlugin replaces the plugin's whole settings map (config.SetPluginConfiguration)
+- sceneMerge moves the sources' files to the destination after its own (the destination
+  keeps its primary, or takes the first source file when it had none), applies the optional
+  values partial, adds play and O history, then destroys the sources but not their files;
+  it unions nothing itself (pkg/scene/merge.go)
 - findScenes' hierarchical tags/groups/studios criteria with depth -1 match descendants
 
 It implements the StashClientUnified methods the review code calls, with
@@ -28,7 +32,7 @@ class FakeStashError(RuntimeError):
 class FakeStash:
     REVIEW_METHODS = (
         "get_scene_for_review", "find_scenes_with_tag_name", "update_scene",
-        "delete_files", "get_delete_trash_path",
+        "delete_files", "get_delete_trash_path", "merge_scenes",
     )
 
     def __init__(self, trash_path: str = ""):
@@ -74,7 +78,8 @@ class FakeStash:
         return sid
 
     def add_file(self, path: str, size: int, *, duration: float = 600.0, oshash: Optional[str] = None,
-                 md5: Optional[str] = None, codec: str = "h264", width: int = 1920, height: int = 1080) -> str:
+                 md5: Optional[str] = None, codec: str = "h264", width: int = 1920, height: int = 1080,
+                 frame_rate: float = 30.0) -> str:
         fid = self._id()
         fps = []
         if oshash:
@@ -84,7 +89,7 @@ class FakeStash:
         self.files[fid] = {
             "id": fid, "path": path, "basename": os.path.basename(path), "size": size,
             "duration": duration, "format": "mp4", "video_codec": codec, "width": width,
-            "height": height, "bit_rate": 5_000_000, "fingerprints": fps,
+            "height": height, "bit_rate": 5_000_000, "frame_rate": frame_rate, "fingerprints": fps,
         }
         return fid
 
@@ -93,7 +98,8 @@ class FakeStash:
         self.scenes[sid] = {
             "id": sid, "title": title, "details": "", "date": None, "code": "", "director": "",
             "urls": [], "organized": False, "rating100": None, "studio_id": None,
-            "performer_ids": [], "tag_ids": list(tag_ids), "group_ids": [],
+            "performer_ids": [], "tag_ids": list(tag_ids), "group_ids": [], "groups": [],
+            "gallery_ids": [], "stash_ids": [], "play_count": 0, "o_counter": 0,
             "file_ids": list(file_ids), **fields,
         }
         return sid
@@ -108,6 +114,11 @@ class FakeStash:
             "studio": {"id": s["studio_id"]} if s["studio_id"] else None,
             "performers": [{"id": p} for p in s["performer_ids"]],
             "tags": [{"id": t} for t in s["tag_ids"]],
+            "play_count": s["play_count"], "o_counter": s["o_counter"],
+            "stash_ids": s["stash_ids"],
+            "groups": [{"group": {"id": g["group_id"]}, "scene_index": g.get("scene_index")}
+                       for g in s["groups"]],
+            "galleries": [{"id": g} for g in s["gallery_ids"]],
             "files": [self.files[f] for f in s["file_ids"]],
         })
 
@@ -174,7 +185,9 @@ class FakeStash:
         def scene_values(s):
             if field == "studios":
                 return {s["studio_id"]} if s["studio_id"] else set()
-            return set(s["tag_ids" if field == "tags" else "group_ids"])
+            if field == "groups":
+                return set(s["group_ids"]) | {g["group_id"] for g in s["groups"]}
+            return set(s["tag_ids"])
 
         return [s["id"] for s in sorted(self.scenes.values(), key=lambda s: int(s["id"]))
                 if scene_values(s) & wanted]
@@ -199,6 +212,48 @@ class FakeStash:
             s[k] = copy.deepcopy(v)
         self.writes += 1
         return {"id": s["id"]}
+
+    async def merge_scenes(self, source_ids: list[str], destination_id: str,
+                           values: dict | None = None, play_history: bool = True,
+                           o_history: bool = True) -> dict:
+        """Stash's sceneMerge (pkg/scene/merge.go Merge). Unions nothing: the caller sends merged values."""
+        self._maybe_fail("merge_scenes")
+        sources = list(dict.fromkeys(str(i) for i in source_ids))
+        dest = str(destination_id)
+        if dest in sources:
+            raise FakeStashError("GraphQL error: destination scene cannot be in source list")
+        d = self.scenes.get(dest)
+        if d is None:
+            raise FakeStashError(f"GraphQL error: finding destination scene ID {dest}")
+        missing = [i for i in sources if i not in self.scenes]
+        if missing:
+            raise FakeStashError(f"GraphQL error: finding source scenes: {missing} not found")
+        values = copy.deepcopy(values or {})
+        moved = [f for i in sources for f in self.scenes[i]["file_ids"]]
+        if moved:
+            d["file_ids"].extend(f for f in moved if f not in d["file_ids"])
+            # The destination keeps its primary, so the input cannot change it.
+            values.pop("primary_file_id", None)
+        unknown = set(values) - SCENE_FIELDS - {"primary_file_id", "id"}
+        if unknown:
+            raise FakeStashError(f"GraphQL error: unknown field(s) {sorted(unknown)} in SceneUpdateInput")
+        values.pop("id", None)
+        pf = values.pop("primary_file_id", None)  # only still present when no file moved
+        if pf is not None:
+            if str(pf) not in d["file_ids"]:
+                raise FakeStashError(f"GraphQL error: file {pf} is not associated with scene {dest}")
+            d["file_ids"].remove(str(pf))
+            d["file_ids"].insert(0, str(pf))
+        for k, v in values.items():
+            d[k] = v
+        if play_history:
+            d["play_count"] += sum(self.scenes[i]["play_count"] for i in sources)
+        if o_history:
+            d["o_counter"] += sum(self.scenes[i]["o_counter"] for i in sources)
+        for i in sources:  # destroyed without deleting their files
+            del self.scenes[i]
+        self.writes += 1
+        return {"id": dest}
 
     async def delete_files(self, file_ids: list[str]) -> bool:
         self._maybe_fail("delete_files")

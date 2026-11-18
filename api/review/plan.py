@@ -15,10 +15,10 @@ from typing import Any, Optional
 # Scene fields the framework may write, in SceneUpdateInput shape.
 SCENE_FIELDS: frozenset[str] = frozenset({
     "title", "details", "date", "code", "director", "urls", "organized",
-    "rating100", "studio_id", "performer_ids", "tag_ids",
+    "rating100", "studio_id", "performer_ids", "tag_ids", "groups", "gallery_ids",
 })
 # Id lists Stash treats as sets; compared order-insensitively.
-_SET_FIELDS = frozenset({"performer_ids", "tag_ids"})
+_SET_FIELDS = frozenset({"performer_ids", "tag_ids", "gallery_ids"})
 
 
 def scene_field_values(scene: dict) -> dict[str, Any]:
@@ -35,12 +35,22 @@ def scene_field_values(scene: dict) -> dict[str, Any]:
         "studio_id": (scene.get("studio") or {}).get("id"),
         "performer_ids": [p["id"] for p in scene.get("performers") or []],
         "tag_ids": [t["id"] for t in scene.get("tags") or []],
+        "groups": [{"group_id": g["group"]["id"], "scene_index": g.get("scene_index")}
+                   for g in scene.get("groups") or []],
+        "gallery_ids": [g["id"] for g in scene.get("galleries") or []],
     }
+
+
+def _group_key(groups: Any) -> list:
+    return sorted((g["group_id"], -1 if g.get("scene_index") is None else g["scene_index"])
+                  for g in groups or [])
 
 
 def values_equal(field_name: str, a: Any, b: Any) -> bool:
     if field_name in _SET_FIELDS:
         return sorted(a or []) == sorted(b or [])
+    if field_name == "groups":
+        return _group_key(a) == _group_key(b)
     return a == b
 
 
