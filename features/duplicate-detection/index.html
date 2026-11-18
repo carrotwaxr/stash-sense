@@ -14,7 +14,7 @@
         <link rel="prev" href="../upstream-changes/">
       
       
-        <link rel="next" href="../content-index/">
+        <link rel="next" href="../split-detection/">
       
       
         
@@ -834,6 +834,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../split-detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Split Detection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../content-index/" class="md-nav__link">
         
   
@@ -1593,7 +1621,7 @@
 <h3 id="contained-cards">Contained cards</h3>
 <p>Quality decides, and the workflow is always merge first (to collect the metadata), then delete the lower-quality file. The longer file is never deleted.</p>
 <ul>
-<li><strong>The longer file holds several scenes</strong> (it is at least 1.5 times as long as the shorter file). The card says to split the longer file first and changes nothing: no merge and no delete. This keeps a scene from being merged into an unsplit multi-scene file. Split detection (#131, not built yet) is planned to run before duplicate detection; until then these cards leave both files alone.</li>
+<li><strong>The longer file holds several scenes</strong> (it is at least 1.5 times as long as the shorter file). The card says to split the longer file first and changes nothing: no merge and no delete. This keeps a scene from being merged into an unsplit multi-scene file. <a href="../split-detection/">Split detection</a> is meant to run before duplicate detection; until the longer file is split, these cards leave both files alone.</li>
 <li><strong>A re-cut where the shorter file is strictly better.</strong> Both files stay and the scenes stay separate.</li>
 <li><strong>A re-cut at equal quality, or where the longer cut is better.</strong> At equal quality the longer, more complete cut is kept. The shorter scene merges into the longer cut's scene, whatever history either has: the longer scene's values win, empty fields are filled from the shorter scene, and performers, tags, URLs, groups and galleries are unioned. Then the shorter file is deleted.</li>
 </ul>

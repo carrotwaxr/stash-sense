@@ -606,6 +606,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/split-detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Split Detection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../features/content-index/" class="md-nav__link">
         
   
@@ -1217,6 +1245,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#post-recommendationsidsplit-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /recommendations/{id}/split-result
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1527,59 +1566,72 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"not a duplicate"</span><span class="p">,</span><span class="w"> </span><span class="nt">"permanent"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">}</span>
 </code></pre></div>
 <p>Both fields are optional. A dismissed target is not recommended again by later runs; with <code>permanent: true</code> that also holds after its data changes. Returns <code>{"recommendation": &lt;Recommendation&gt;}</code>. Dismissing an already dismissed recommendation is a no-op. A resolved one gets <code>409 not_pending</code>, and one naming an excluded scene gets <code>403 scene_excluded</code>.</p>
+<h3 id="post-recommendationsidsplit-result"><code>POST /recommendations/{id}/split-result</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"applied"</span><span class="p">,</span><span class="w"> </span><span class="nt">"cut_scene_ids"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"501"</span><span class="p">,</span><span class="w"> </span><span class="s2">"502"</span><span class="p">],</span><span class="w"> </span><span class="nt">"strategy"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reencode"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">}</span>
+</code></pre></div>
+<p>For a review plan that hands a split to an external tool. Accepting such a plan writes nothing to Stash: the accepted recommendation's <code>resolution.details</code> carries the split for the tool to execute, and the tool reports back here.</p>
+<p><code>resolution.details.split</code>, when present:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span><span class="nt">"scene_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7"</span><span class="p">,</span><span class="w"> </span><span class="nt">"file_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"70"</span><span class="p">,</span><span class="w"> </span><span class="nt">"oshash"</span><span class="p">:</span><span class="w"> </span><span class="s2">"abc"</span><span class="p">,</span><span class="w"> </span><span class="nt">"size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span><span class="w"> </span><span class="nt">"duration"</span><span class="p">:</span><span class="w"> </span><span class="mf">3000.0</span><span class="p">,</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w"> </span><span class="nt">"ranges"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"start"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"end"</span><span class="p">:</span><span class="w"> </span><span class="mf">1500.0</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nt">"start"</span><span class="p">:</span><span class="w"> </span><span class="mf">1500.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"end"</span><span class="p">:</span><span class="w"> </span><span class="mf">3000.0</span><span class="p">}],</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w"> </span><span class="nt">"cuts"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">1500.0</span><span class="p">]}</span>
+</code></pre></div>
+<p><code>ranges</code> has one entry per output scene, in seconds of the file, contiguous except where the start or end is trimmed. <code>split: null</code> (or no <code>split</code> key) means the scene is to be left whole, and there is nothing to execute or report.</p>
+<p>Body: <code>status</code> is <code>applied</code> or <code>failed</code> (required); <code>cut_scene_ids</code> (the scenes the tool created, default <code>[]</code>), <code>strategy</code> and <code>message</code> (default <code>""</code>) are optional, and unknown fields are refused with <code>422 invalid_request</code>.</p>
+<p>Returns <code>{"recommendation": &lt;Recommendation&gt;}</code>. The body is stored at <code>resolution.details.split_result</code> together with <code>reported_at</code> (UTC, ISO 8601), the recommendation's <code>updated_at</code> moves forward so the change feed shows it, and the apply log gets an entry with <code>action: "split_result"</code> whose <code>result.accept_log_id</code> is the accept's entry. Reporting the same result again returns 200 and writes nothing; a different result replaces the stored one and is logged again. <code>status</code>, <code>resolution.action</code> and <code>resolved_at</code> do not change.</p>
+<p>Errors: <code>404 not_found</code>, <code>403 hidden_type</code>, <code>403 scene_excluded</code>, <code>409 not_accepted</code> (the recommendation is not resolved), <code>409 no_split</code> (resolved without <code>details.split</code>).</p>
 <h2 id="apply-log">Apply log</h2>
 <p>Every accept is logged before its first write, with the plan, the state it replaced, and each step that ran. The log is an audit record: unlike the recommendation list, it is not filtered by hidden types or the exclusion list.</p>
 <h3 id="get-apply-logsincetypelimit"><code>GET /apply-log?since=&amp;type=&amp;limit=</code></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span><span class="nt">"entries"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">&lt;ApplyLogE</span><span class="kc">ntr</span><span class="err">y&gt;</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="nt">"next_since"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="nt">"has_more"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span><span class="nt">"entries"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">&lt;ApplyLogE</span><span class="kc">ntr</span><span class="err">y&gt;</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="nt">"next_since"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="nt">"has_more"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">}</span>
 </code></pre></div>
 <p>Entries are returned oldest first. Pass the last id you saw as <code>since</code> to get only newer ones; <code>next_since</code> is the id to pass next time. <code>type</code> filters by recommendation type, and <code>limit</code> is 1 to 500 (default 100).</p>
 <h3 id="get-apply-logid"><code>GET /apply-log/{id}</code></h3>
 <p>Returns <code>{"entry": &lt;ApplyLogEntry&gt;}</code>, or <code>404 not_found</code>.</p>
 <h3 id="the-applylogentry-object">The ApplyLogEntry object</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"apply"</span><span class="p">,</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"applied"</span><span class="p">,</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="nt">"rec_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">41</span><span class="p">,</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="nt">"rec_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"review_demo"</span><span class="p">,</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="nt">"target_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"scene"</span><span class="p">,</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span><span class="nt">"target_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1234"</span><span class="p">,</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">  </span><span class="nt">"batch_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">  </span><span class="nt">"reverts_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span><span class="nt">"reverted_by"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">  </span><span class="nt">"option"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"keep_file_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"88"</span><span class="p">,</span><span class="w"> </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"clip"</span><span class="p">},</span>
-<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">  </span><span class="nt">"revision"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4f2a9c0d1e3b5a7c9d0e1f2a"</span><span class="p">,</span>
-<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">  </span><span class="nt">"plan"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">&lt;same</span><span class="w"> </span><span class="err">shape</span><span class="w"> </span><span class="err">as</span><span class="w"> </span><span class="err">Preview.pla</span><span class="kc">n</span><span class="err">&gt;</span><span class="p">},</span>
-<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">  </span><span class="nt">"result"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"steps"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="nt">"bytes_reclaimed"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="nt">"files_deleted"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"fields_changed"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
-<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">  </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="w">  </span><span class="nt">"trash_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/data/.trash"</span><span class="p">,</span>
-<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="w">  </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-17T10:05:00Z"</span><span class="p">,</span>
-<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="w">  </span><span class="nt">"completed_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-17T10:05:01Z"</span>
-<a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"apply"</span><span class="p">,</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"applied"</span><span class="p">,</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span><span class="nt">"rec_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">41</span><span class="p">,</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span><span class="nt">"rec_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"review_demo"</span><span class="p">,</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span><span class="nt">"target_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"scene"</span><span class="p">,</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">  </span><span class="nt">"target_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1234"</span><span class="p">,</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">  </span><span class="nt">"batch_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">  </span><span class="nt">"reverts_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">  </span><span class="nt">"reverted_by"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">  </span><span class="nt">"option"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"keep_file_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"88"</span><span class="p">,</span><span class="w"> </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"clip"</span><span class="p">},</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">  </span><span class="nt">"revision"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4f2a9c0d1e3b5a7c9d0e1f2a"</span><span class="p">,</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">  </span><span class="nt">"plan"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">&lt;same</span><span class="w"> </span><span class="err">shape</span><span class="w"> </span><span class="err">as</span><span class="w"> </span><span class="err">Preview.pla</span><span class="kc">n</span><span class="err">&gt;</span><span class="p">},</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="w">  </span><span class="nt">"result"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"steps"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="nt">"bytes_reclaimed"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="nt">"files_deleted"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"fields_changed"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">  </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">  </span><span class="nt">"trash_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/data/.trash"</span><span class="p">,</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="w">  </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-17T10:05:00Z"</span><span class="p">,</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a><span class="w">  </span><span class="nt">"completed_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-17T10:05:01Z"</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a><span class="p">}</span>
 </code></pre></div>
 <ul>
-<li><code>action</code> is <code>apply</code>, or <code>revert</code> for an undo made in the Stash UI. On a revert, <code>reverts_id</code> names the entry it undid, and that entry's <code>reverted_by</code> points back.</li>
+<li><code>action</code> is <code>apply</code>, <code>revert</code> for an undo made in the Stash UI, or <code>split_result</code> for a result an external tool reported for an accepted split. On a revert, <code>reverts_id</code> names the entry it undid, and that entry's <code>reverted_by</code> points back.</li>
 <li><code>status</code> is <code>applying</code>, <code>applied</code> or <code>failed</code>. An <code>applying</code> entry is still in flight; re-read it with <code>GET /apply-log/{id}</code>. Because the feed moves by id, it won't return that entry again.</li>
 <li><code>batch_id</code> groups entries that a batch accept in the Stash UI applied together.</li>
 </ul>
 <h2 id="example-curator-session">Example: curator session</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nv">B</span><span class="o">=</span>http://10.0.0.5:5000/api/v1/driver<span class="p">;</span><span class="w"> </span><span class="nv">H</span><span class="o">=</span><span class="s2">"ApiKey: </span><span class="nv">$STASH_SENSE_API_KEY</span><span class="s2">"</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="c1"># Start a job and wait for it</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"type":"duplicate_performer"}'</span><span class="w"> </span><span class="nv">$B</span>/jobs
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="nv">$B</span>/jobs/12
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="c1"># Read what's pending, then keep next_cursor for the next session</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$B</span><span class="s2">/recommendations?status=pending&amp;limit=50"</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1"># Show one, then apply exactly what was shown</span>
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="nv">$B</span>/recommendations/41
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"option":{"keep_file_id":"88","title":"clip"},"revision":"4f2a9c0d1e3b5a7c9d0e1f2a","confirm_delete":["87"]}'</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">  </span><span class="nv">$B</span>/recommendations/41/accept
-<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>
-<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="c1"># What was applied since last time</span>
-<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$B</span><span class="s2">/apply-log?since=8"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nv">B</span><span class="o">=</span>http://10.0.0.5:5000/api/v1/driver<span class="p">;</span><span class="w"> </span><span class="nv">H</span><span class="o">=</span><span class="s2">"ApiKey: </span><span class="nv">$STASH_SENSE_API_KEY</span><span class="s2">"</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="c1"># Start a job and wait for it</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"type":"duplicate_performer"}'</span><span class="w"> </span><span class="nv">$B</span>/jobs
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="nv">$B</span>/jobs/12
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1"># Read what's pending, then keep next_cursor for the next session</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$B</span><span class="s2">/recommendations?status=pending&amp;limit=50"</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="c1"># Show one, then apply exactly what was shown</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="nv">$B</span>/recommendations/41
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"option":{"keep_file_id":"88","title":"clip"},"revision":"4f2a9c0d1e3b5a7c9d0e1f2a","confirm_delete":["87"]}'</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="w">  </span><span class="nv">$B</span>/recommendations/41/accept
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="c1"># What was applied since last time</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"</span><span class="nv">$H</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$B</span><span class="s2">/apply-log?since=8"</span>
 </code></pre></div>
 
 
