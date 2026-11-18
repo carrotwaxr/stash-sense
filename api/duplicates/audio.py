@@ -17,7 +17,7 @@ import numpy as np
 
 from content_fingerprint import AUDIO_ALGO, AUDIO_ALGO_VERSION
 from content_fingerprint.audio import CHROMAPRINT_ALGORITHM
-from media_exec import run_command
+from media_exec import media_job_command, run_command
 
 # --- tuned constants (validated 2026-10-13; re-validate before changing) ---
 AUDIO_SECONDS = 300      # head of each file that is compared
@@ -85,7 +85,7 @@ async def fingerprint_head(local_path: str) -> np.ndarray | None:
     the file has no audio, or the output is empty; a failure is never an empty print.
     """
     try:
-        res = await run_command(fast_command(local_path), timeout=FFMPEG_TIMEOUT)
+        res = await run_command(media_job_command(fast_command(local_path)), timeout=FFMPEG_TIMEOUT)
     except (OSError, TimeoutError):
         return None
     if res.returncode != 0 or not res.stdout or len(res.stdout) % 4:
