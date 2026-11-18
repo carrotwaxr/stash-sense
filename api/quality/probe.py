@@ -17,6 +17,20 @@ CHEAP_VERSION = 1
 TAIL_S = 30
 
 
+def _num(v, default: float = 0.0) -> float:
+    """ffprobe prints "N/A" for a duration it cannot tell."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def is_transient(res: dict | None) -> bool:
+    """A result that says more about the moment (a timeout, a command that could not start) than about the file;
+    it is not cached, so the next run checks again."""
+    return bool(res) and any("timed out" in r or "could not run" in r for r in res.get("reasons") or [])
+
+
 def _result(status: str, reasons: list, index: dict | None = None, tags: dict | None = None,
             probe: dict | None = None) -> dict:
     return {"status": status, "reasons": reasons, "index": index or {"kind": "other", "flags": []},
@@ -47,12 +61,12 @@ async def cheap_check(local_path: str, stash_duration: float, run: Run | None = 
 
     probe_warn = out[:start].strip()
     fmt = meta.get("format", {})
-    dur = float(fmt.get("duration") or 0)
+    dur = _num(fmt.get("duration"))
     tags = {str(k).lower(): v for k, v in (fmt.get("tags") or {}).items()}
     kinds: dict = {}
     codecs: dict = {}
     for s in meta.get("streams", []):
-        kinds.setdefault(s.get("codec_type"), []).append(float(s.get("duration") or dur))
+        kinds.setdefault(s.get("codec_type"), []).append(_num(s.get("duration"), dur))
         codecs.setdefault(s.get("codec_type"), s.get("codec_name"))
     info = {"duration": dur, "format_name": fmt.get("format_name"),
             "video_codec": codecs.get("video"), "has_audio": "audio" in kinds}

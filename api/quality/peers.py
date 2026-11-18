@@ -32,6 +32,7 @@ def below_studio(files: list[PeerFile], *, percentile: float = 10.0, ratio: floa
     """scene_id -> evidence for files well below their studio peers."""
     by_studio: dict[str, list[PeerFile]] = defaultdict(list)
     by_studio_year: dict[tuple[str, int], list[PeerFile]] = defaultdict(list)
+    files = [f for f in files if f.eff > 0]   # no dimensions or bitrate in Stash: quality unknown, not low
     for f in files:
         if not f.studio_id:
             continue

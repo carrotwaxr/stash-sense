@@ -207,3 +207,11 @@ def test_tiered_reuses_known_results(mp4):
     ok_cheap = dict(known_cheap, status="ok", reasons=[])
     res = tiered(mp4, run, cheap=ok_cheap)
     assert run.calls == [] and res["status"] == "ok" and res["tier"] == "cheap"
+
+
+
+def test_na_durations_do_not_raise(mp4):
+    meta = json.dumps({"format": {"duration": "N/A", "format_name": "mov"},
+                       "streams": [{"codec_type": "video", "duration": "N/A"}, {"codec_type": "audio"}]})
+    res = cheap(mp4, make_run(ffprobe=(0, meta)), stash=0)
+    assert res["status"] in ("ok", "warn", "suspect")

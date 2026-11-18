@@ -33,7 +33,8 @@ def _load(db_path: Path) -> list[dict]:
     try:
         rows = conn.execute(
             "SELECT status, details, resolution_details FROM recommendations "
-            "WHERE type = 'scene_quality' AND status IN (?, ?)",
+            "WHERE type = 'scene_quality' AND status IN (?, ?) "
+            "AND COALESCE(resolution_action, '') != 'stale'",  # the job retired it; the owner never answered
             REVIEWED,
         ).fetchall()
     finally:

@@ -153,12 +153,16 @@ class SceneQualityAnalyzer(BaseAnalyzer):
                 self.stats["missing"] += 1
             else:
                 self.stats["probed"] += 1
-                await asyncio.to_thread(qstore.put_cheap, *key, probe.CHEAP_VERSION, cheap)
+                if probe.is_transient(cheap):
+                    self.stats["transient"] += 1
+                else:
+                    await asyncio.to_thread(qstore.put_cheap, *key, probe.CHEAP_VERSION, cheap)
         deep = await self._known_deep(content, key) if cheap["status"] == "suspect" else None
         res = await probe.tiered(local, duration, cheap=cheap, deep=deep)
         if res["tier"] == "deep" and deep is None:
             self.stats["deep_checked"] += 1
-            await self._store_deep(content, key, res["deep"])
+            if not probe.is_transient(res["deep"]):
+                await self._store_deep(content, key, res["deep"])
         return res
 
     # ---------------- evidence ----------------
@@ -182,7 +186,12 @@ class SceneQualityAnalyzer(BaseAnalyzer):
                 async with sem:
                     if self.is_stop_requested():
                         return
-                    res = await self._check(f, local, qstore, content)
+                    try:
+                        res = await self._check(f, local, qstore, content)
+                    except Exception as e:     # one odd file must not end the run
+                        self.stats["errors"] += 1
+                        logger.warning("scene_quality: scene %s: check failed on %s: %s", scene["id"], local, e)
+                        return
                 rows.append({"scene_id": scene["id"], "file": f,
                              "studio_id": (scene.get("studio") or {}).get("id"), "year": _year(scene.get("date")),
                              "broken": res, "tags": res["cheap"].get("tags") or {}})
@@ -268,11 +277,19 @@ class SceneQualityAnalyzer(BaseAnalyzer):
         scene_ids = {r["scene_id"] for r in rows}
         pending = {r.target_id: r for r in self.rec_db.get_recommendations(
             status="pending", type=TYPE_ID, target_type=TARGET_TYPE, limit=1_000_000_000)}
+        # An answered card is a label: keep it while the scene holds the same file, even as peer evidence drifts.
+        answered = {r.target_id: ((r.details or {}).get("file") or {}).get("oshash")
+                    for r in self.rec_db.get_recommendations(status="resolved", type=TYPE_ID, target_type=TARGET_TYPE,
+                                                             limit=1_000_000_000)
+                    if r.resolution_action != "stale"}
         for sid, d in details.items():
             if not d["flags"]:
                 continue
             if self.is_dismissed(TARGET_TYPE, sid):
                 stats["dismissed"] += 1
+                continue
+            if sid in answered and answered[sid] == d["file"].get("oshash"):
+                stats["answered"] += 1
                 continue
             _, how = self.rec_db.upsert_recommendation(
                 type=TYPE_ID, target_type=TARGET_TYPE, target_id=sid, details=d,
@@ -337,14 +354,15 @@ class SceneQualityAnalyzer(BaseAnalyzer):
 
         stats = self.stats
         checks = {k: stats[k] for k in ("cached", "probed", "deep_checked", "missing", "unmapped", "excluded",
-                                        "no_file", "no_oshash", "sharpness_measured", "missing_suppressed")}
+                                        "no_file", "no_oshash", "sharpness_measured", "missing_suppressed", "transient",
+                                        "errors")}
         flags = {f: self.raised[f] for f in FLAGS}
         written = {k: stats[k] for k in ("created", "updated", "unchanged", "reopened", "skipped", "dismissed",
-                                         "stale", "controls")}
+                                         "answered", "stale", "controls")}
         logger.warning(
             "scene_quality: %d files checked; cheap cached %d, probed %d, deep-checked %d, missing %d, unmapped %d, "
-            "excluded %d, no file %d, no oshash %d, sharpness measured %d, missing suppressed %d; flags: broken %d, rip %d, below studio %d, "
-            "format %d; created %d, updated %d, unchanged %d, reopened %d, kept %d, dismissed %d, stale %d, "
+            "excluded %d, no file %d, no oshash %d, sharpness measured %d, missing suppressed %d, transient %d, errors %d; flags: broken %d, rip %d, below studio %d, "
+            "format %d; created %d, updated %d, unchanged %d, reopened %d, kept %d, dismissed %d, answered %d, stale %d, "
             "controls %d%s",
             len(rows), *checks.values(), *flags.values(), *written.values(),
             " (stopped)" if self.is_stop_requested() else "")

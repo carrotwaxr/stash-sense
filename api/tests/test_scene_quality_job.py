@@ -364,3 +364,70 @@ async def test_a_few_missing_files_are_still_broken(stash, db, checks, tmp_path)
     result = await SceneQualityAnalyzer(stash, db).run()
     assert result.extra["checks"]["missing_suppressed"] == 0
     assert sid in {r.target_id for r in recs(db, "pending")}
+
+
+# ---------------- review fixes ----------------
+
+def _answer(db, sid, option):
+    rec = next(r for r in recs(db) if r.target_id == sid)
+    db.resolve_recommendation(rec.id, "applied", {"apply_log_id": 1, "option": option})
+    return rec.id
+
+
+async def test_answered_card_is_kept_for_the_same_file(stash, db, checks, tmp_path):
+    sid, path = add_scene(stash, tmp_path, "bad")
+    checks.cheap[path] = "suspect"
+    await run(stash, db)
+    rec_id = _answer(db, sid, {"broken": "no"})
+    stash.files[stash.scenes[sid]["file_ids"][0]]["bit_rate"] = 4_000_000     # the details change
+    _, result = await run(stash, db)
+    rec = db.get_recommendation(rec_id)
+    assert rec.status == "resolved" and rec.resolution_details["option"] == {"broken": "no"}
+    assert result.extra["written"]["answered"] == 1
+
+
+async def test_answered_card_reopens_when_the_file_changed(stash, db, checks, tmp_path):
+    sid, path = add_scene(stash, tmp_path, "bad")
+    checks.cheap[path] = "suspect"
+    await run(stash, db)
+    rec_id = _answer(db, sid, {"broken": "yes"})
+    stash.files[stash.scenes[sid]["file_ids"][0]]["fingerprints"] = [{"type": "oshash", "value": "h-replaced"}]
+    await run(stash, db)
+    assert db.get_recommendation(rec_id).status == "pending"
+
+
+async def test_transient_failures_are_not_cached(stash, db, checks, monkeypatch, tmp_path, data_dir):
+    sid, path = add_scene(stash, tmp_path, "slow")
+    calls = []
+
+    async def cheap_check(local, stash_duration, run=None):
+        calls.append(local)
+        return probe._result("suspect", ["tail decode failed: timed out"])
+
+    async def check_health(local, points=24, run=None):
+        return {"status": "suspect", "reasons": ["2/24 sample windows fail to decode: t=10s timed out"],
+                "params": {"points": points}}
+    monkeypatch.setattr(probe, "cheap_check", cheap_check)
+    monkeypatch.setattr(health, "check_health", check_health)
+    await run(stash, db)
+    await run(stash, db)
+    assert len(calls) == 2
+    store = ContentFpStore(str(data_dir / "content_fp.db"))
+    assert store._one("SELECT count(*) FROM file_health", ())[0] == 0
+    store.close()
+
+
+async def test_one_failing_file_does_not_abort_the_run(stash, db, checks, monkeypatch, tmp_path):
+    _, odd = add_scene(stash, tmp_path, "odd")
+    good, gpath = add_scene(stash, tmp_path, "bad")
+    checks.cheap[gpath] = "suspect"
+    real = probe.cheap_check
+
+    async def cheap_check(local, stash_duration, run=None):
+        if local == odd:
+            raise ValueError("could not convert string to float: 'N/A'")
+        return await real(local, stash_duration, run=run)
+    monkeypatch.setattr(probe, "cheap_check", cheap_check)
+    analyzer, result = await run(stash, db)
+    assert analyzer.stats["errors"] == 1
+    assert {r.target_id for r in recs(db, "pending")} >= {good}

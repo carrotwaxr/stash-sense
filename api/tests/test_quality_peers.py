@@ -79,3 +79,11 @@ def test_percentile_setting_changes_threshold():
     assert below_studio(base + [f]) == {}
     out = below_studio(base + [f], percentile=50, ratio=1.0)
     assert "near" in out
+
+
+def test_unknown_detail_is_neither_flagged_nor_a_peer():
+    files = [PeerFile(f"p{i}", "s1", 2015, 2_000_000.0) for i in range(10)] + [PeerFile("zero", "s1", 2015, 0.0)]
+    out = below_studio(files)
+    assert "zero" not in out
+    files.append(PeerFile("low", "s1", 2015, 300_000.0))
+    assert below_studio(files)["low"]["peers"] == 10

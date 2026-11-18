@@ -32,7 +32,7 @@ The result is **ok**, **warn** (small oddities such as a few seconds of trailing
 
 **Deep check, suspects only.** The same 24-window health check that [duplicate detection](duplicate-detection.md) uses: 24 one-second decodes spread across the file. A window that fails is decoded again from 20 seconds earlier, because a seek artifact vanishes on the second try and real damage repeats. The deep result is final, so a file the cheap pass doubts can still come out clean. Deep results are stored in the [Content Index](content-index.md) store and shared with duplicate detection, so a file checked by one is not checked again by the other. If you have not built a content index yet, the deep check still runs, but its result is not kept.
 
-A file that is not on disk is flagged broken but is not cached, so it is checked again next run once the mount is back. When more than 2% of the checked files (and more than 10) are missing in one run, the job treats it as a media mount problem: it raises no flag for those files, leaves their open cards as they are, and logs a warning.
+A file that is not on disk is flagged broken but is not cached, so it is checked again next run once the mount is back. A check that timed out or could not start is not cached either; the next run tries again. When more than 2% of the checked files (and more than 10) are missing in one run, the job treats it as a media mount problem: it raises no flag for those files, leaves their open cards as they are, and logs a warning.
 
 ### What it costs
 
@@ -102,7 +102,7 @@ Run **Quality Flags** from **Operations**, or schedule it there. It runs weekly 
 3. Works out the peer groups and measures sharpness for below-studio files.
 4. Writes one recommendation per flagged scene, updating it in place on later runs.
 
-A card you dismissed is not created again for the same scene. A card whose file no longer has any flag, because you replaced the file or changed a setting, is resolved as stale on the next run. A card you have not answered is kept until then. The dashboard tile is **Quality Flags**. See [Reviewing Recommendations](review.md) for how cards work.
+A card you dismissed is not created again for the same scene. A card you answered stays answered while the scene keeps the same file, even when its peer evidence shifts; it comes back for review only when the file is replaced. A card whose file no longer has any flag, because you replaced the file or changed a setting, is resolved as stale on the next run. A card you have not answered is kept until then. The dashboard tile is **Quality Flags**. See [Reviewing Recommendations](review.md) for how cards work.
 
 Quality cards are never high confidence and are not part of the batch accept. Every flag needs your own yes or no.
 

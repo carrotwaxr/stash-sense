@@ -89,3 +89,11 @@ def test_pending_and_other_types_ignored_and_nothing_written(db, tmp_path):
     out = load_script().report(tmp_path / "recs.db", unflagged_total=10)
     assert out["broken"]["flagged_reviewed"] == 0
     assert (tmp_path / "recs.db").read_bytes() == before
+
+
+def test_cards_the_job_retired_as_stale_are_not_reviews(db, tmp_path):
+    accept(db, add_rec(db, 1, ["broken"]), {"broken": "yes"})
+    db.resolve_recommendation(add_rec(db, 2, ["broken"]), action="stale", details={"reason": "gone"})
+    out = load_script().report(tmp_path / "recs.db", unflagged_total=100)
+    assert out["broken"]["flagged_reviewed"] == 1
+    assert out["broken"]["precision"] == 1.0
