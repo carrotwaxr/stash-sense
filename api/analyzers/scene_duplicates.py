@@ -4,11 +4,14 @@ One recommendation per set (``target_type="scene_set"``, ``target_id`` the set's
 by ``review.duplicates``. Recommendations are never deleted: external tools follow them through the driver API's change
 feed (ordered by ``updated_at, id``), which cannot report a deletion. A set whose evidence or keeper suggestion changed
 is rewritten in place; a set that grew a scene below its anchor is resolved ``superseded`` (by the new key); a set that
-is no longer found is resolved ``stale`` (only when the run finished). Dismissed and resolved rows are never touched.
+is no longer found is resolved ``stale`` (only when the run finished). A resolved row whose key returns with
+different details is reopened; dismissed rows are never touched.
 
 Per candidate pair the evidence is, in the order it is gathered: the audio bit error rate (the content index's stored
-print when it has the file, else a 5 minute ffmpeg run on the local file), the sprite sheet score (every scene's sheet
-is fetched once; tiles recurring across scenes are ignored), and the keyframe match of the index's stored signatures.
+print when it has the file, else a 5 minute ffmpeg run on the local file), the keyframe match of the index's stored
+signatures, and only when those cannot settle the pair, the sprite sheet score. Sprite sheets are fetched lazily and
+cached per scene; tiles that recur across scenes of one studio (logos, intro cards) are ignored, judged against at most
+STOP_SCENES other candidate scenes of that studio.
 The keeper of each set that deletes anything is health checked once (the result is cached in the content store).
 """
 
@@ -30,7 +33,7 @@ from content_fingerprint.store import ContentFpStore
 from duplicates import audio, health, keeper, sprites
 from duplicates.candidates import Candidate, generate
 from duplicates.sets import Item, build_items
-from duplicates.verdict import PairEvidence, pair_class
+from duplicates.verdict import AUDIO_STRONG, KEYFRAME_STRONG, PairEvidence, pair_class
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,8 @@ TYPE_ID = "scene_duplicates"
 TARGET_TYPE = "scene_set"
 CONFIDENCE = {"duplicate": 0.9, "contained": 0.8, "mislabel": 0.6, "language_variant": 0.6, "partial": 0.4,
               "review": 0.3}
+STOP_SCENES = 40     # other scenes of a studio a pair's sprite tiles are compared against to find recurring tiles
+STOP_MIN_SCENES = 4  # a tile is a stop tile when it matches tiles in STOP_MIN_SCENES - 1 of them
 DELETING = frozenset({"duplicate", "contained", "mislabel"})   # classes whose accept can delete files
 
 
@@ -89,8 +94,8 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
         self._scenes: dict[str, Optional[dict]] = {}
         self._prints: dict[tuple, object] = {}
         self._health: dict[tuple, str] = {}
-        self._sigs: dict[str, dict] = {}
-        self._skips: dict[str, set[int]] = {}
+        self._sigs: dict[str, Optional[dict]] = {}
+        self._studio_scenes: dict[str, list[str]] = {}
 
     # ---------------- helpers ----------------
 
@@ -165,39 +170,42 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
 
         return await asyncio.to_thread(work)
 
-    async def _load_sprites(self, scene_ids: list[str]) -> None:
-        """Fetch and sign every scene's sprite sheet once, then find the tiles that recur across scenes."""
-        url = getattr(self.stash, "base_url", "") or ""
-        key = getattr(self.stash, "api_key", "") or ""
-        for sid in scene_ids:
-            if self.is_stop_requested():
-                return
+    async def _signature(self, scene_id: str) -> Optional[dict]:
+        """The scene's sprite signature, fetched on first use; None when it has no usable sprite sheet."""
+        if scene_id not in self._sigs:
+            sig = None
+            self.stats["sprite_fetches"] += 1
             try:
-                got = await sprites.fetch_sprite(url, key, sid)
-                if got is None:
-                    continue
-                sig = await asyncio.to_thread(sprites.sprite_signature, *got)
+                got = await sprites.fetch_sprite(getattr(self.stash, "base_url", "") or "",
+                                                 getattr(self.stash, "api_key", "") or "", scene_id)
+                if got is not None:
+                    sig = await asyncio.to_thread(sprites.sprite_signature, *got)
             except Exception as e:     # no sprite for this scene is only missing evidence
-                logger.warning("scene_duplicates: no sprite evidence for scene %s: %s", sid, e)
-                continue
-            if "full" in sig:
-                self._sigs[sid] = sig
-        self._skips = await asyncio.to_thread(sprites.stop_tiles, self._sigs)
+                logger.warning("scene_duplicates: no sprite evidence for scene %s: %s", scene_id, e)
+            self._sigs[scene_id] = sig if sig is not None and "full" in sig else None
+        return self._sigs[scene_id]
 
-    def _sprite(self, cand: Candidate) -> Optional[tuple[int, int]]:
-        if cand.scene_a == cand.scene_b:
+    async def _sprite(self, cand: Candidate, sa: dict, sb: dict) -> Optional[tuple[int, int]]:
+        """Sprite score of a pair of scenes; tiles recurring in the studio's other scenes are left out."""
+        sig_a, sig_b = await self._signature(cand.scene_a), await self._signature(cand.scene_b)
+        if sig_a is None or sig_b is None:
             return None
-        sa, sb = self._sigs.get(cand.scene_a), self._sigs.get(cand.scene_b)
-        if sa is None or sb is None:
-            return None
-        score = sprites.sprite_score(sa, sb, self._skips.get(cand.scene_a), self._skips.get(cand.scene_b))
+        skip_a = skip_b = None
+        studio_a, studio_b = (sa.get("studio") or {}).get("id"), (sb.get("studio") or {}).get("id")
+        if studio_a and studio_a == studio_b:
+            pool = [s for s in self._studio_scenes.get(str(studio_a), [])
+                    if s not in (cand.scene_a, cand.scene_b)][:STOP_SCENES]
+            others = [o for o in [await self._signature(s) for s in pool] if o is not None]
+            skip_a = await asyncio.to_thread(sprites.stop_tiles_for, sig_a, others, STOP_MIN_SCENES)
+            skip_b = await asyncio.to_thread(sprites.stop_tiles_for, sig_b, others, STOP_MIN_SCENES)
+        score = sprites.sprite_score(sig_a, sig_b, skip_a, skip_b)
         return (score["d85"], score["d80"]) if score else None
 
     async def _verify(self, cand: Candidate) -> Optional[tuple[PairEvidence, str]]:
         sa, sb = await self._scene(cand.scene_a), await self._scene(cand.scene_b)
         if not sa or not sb:
             return None
-        ev = PairEvidence(overlap=cand.overlap, sprite=self._sprite(cand))
+        ev = PairEvidence(overlap=cand.overlap)
         fa, fb = self._pair_files(cand, sa, sb)
         if fa and fb:
             res = await self._audio(fa, fb)
@@ -206,6 +214,11 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
             kf = await self._keyframes(fa, fb)
             if kf:
                 ev.keyframe_fraction, ev.keyframe_offset_s = kf["fraction"], kf["offset_s"]
+        # the picture can only change the class when the audio is missing or not strong, and the keyframes aren't
+        audio_settles = ev.ber is not None and ev.ber < AUDIO_STRONG
+        keyframes_settle = ev.keyframe_fraction is not None and ev.keyframe_fraction >= KEYFRAME_STRONG
+        if cand.scene_a != cand.scene_b and not audio_settles and not keyframes_settle:
+            ev.sprite = await self._sprite(cand, sa, sb)
         return ev, pair_class(ev, sa, sb)
 
     # ---------------- keeper ----------------
@@ -310,8 +323,10 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
             if self.is_stop_requested():
                 break
             await self._scene(sid)
-        await self._load_sprites(sorted({s for c in candidates if c.scene_a != c.scene_b
-                                         for s in (c.scene_a, c.scene_b)}, key=int))
+        for sid in scene_ids:
+            studio = ((self._scenes.get(sid) or {}).get("studio") or {}).get("id")
+            if studio:
+                self._studio_scenes.setdefault(str(studio), []).append(sid)
 
         verified: list[tuple[Candidate, PairEvidence, str]] = []
         for i, cand in enumerate(candidates, 1):

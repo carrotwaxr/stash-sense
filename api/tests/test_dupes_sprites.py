@@ -161,6 +161,17 @@ def test_true_duplicates_survive_stop_tiles():
     assert _strong(sprites.sprite_score(sigs['a'], sigs['b'], stops['a'], stops['b']))
 
 
+def test_stop_tiles_for_one_scene_against_others():
+    sigs = _studio_scenes(4)
+    others = [sigs['s1'], sigs['s2'], sigs['s3']]
+    assert sprites.stop_tiles_for(sigs['s0'], others) == set(range(10))
+    # two others are below min_scenes - 1 = 3
+    assert sprites.stop_tiles_for(sigs['s0'], others[:2]) == set()
+    assert sprites.stop_tiles_for(sigs['s0'], others[:2], min_scenes=3) == set(range(10))
+    assert sprites.stop_tiles_for(sigs['s0'], []) == set()
+    assert sprites.stop_tiles_for({'times': np.zeros(0, np.float32)}, others) == set()
+
+
 # ------------------------------------------------------------------- fetch ---
 
 def _patch_client(monkeypatch, handler):

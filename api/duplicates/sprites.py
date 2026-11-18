@@ -99,26 +99,32 @@ def sprite_signature(image_bytes: bytes, vtt_text: str) -> dict:
     return out
 
 
-def stop_tiles(sigs: dict[str, dict], min_scenes: int = 4, thr: float = 0.85) -> dict[str, set[int]]:
-    """Per scene, the tile indexes whose feature matches a tile in at least ``min_scenes - 1`` other scenes.
+def stop_tiles_for(sig: dict, others: list[dict], min_scenes: int = 4, thr: float = 0.85) -> set[int]:
+    """The tile indexes of ``sig`` whose feature matches a tile in at least ``min_scenes - 1`` of ``others``.
 
-    Such tiles (studio logos, intro and outro cards, a fixed wide shot) say nothing about
-    whether two scenes are the same content. Flat tiles have a zero feature and never match.
+    ``others`` are the signatures of other scenes (not ``sig`` itself). Such tiles (studio logos, intro and outro
+    cards, a fixed wide shot) say nothing about whether two scenes are the same content. Flat tiles have a zero
+    feature and never match.
+    """
+    fa = sig.get('full')
+    if fa is None or len(fa) == 0:
+        return set()
+    seen_in = np.zeros(len(fa), np.int32)
+    for other in others:
+        fb = other.get('full')
+        if fb is None or len(fb) == 0:
+            continue
+        seen_in += ((fa @ fb.T) >= thr).any(axis=1)
+    return {int(i) for i in np.nonzero(seen_in >= min_scenes - 1)[0]}
+
+
+def stop_tiles(sigs: dict[str, dict], min_scenes: int = 4, thr: float = 0.85) -> dict[str, set[int]]:
+    """Per scene, the tile indexes ``stop_tiles_for`` finds against every other scene in ``sigs``.
+
     Every scene id in ``sigs`` appears in the result, with an empty set when nothing is dropped.
     """
-    out: dict[str, set[int]] = {sid: set() for sid in sigs}
-    for sid, sig in sigs.items():
-        fa = sig.get('full')
-        if fa is None or len(fa) == 0:
-            continue
-        seen_in = np.zeros(len(fa), np.int32)
-        for oid, other in sigs.items():
-            fb = other.get('full')
-            if oid == sid or fb is None or len(fb) == 0:
-                continue
-            seen_in += ((fa @ fb.T) >= thr).any(axis=1)
-        out[sid] = {int(i) for i in np.nonzero(seen_in >= min_scenes - 1)[0]}
-    return out
+    return {sid: stop_tiles_for(sig, [o for oid, o in sigs.items() if oid != sid], min_scenes, thr)
+            for sid, sig in sigs.items()}
 
 
 def _diag(ta, fa, tb, fb, thr) -> int:

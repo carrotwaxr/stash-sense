@@ -87,10 +87,12 @@ class World:
         self.path = str(data_dir / "content_fp.db")
 
     def scene(self, name, seed, *, stash_ids=SHARED, **file_fields):
-        """A scene with one file whose stored print comes from ``seed``; the same seed means the same audio."""
-        fid = self.stash.add_file(f"/lib/{name}.mp4", 1000 + len(name), oshash=f"h-{name}", **file_fields)
-        sid = self.stash.add_scene(fid, title=name, stash_ids=list(stash_ids))
-        self.print(name, seed)
+        """A scene with one file whose stored print comes from ``seed`` (the same seed means the same audio; None
+        stores no print). Extra fields go to the scene, e.g. studio_id."""
+        fid = self.stash.add_file(f"/lib/{name}.mp4", 1000 + len(name), oshash=f"h-{name}")
+        sid = self.stash.add_scene(fid, title=name, stash_ids=list(stash_ids), **file_fields)
+        if seed is not None:
+            self.print(name, seed)
         return sid, fid
 
     def print(self, name, seed):
@@ -148,12 +150,23 @@ def test_upsert_recommendation_states(db):
     age(db)
     assert db.upsert_recommendation("t", "scene_set", "k", {"a": 1, "b": 3}, 0.5, None) == (rid, "updated")
     assert db.get_recommendation(rid).confidence == 0.5
-    # a resolved row is left alone
-    db.resolve_recommendation(rid, "stale")
+    # a resolved row that comes back unchanged is left alone
+    db.resolve_recommendation(rid, "stale", {"why": "gone"})
     age(db)
-    assert db.upsert_recommendation("t", "scene_set", "k", {"z": 1}, 0.1, None) == (rid, "skipped")
+    assert db.upsert_recommendation("t", "scene_set", "k", {"a": 1, "b": 3}, 0.5, None) == (rid, "skipped")
     rec = db.get_recommendation(rid)
-    assert rec.details == {"a": 1, "b": 3} and rec.status == "resolved" and rec.updated_at == OLD
+    assert rec.status == "resolved" and rec.updated_at == OLD
+    # one that comes back different is reopened under the same id, resolution cleared
+    assert db.upsert_recommendation("t", "scene_set", "k", {"z": 1}, 0.1, None) == (rid, "reopened")
+    rec = db.get_recommendation(rid)
+    assert rec.status == "pending" and rec.details == {"z": 1} and rec.confidence == 0.1 and rec.updated_at > OLD
+    assert rec.resolution_action is None and rec.resolution_details is None and rec.resolved_at is None
+    # a dismissed row is never touched
+    db.dismiss_recommendation(rid)
+    age(db)
+    assert db.upsert_recommendation("t", "scene_set", "k", {"y": 1}, 0.2, None) == (rid, "skipped")
+    rec = db.get_recommendation(rid)
+    assert rec.status == "dismissed" and rec.details == {"z": 1} and rec.updated_at == OLD
 
 
 # ---------------- analyzer ----------------
@@ -302,3 +315,98 @@ async def test_unhealthy_keeper_is_replaced_and_held_when_none_is_healthy(stash,
     [rec] = recs(db)
     sug = rec.details["suggestion"]
     assert sug["held"] is True and sug["delete"] == [] and len(health_calls) == 2
+
+
+async def test_returning_set_is_reopened_but_dismissed_stays(stash, db, world, health_calls):
+    a, _ = world.scene("a", 1)
+    _, fb = world.scene("b", 1)
+    c, _ = world.scene("c", 2, stash_ids=[{"endpoint": "e2", "stash_id": "y"}])
+    d, fd = world.scene("d", 2, stash_ids=[{"endpoint": "e2", "stash_id": "y"}])
+    await run(stash, db)
+    by_key = {r.target_id: r for r in recs(db)}
+    db.dismiss_recommendation(by_key[f"duplicate:{c}"].id)
+    ids = {a: stash.scenes[a]["stash_ids"], c: stash.scenes[c]["stash_ids"]}
+    for sid in (a, c):
+        stash.scenes[sid]["stash_ids"] = []
+    await run(stash, db)
+    assert {r.target_id: r.status for r in recs(db)} == {f"duplicate:{a}": "resolved", f"duplicate:{c}": "dismissed"}
+    for sid in (a, c):
+        stash.scenes[sid]["stash_ids"] = ids[sid]
+    stash.files[fb]["bit_rate"] = 20_000_000
+    stash.files[fd]["bit_rate"] = 20_000_000
+    await run(stash, db)
+    after = {r.target_id: r for r in recs(db)}
+    back = after[f"duplicate:{a}"]
+    assert back.id == by_key[f"duplicate:{a}"].id and back.status == "pending" and back.resolution_action is None
+    assert back.details["suggestion"]["keep"] == ["h-b"]
+    assert after[f"duplicate:{c}"].status == "dismissed"
+
+
+async def test_sprites_are_fetched_only_when_audio_is_inconclusive(stash, db, world, health_calls, monkeypatch):
+    fetched = []
+
+    async def fetch(url, key, scene_id):
+        fetched.append(scene_id)
+
+    monkeypatch.setattr(sprites, "fetch_sprite", fetch)
+    world.scene("a", 1)
+    world.scene("b", 1)                  # strong stored audio: the picture cannot change the class
+    analyzer, _ = await run(stash, db)
+    assert fetched == [] and analyzer.stats["sprite_fetches"] == 0
+
+    c, _ = world.scene("c", None, stash_ids=[{"endpoint": "e2", "stash_id": "y"}])
+    d, _ = world.scene("d", None, stash_ids=[{"endpoint": "e2", "stash_id": "y"}])
+    analyzer, _ = await run(stash, db)    # no print for either file and no local file
+    assert sorted(fetched) == sorted([c, d]) and analyzer.stats["sprite_fetches"] == 2
+
+
+async def test_stop_tiles_come_from_other_scenes_of_the_studio(stash, db, world, health_calls, monkeypatch):
+    studio = stash.add_studio("S")
+    ids = [world.scene(n, None, studio_id=studio)[0] for n in "abcdef"]
+    odd, _ = world.scene("z", None, studio_id=stash.add_studio("T"))
+    fetched, stop_calls = [], []
+
+    async def fetch(url, key, scene_id):
+        fetched.append(scene_id)
+        return b"", ""
+
+    rng = np.random.default_rng(5)
+
+    def signature(img, vtt):
+        full = rng.normal(size=(10, 432)).astype(np.float32)
+        return {"times": np.arange(10, dtype=np.float32) * 10, "full": full / np.linalg.norm(full, axis=1)[:, None]}
+
+    real = sprites.stop_tiles_for
+
+    def spy(sig, others, min_scenes=4, thr=0.85):
+        stop_calls.append(len(others))
+        return real(sig, others, min_scenes, thr)
+
+    monkeypatch.setattr(sprites, "fetch_sprite", fetch)
+    monkeypatch.setattr(sprites, "sprite_signature", signature)
+    monkeypatch.setattr(sprites, "stop_tiles_for", spy)
+    monkeypatch.setattr("analyzers.scene_duplicates.STOP_SCENES", 3)
+    analyzer, _ = await run(stash, db)
+    # seven scenes share one stash id. The 15 pairs inside studio S are each compared (both sides) against at most 3
+    # other scenes of S; the 6 pairs with the scene of studio T get no stop tiles.
+    assert set(stop_calls) == {3} and len(stop_calls) == 2 * 15
+    assert analyzer.stats["sprite_fetches"] == len(fetched) == len(ids) + 1 and odd in fetched
+
+
+async def test_pair_in_different_studios_gets_no_stop_tiles(stash, db, world, health_calls, monkeypatch):
+    world.scene("a", None, studio_id=stash.add_studio("S"))
+    world.scene("b", None, studio_id=stash.add_studio("T"))
+    calls = []
+
+    async def fetch(url, key, scene_id):
+        return b"", ""
+
+    def signature(img, vtt):
+        full = np.eye(10, 432, dtype=np.float32)
+        return {"times": np.arange(10, dtype=np.float32) * 10, "full": full}
+
+    monkeypatch.setattr(sprites, "fetch_sprite", fetch)
+    monkeypatch.setattr(sprites, "sprite_signature", signature)
+    monkeypatch.setattr(sprites, "stop_tiles_for", lambda *a, **k: calls.append(a) or set())
+    await run(stash, db)
+    assert calls == []

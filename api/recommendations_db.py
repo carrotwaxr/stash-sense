@@ -599,10 +599,13 @@ class RecommendationsDB:
         confidence: Optional[float] = None,
         source_analysis_id: Optional[int] = None,
     ) -> tuple[Optional[int], str]:
-        """Create or update a recommendation in place; returns (id, "created" | "updated" | "unchanged" | "skipped").
+        """Create or update a recommendation in place; returns (id, "created" | "updated" | "unchanged" | "reopened" |
+        "skipped").
 
         A pending row is rewritten (updated_at bumped, so the driver feed shows it) only when its details or
-        confidence differ; details compare as canonical JSON. A dismissed or resolved row is never touched.
+        confidence differ; details compare as canonical JSON. A resolved row whose key comes back with different
+        details or confidence is reopened (pending again, resolution fields cleared); with the same ones it is
+        skipped. A dismissed row is never touched.
         Rows are never deleted, because the change feed cannot report a deletion.
         """
         new_details = json.dumps(details, sort_keys=True)
@@ -622,10 +625,25 @@ class RecommendationsDB:
                     (type, target_type, target_id, new_details, confidence, source_analysis_id),
                 )
                 return cursor.lastrowid, "created"
-            if row["status"] != "pending":
+            if row["status"] == "dismissed":
                 return row["id"], "skipped"
             old_details = json.dumps(json.loads(row["details"]), sort_keys=True)
-            if old_details == new_details and row["confidence"] == confidence:
+            same = old_details == new_details and row["confidence"] == confidence
+            if row["status"] != "pending":     # resolved: a set that comes back differently goes back to review
+                if same:
+                    return row["id"], "skipped"
+                conn.execute(
+                    """
+                    UPDATE recommendations
+                    SET status = 'pending', details = ?, confidence = ?, source_analysis_id = ?,
+                        resolution_action = NULL, resolution_details = NULL, resolved_at = NULL,
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                    """,
+                    (new_details, confidence, source_analysis_id, row["id"]),
+                )
+                return row["id"], "reopened"
+            if same:
                 return row["id"], "unchanged"
             conn.execute(
                 """
