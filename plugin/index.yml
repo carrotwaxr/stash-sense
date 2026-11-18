@@ -2,7 +2,7 @@
   name: Stash Sense
   metadata:
     description: ML-powered performer identification and library curation for Stash
-  version: 0.1.3-beta.3-51e72e4
-  date: 2026-11-18 00:40:47
+  version: 0.1.3-beta.4-a0e56ee
+  date: 2026-11-18 02:15:14
   path: stash-sense.zip
-  sha256: 4226daf8ecb0f126e82f541847c8fb8fb70ce45d468b2f88198639b951556b28
+  sha256: 23752927537e8e28db3b451f7c0ca7dd67dbdc4a916a2061395dbf43fed7b35a
