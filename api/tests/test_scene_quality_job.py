@@ -6,6 +6,7 @@ import pytest
 
 import curation_settings
 import media_library
+from analyzers import scene_quality as quality_job
 from analyzers.scene_quality import CONTROL_SAMPLE, SceneQualityAnalyzer
 from content_fingerprint.store import ContentFpStore
 from curation_settings import CurationSettings, Exclusion
@@ -339,3 +340,27 @@ def test_job_registered_hidden():
     from recommendations_router import ANALYZERS
     assert JOB_REGISTRY["scene_quality"].production_ready is False
     assert ANALYZERS["scene_quality"] is SceneQualityAnalyzer
+
+
+async def test_mass_missing_is_a_mount_problem_not_broken_files(stash, db, checks, tmp_path):
+    """Most mapped files gone at once means the media mount is down: raise nothing for them and leave their
+    open cards alone, rather than filing thousands of broken cards."""
+    _, bad = add_scene(stash, tmp_path, "bad")
+    checks.cheap[bad] = "suspect"
+    gone = [add_scene(stash, tmp_path, f"gone-{i}", on_disk=False)[0] for i in range(quality_job.MISSING_GUARD_MIN + 1)]
+    db.upsert_recommendation(type=TYPE, target_type="scene", target_id=gone[0],
+                             details={"flags": {"broken": {"status": "suspect"}}, "control": False}, confidence=1.0)
+    result = await SceneQualityAnalyzer(stash, db).run()
+    assert result.extra["checks"]["missing_suppressed"] == len(gone)
+    assert result.extra["flags"]["broken"] == 1           # the decode failure still counts
+    assert {r.target_id for r in recs(db, "pending")} >= {gone[0]}
+    assert not [r for r in recs(db, "pending") if r.target_id in gone and (r.details or {}).get("control")]
+
+
+async def test_a_few_missing_files_are_still_broken(stash, db, checks, tmp_path):
+    for i in range(30):
+        add_scene(stash, tmp_path, f"fine-{i}")
+    sid, _ = add_scene(stash, tmp_path, "vanished", on_disk=False)
+    result = await SceneQualityAnalyzer(stash, db).run()
+    assert result.extra["checks"]["missing_suppressed"] == 0
+    assert sid in {r.target_id for r in recs(db, "pending")}

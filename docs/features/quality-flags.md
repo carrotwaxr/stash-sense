@@ -11,7 +11,7 @@ This is stage 1. It uses what is already in the file and in your library. Readin
 
 | Flag | What it means | What to do |
 | --- | --- | --- |
-| **Broken** | The file is missing from disk, will not decode, has no video or no audio, has an index that is gone, or is shorter or longer than Stash says. | Open the file. If it really is damaged or cut short, replace it. A file the sidecar can't see (a mount problem) is also flagged, so check the mount first. |
+| **Broken** | The file is missing from disk, will not decode, has no video or no audio, has an index that is gone, or is shorter or longer than Stash says. | Open the file. If it really is damaged or cut short, replace it. A few files the sidecar can't see are flagged too, so check the mount first. |
 | **Tube or leak rip** | The file name or its embedded tags point at a tube site or carry a link. | If it is a rip, look for a clean copy. |
 | **Below the studio's release** | The file has much less detail than the studio's other scenes from the same years. | Look for the studio's own release of the scene. |
 | **Disfavored format** | The file's codec or container is on one of your [disfavored lists](curation-settings.md#disfavored-formats). | Re-encode or replace it, if you care. |
@@ -32,7 +32,7 @@ The result is **ok**, **warn** (small oddities such as a few seconds of trailing
 
 **Deep check, suspects only.** The same 24-window health check that [duplicate detection](duplicate-detection.md) uses: 24 one-second decodes spread across the file. A window that fails is decoded again from 20 seconds earlier, because a seek artifact vanishes on the second try and real damage repeats. The deep result is final, so a file the cheap pass doubts can still come out clean. Deep results are stored in the [Content Index](content-index.md) store and shared with duplicate detection, so a file checked by one is not checked again by the other. If you have not built a content index yet, the deep check still runs, but its result is not kept.
 
-A file that is not on disk is flagged broken but is not cached, so it is checked again next run once the mount is back.
+A file that is not on disk is flagged broken but is not cached, so it is checked again next run once the mount is back. When more than 2% of the checked files (and more than 10) are missing in one run, the job treats it as a media mount problem: it raises no flag for those files, leaves their open cards as they are, and logs a warning.
 
 ### What it costs
 

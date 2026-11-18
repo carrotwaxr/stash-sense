@@ -44,6 +44,10 @@ FORMAT_CONFIDENCE = 0.5
 STALE_REASON = "no quality flag on the current file"
 PER_PAGE = 500
 LOW_DETAIL_TEXT = "effective detail well below the studio's release"
+# More missing files than this in one run means the media mount is down, not that the files are gone: they raise
+# nothing and their open cards stay as they are.
+MISSING_GUARD_MIN = 10
+MISSING_GUARD_SHARE = 0.02
 
 
 def _oshash(f: dict) -> Optional[str]:
@@ -301,6 +305,16 @@ class SceneQualityAnalyzer(BaseAnalyzer):
             if how == "created":
                 self.stats["controls"] += 1
 
+    def _drop_mass_missing(self, rows: list[dict]) -> list[dict]:
+        """Rows without the missing files when so many are missing that the mount must be down (counted)."""
+        missing = [r for r in rows if r["broken"]["status"] == "missing"]
+        if len(missing) <= max(MISSING_GUARD_MIN, MISSING_GUARD_SHARE * len(rows)):
+            return rows
+        self.stats["missing_suppressed"] = len(missing)
+        logger.warning("scene_quality: %d of %d files are missing on the media mount; treating that as a mount "
+                       "problem and raising no flag for them", len(missing), len(rows))
+        return [r for r in rows if r["broken"]["status"] != "missing"]
+
     # ---------------- run ----------------
 
     async def run(self, incremental: bool = True) -> AnalysisResult:
@@ -313,7 +327,7 @@ class SceneQualityAnalyzer(BaseAnalyzer):
         content = await asyncio.to_thread(ContentFpStore, content_path) if os.path.exists(content_path) else None
         qstore = await asyncio.to_thread(QualityStore, os.path.join(data_dir, STORE_NAME))
         try:
-            rows = await self.collect(excl, qstore, content)
+            rows = self._drop_mass_missing(await self.collect(excl, qstore, content))
             details = await self.assemble(rows, excl.settings, qstore)
             self._persist(rows, details, excl.settings)
         finally:
@@ -323,13 +337,13 @@ class SceneQualityAnalyzer(BaseAnalyzer):
 
         stats = self.stats
         checks = {k: stats[k] for k in ("cached", "probed", "deep_checked", "missing", "unmapped", "excluded",
-                                        "no_file", "no_oshash", "sharpness_measured")}
+                                        "no_file", "no_oshash", "sharpness_measured", "missing_suppressed")}
         flags = {f: self.raised[f] for f in FLAGS}
         written = {k: stats[k] for k in ("created", "updated", "unchanged", "reopened", "skipped", "dismissed",
                                          "stale", "controls")}
         logger.warning(
             "scene_quality: %d files checked; cheap cached %d, probed %d, deep-checked %d, missing %d, unmapped %d, "
-            "excluded %d, no file %d, no oshash %d, sharpness measured %d; flags: broken %d, rip %d, below studio %d, "
+            "excluded %d, no file %d, no oshash %d, sharpness measured %d, missing suppressed %d; flags: broken %d, rip %d, below studio %d, "
             "format %d; created %d, updated %d, unchanged %d, reopened %d, kept %d, dismissed %d, stale %d, "
             "controls %d%s",
             len(rows), *checks.values(), *flags.values(), *written.values(),
