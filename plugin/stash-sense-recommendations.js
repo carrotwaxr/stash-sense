@@ -558,6 +558,8 @@
         typeCards.appendChild(card);
       }
 
+      await renderReviewTypeCards(mainContainer, content, typeCards);
+
     } catch (e) {
       // Update status to show disconnected
       const statusArea = document.getElementById('ss-status-area');
@@ -4476,7 +4478,74 @@
     return result;
   }
 
+  // ==================== Review framework (#127) ====================
+
+  /** Cards for review-framework types, plus the apply log link. */
+  async function renderReviewTypeCards(mainContainer, content, typeCards) {
+    const Review = window.StashSenseReview;
+    if (!Review) return;
+    let reviewTypes = [];
+    let logTotal = 0;
+    try {
+      const [types, log] = await Promise.all([
+        Review.API.types(),
+        Review.API.applyLog({ limit: 1 }),
+      ]);
+      reviewTypes = types.types || [];
+      logTotal = log.total || 0;
+    } catch (e) {
+      console.warn('[Stash Sense] Review types unavailable:', e.message);
+      return;
+    }
+    for (const t of reviewTypes) {
+      const c = t.counts || {};
+      const card = SS.createElement('div', {
+        className: 'ss-type-card',
+        innerHTML: `
+          <div class="ss-type-card-header">
+            <div class="ss-type-title-block">
+              <h3>${SS.escapeHtml(t.display_name)}</h3>
+              <p>${SS.escapeHtml(t.description)}</p>
+            </div>
+          </div>
+          <div class="ss-type-card-footer">
+            <div class="ss-type-counts">
+              <div class="ss-count-item ss-count-pending"><span class="ss-count-number">${c.pending || 0}</span><span class="ss-count-label">pending</span></div>
+              <div class="ss-count-item ss-count-resolved"><span class="ss-count-number">${c.resolved || 0}</span><span class="ss-count-label">resolved</span></div>
+              <div class="ss-count-item ss-count-dismissed"><span class="ss-count-number">${c.dismissed || 0}</span><span class="ss-count-label">dismissed</span></div>
+            </div>
+            <button class="ss-btn ss-btn-secondary ss-btn-sm">Review</button>
+          </div>`,
+      });
+      card.querySelector('button').addEventListener('click', () => {
+        currentState.view = 'review';
+        currentState.reviewType = t;
+        renderCurrentView(mainContainer);
+      });
+      typeCards.appendChild(card);
+    }
+    if (reviewTypes.length || logTotal) {
+      const header = content.querySelector('.ss-dashboard-types .ss-section-header');
+      const btn = SS.createElement('button', {
+        className: 'ss-btn ss-btn-secondary ss-btn-sm ss-apply-log-btn',
+        textContent: `Apply log (${logTotal})`,
+      });
+      btn.addEventListener('click', () => {
+        currentState.view = 'apply-log';
+        renderCurrentView(mainContainer);
+      });
+      if (header) header.appendChild(btn);
+    }
+  }
+
   // ==================== View Router ====================
+
+  function backToDashboard() {
+    currentState.view = 'dashboard';
+    currentState.reviewType = null;
+    const container = document.getElementById('ss-recommendations');
+    if (container) renderCurrentView(container);
+  }
 
   function renderCurrentView(container) {
     const content = container.querySelector('.ss-dashboard-content') || container;
@@ -4489,6 +4558,12 @@
         break;
       case 'detail':
         renderDetail(content);
+        break;
+      case 'review':
+        window.StashSenseReview.renderTypeList(content, currentState.reviewType, backToDashboard);
+        break;
+      case 'apply-log':
+        window.StashSenseReview.renderApplyLog(content, backToDashboard);
         break;
       default:
         renderDashboard(container, content);

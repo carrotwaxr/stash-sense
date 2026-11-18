@@ -298,3 +298,13 @@ _register(
     default_interval_hours=24,
     allowed_intervals=INTERVALS_FREQUENT,
 )
+
+_register(
+    "review_demo",
+    "Review Demo",
+    "Test type for the review framework: scenes tagged 'stash-sense-review-demo'",
+    ResourceType.LIGHT,
+    JobPriority.NORMAL,
+    # Never production-ready: it exists to exercise the review flow end to end (#127).
+    production_ready=False,
+)

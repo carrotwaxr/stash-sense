@@ -80,6 +80,10 @@ def main():
             result = {"error": f"Unknown settings mode: {mode}"}
     elif mode.startswith("queue_"):
         result = handle_queue(mode, args, sidecar_url)
+    elif mode == "review":
+        result = review_call(sidecar_url, args.get("method", "GET"), args.get("path", ""), args.get("body"))
+    elif mode == "review_still":
+        result = review_still(sidecar_url, args)
     elif mode.startswith("rec_") or mode.startswith("fp_") or mode.startswith("user_") or mode.startswith("endpoint_"):
         result = handle_recommendations(mode, args, sidecar_url)
         if result is None:
@@ -329,6 +333,53 @@ def sidecar_delete(sidecar_url, endpoint, timeout=30):
         return {"error": "Request timed out"}
     except requests.RequestException as e:
         return {"error": f"Request failed: {e}"}
+
+
+# ==================== Review API Proxy (#127) ====================
+
+def review_call(sidecar_url, method, path, body=None, timeout=300):
+    """Pass a call through to the sidecar's /review API, keeping structured errors.
+
+    Review errors (stale preview, delete confirm, drift) carry a payload the UI
+    renders, so on failure this returns {"error", "status", "detail"}.
+    """
+    method = (method or "GET").upper()
+    if method not in ("GET", "POST") or not path.startswith("/review/") or ".." in path:
+        return {"error": f"Refused review call {method} {path}"}
+    try:
+        response = requests.request(method, f"{sidecar_url}{path}", json=body, timeout=timeout)
+    except requests.ConnectionError:
+        return {"error": "Connection refused - is Stash Sense running?"}
+    except requests.Timeout:
+        return {"error": "Request timed out"}
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if response.ok:
+        return payload
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    message = detail.get("message") if isinstance(detail, dict) else (detail or response.text)
+    return {"error": message or f"HTTP {response.status_code}", "status": response.status_code, "detail": detail}
+
+
+def review_still(sidecar_url, args):
+    """A still as a data URI (the plugin can't load sidecar URLs directly)."""
+    import base64
+    from urllib.parse import urlencode
+    qs = urlencode({k: args[k] for k in ("scene_id", "file_id", "t", "width") if args.get(k) is not None})
+    try:
+        response = requests.get(f"{sidecar_url}/review/media/still?{qs}", timeout=60)
+    except requests.RequestException as e:
+        return {"error": f"Request failed: {e}"}
+    if not response.ok:
+        try:
+            return {"error": response.json()["detail"]["message"]}
+        except Exception:
+            return {"error": f"HTTP {response.status_code}"}
+    return {"data_uri": "data:image/jpeg;base64," + base64.b64encode(response.content).decode()}
 
 
 # ==================== Queue API Proxy ====================

@@ -561,6 +561,80 @@ class StashClientUnified:
         data = await self._execute(query, {"input": input_dict}, priority=Priority.CRITICAL)
         return data["sceneUpdate"]
 
+    # ==================== Review framework (#127) ====================
+
+    REVIEW_SCENE_FIELDS = """
+        id
+        title
+        details
+        date
+        code
+        director
+        urls
+        organized
+        rating100
+        studio { id }
+        performers { id }
+        tags { id }
+        files {
+          id
+          path
+          basename
+          size
+          duration
+          format
+          video_codec
+          width
+          height
+          bit_rate
+          fingerprints { type value }
+        }
+    """
+
+    async def get_scene_for_review(self, scene_id: str) -> Optional[dict]:
+        """A scene with every field the review framework can change, files primary first."""
+        query = f"""
+        query ReviewScene($id: ID!) {{
+          findScene(id: $id) {{ {self.REVIEW_SCENE_FIELDS} }}
+        }}
+        """
+        data = await self._execute(query, {"id": scene_id})
+        return data.get("findScene")
+
+    async def find_scenes_with_tag_name(self, tag_name: str) -> list[dict]:
+        """Scenes carrying the tag named tag_name (exact), in review shape. [] if no such tag."""
+        tag_query = """
+        query TagByName($name: String!) {
+          findTags(tag_filter: { name: { value: $name, modifier: EQUALS } }, filter: { per_page: 1 }) {
+            tags { id }
+          }
+        }
+        """
+        tags = (await self._execute(tag_query, {"name": tag_name}))["findTags"]["tags"]
+        if not tags:
+            return []
+        query = f"""
+        query ScenesByTag($tag: [ID!]) {{
+          findScenes(
+            scene_filter: {{ tags: {{ value: $tag, modifier: INCLUDES }} }}
+            filter: {{ per_page: -1, sort: "id", direction: ASC }}
+          ) {{ scenes {{ {self.REVIEW_SCENE_FIELDS} }} }}
+        }}
+        """
+        data = await self._execute(query, {"tag": [tags[0]["id"]]})
+        return data["findScenes"]["scenes"]
+
+    async def get_delete_trash_path(self) -> str:
+        """Stash's delete trash folder ("" when deletes are permanent). Stash v0.30+."""
+        query = "query { configuration { general { deleteTrashPath } } }"
+        try:
+            data = await self._execute(query)
+        except RuntimeError as e:
+            if "deleteTrashPath" in str(e):  # Stash older than v0.30: no trash
+                return ""
+            raise
+        return data["configuration"]["general"].get("deleteTrashPath") or ""
+
     # ==================== Files ====================
 
     async def set_scene_primary_file(self, scene_id: str, file_id: str) -> None:
