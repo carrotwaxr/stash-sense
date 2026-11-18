@@ -306,13 +306,25 @@
       mergeHtml = `<div class="ss-review-merge">Merge scenes ${(m.sources || []).map(i => `#${esc(i)}`).join(', ')} into #${esc(m.destination)}
         ${vals ? `<table class="ss-review-changes"><tbody>${vals}</tbody></table>` : ''}</div>`;
     }
+    let splitHtml = '';
+    if (plan.split) {
+      const ranges = plan.split.ranges || [];
+      splitHtml = `<div class="ss-review-split-handoff"><strong>Hand off to stash-curator: split into ${ranges.length} scene${ranges.length === 1 ? '' : 's'}</strong>
+        <ol>${ranges.map(r => `<li>${esc(fmtT(r.start))} – ${esc(fmtT(r.end))} (${esc(fmtT(r.end - r.start))})</li>`).join('')}</ol>
+        <div class="ss-review-dup-meta">Nothing changes in Stash until stash-curator runs the split.</div></div>`;
+    }
+    const redundant = !!(p.evidence && p.evidence.redundant);
+    const leaveWhole = p.rec_type === 'scene_splits' && !plan.split && !redundant;
+    const empty = !rows.length && !plan.delete_files.length && !plan.merge && !plan.split;
     return `
       ${mergeHtml}
+      ${splitHtml}
       ${rows.length ? `<table class="ss-review-changes"><tbody>${rows.join('')}</tbody></table>` : ''}
       ${plan.keep_files.length ? `<div class="ss-review-keep"><strong>Keep</strong>${fileListHtml(plan.keep_files)}</div>` : ''}
       ${plan.delete_files.length ? `<div class="ss-review-delete"><strong>Delete</strong>${fileListHtml(plan.delete_files)}
         <div class="ss-review-reclaim">Reclaims ${SS.formatSize(plan.bytes_reclaimed)}</div></div>` : ''}
-      ${!rows.length && !plan.delete_files.length && !plan.merge ? '<p class="ss-review-noop">No change: accepting only resolves it.</p>' : ''}
+      ${leaveWhole ? '<p class="ss-review-noop">Leave whole: accepting marks this file done; nothing changes in Stash.</p>'
+        : empty ? '<p class="ss-review-noop">No change: accepting only resolves it.</p>' : ''}
     `;
   }
 

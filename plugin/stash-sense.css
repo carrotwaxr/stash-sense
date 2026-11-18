@@ -3865,6 +3865,8 @@ a.ss-upstream-endpoint-badge:hover {
 .ss-review-split-evidence { font-size: 0.8rem; color: #ccc; }
 .ss-review-split-stills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; align-items: flex-start; }
 .ss-review-split-leftovers { margin-top: 8px; font-size: 0.8rem; color: #888; }
+.ss-review-split-handoff { margin-bottom: 8px; }
+.ss-review-split-handoff ol { margin: 4px 0; padding-left: 22px; font-variant-numeric: tabular-nums; }
 .ss-review-split-leftovers ul, .ss-review-split-covering ul { margin: 4px 0 0; padding-left: 18px; }
 .ss-review-media { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: flex-start; }
 .ss-review-still { margin: 0; width: 160px; }
