@@ -1,7 +1,7 @@
 """In-Stash review framework (#127): preview, accept, apply log, revert, labels."""
 
 # Register built-in review types.
-from . import demo, duplicates
+from . import demo, duplicates, splits
 from .plan import FieldChange, FileRef, Plan, Preview, PrimaryFileChange
 from .types import (
     REVIEW_TYPES,

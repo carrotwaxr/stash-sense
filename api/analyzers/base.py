@@ -21,10 +21,13 @@ class AnalysisResult:
     items_processed: int
     recommendations_created: int
     errors: list[str] = None
+    extra: dict = None  # more fields for the job's result
 
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
+        if self.extra is None:
+            self.extra = {}
 
 
 class BaseAnalyzer(ABC):

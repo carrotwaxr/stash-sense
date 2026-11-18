@@ -26,6 +26,7 @@ nav:
     - Scene Tagger: features/scene-tagger.md
     - Upstream Changes: features/upstream-changes.md
     - Duplicate Detection: features/duplicate-detection.md
+    - Split Detection: features/split-detection.md
     - Content Index: features/content-index.md
   - User Guide:
     - Plugin Usage: plugin.md

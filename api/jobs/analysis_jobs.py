@@ -68,6 +68,7 @@ class AnalysisJob(BaseJob):
             db.complete_analysis_run(run_id, result.recommendations_created)
             await context.report_progress(result.items_processed, result.items_processed)
             context.set_result({
+                **(getattr(result, "extra", None) or {}),
                 "analysis_run_id": run_id,
                 "items_processed": result.items_processed,
                 "recommendations_created": result.recommendations_created,

@@ -217,8 +217,57 @@
       ${dupPairsHtml(ev)}`;
   }
 
+  /** mm:ss, or h:mm:ss; unlike SS.formatDuration it prints 0:00 for t = 0. */
+  function fmtT(t) {
+    return SS.formatDuration(Math.max(0, Number(t) || 0)).replace('Unknown', '0:00');
+  }
+
+  /** The still nearest to time t, or null. */
+  function nearestStill(stills, t) {
+    let best = null;
+    for (const s of stills) {
+      if (best === null || Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
+    }
+    return best;
+  }
+
+  /** A split card: file header, one row per cut (stills and playback fill in from loadMedia), leftovers. */
+  function splitEvidenceHtml(ev) {
+    const f = ev.file || {};
+    const head = `<div class="ss-review-split-head">
+      ${ev.scene ? `<div class="ss-review-ev-scene">Scene <a href="/scenes/${esc(ev.scene.id)}" target="_blank">#${esc(ev.scene.id)}</a> ${esc(ev.scene.title || '(untitled)')}</div>` : ''}
+      <div class="ss-review-path">${esc(f.path || '')}</div>
+      <div class="ss-review-dup-meta">${ev.duration ? `${esc(fmtT(ev.duration))} · ` : ''}confidence
+        <span class="ss-review-badge ${ev.confidence === 'high' ? 'ss-review-badge-ok' : 'ss-review-badge-warn'}">${esc(ev.confidence || 'low')}</span></div>
+      ${(ev.reasons || []).length ? `<ul class="ss-review-split-reasons">${ev.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+    </div>`;
+
+    if (ev.redundant) {
+      const rows = (ev.covering || []).map(c => `<li><a href="/scenes/${esc(c.scene_id)}" target="_blank">Scene #${esc(c.scene_id)}</a>
+        ${c.start != null && c.end != null ? `<span class="ss-review-dup-meta">${esc(fmtT(c.start))} to ${esc(fmtT(c.end))}</span>` : ''}</li>`).join('');
+      return `${head}<div class="ss-review-split-covering"><strong>Held by</strong><ul>${rows}</ul></div>`;
+    }
+
+    const rows = (ev.cuts || []).map((c, i) => `<div class="ss-review-split-cut" data-cut="${i}">
+      <div class="ss-review-split-cut-head">
+        <span class="ss-review-split-time">${esc(fmtT(c.t))}</span>
+        <span class="ss-review-badge">${esc(c.kind || 'cut')}</span>
+        <span class="ss-review-split-evidence">${esc(c.evidence || '')}</span>
+      </div>
+      <div class="ss-review-split-stills"></div>
+    </div>`).join('');
+    const snapped = (ev.snapped || []).map(x =>
+      `<div class="ss-review-dup-meta">${esc(fmtT(x.from))} snapped to ${esc(fmtT(x.to))}, the start of the black</div>`).join('');
+    const left = (ev.leftovers || []).length
+      ? `<div class="ss-review-split-leftovers"><strong>Unconfirmed blacks</strong><ul>${ev.leftovers.map(l =>
+        `<li>${esc(fmtT(l.t))} <span class="ss-review-badge">${esc(l.kind || 'black')}</span> ${esc(l.evidence || '')}</li>`).join('')}</ul></div>`
+      : '';
+    return `${head}${rows || '<div class="ss-review-noop">No cuts: the file stays whole.</div>'}${snapped}${left}`;
+  }
+
   function evidenceHtml(ev, p) {
     if (Array.isArray(ev.scenes) && p) return dupEvidenceHtml(ev, p);
+    if (Array.isArray(ev.cuts)) return splitEvidenceHtml(ev);
     const parts = [];
     if (ev.scene) {
       parts.push(`<div class="ss-review-ev-scene">Scene <a href="/scenes/${esc(ev.scene.id)}" target="_blank">#${esc(ev.scene.id)}</a> ${esc(ev.scene.title)}</div>`);
@@ -257,13 +306,25 @@
       mergeHtml = `<div class="ss-review-merge">Merge scenes ${(m.sources || []).map(i => `#${esc(i)}`).join(', ')} into #${esc(m.destination)}
         ${vals ? `<table class="ss-review-changes"><tbody>${vals}</tbody></table>` : ''}</div>`;
     }
+    let splitHtml = '';
+    if (plan.split) {
+      const ranges = plan.split.ranges || [];
+      splitHtml = `<div class="ss-review-split-handoff"><strong>Hand off to stash-curator: split into ${ranges.length} scene${ranges.length === 1 ? '' : 's'}</strong>
+        <ol>${ranges.map(r => `<li>${esc(fmtT(r.start))} – ${esc(fmtT(r.end))} (${esc(fmtT(r.end - r.start))})</li>`).join('')}</ol>
+        <div class="ss-review-dup-meta">Nothing changes in Stash until stash-curator runs the split.</div></div>`;
+    }
+    const redundant = !!(p.evidence && p.evidence.redundant);
+    const leaveWhole = p.rec_type === 'scene_splits' && !plan.split && !redundant;
+    const empty = !rows.length && !plan.delete_files.length && !plan.merge && !plan.split;
     return `
       ${mergeHtml}
+      ${splitHtml}
       ${rows.length ? `<table class="ss-review-changes"><tbody>${rows.join('')}</tbody></table>` : ''}
       ${plan.keep_files.length ? `<div class="ss-review-keep"><strong>Keep</strong>${fileListHtml(plan.keep_files)}</div>` : ''}
       ${plan.delete_files.length ? `<div class="ss-review-delete"><strong>Delete</strong>${fileListHtml(plan.delete_files)}
         <div class="ss-review-reclaim">Reclaims ${SS.formatSize(plan.bytes_reclaimed)}</div></div>` : ''}
-      ${!rows.length && !plan.delete_files.length && !plan.merge ? '<p class="ss-review-noop">No change: accepting only resolves it.</p>' : ''}
+      ${leaveWhole ? '<p class="ss-review-noop">Leave whole: accepting marks this file done; nothing changes in Stash.</p>'
+        : empty ? '<p class="ss-review-noop">No change: accepting only resolves it.</p>' : ''}
     `;
   }
 
@@ -281,9 +342,45 @@
     }).join('');
   }
 
+  /** Per cut: the stills nearest t - 3 and t + 3, and a button playing Stash's stream from t - 5 in place. */
+  function loadSplitMedia(card, ev) {
+    const stills = ev.stills || [];
+    const sceneId = ev.scene ? ev.scene.id : (stills[0] || {}).scene_id;
+    (ev.cuts || []).forEach((c, i) => {
+      const row = card.querySelector(`.ss-review-split-cut[data-cut="${i}"] .ss-review-split-stills`);
+      if (!row) return;
+      for (const want of [c.t - 3, c.t + 3]) {
+        const s = nearestStill(stills, want);
+        if (!s) continue;
+        const fig = SS.createElement('figure', { className: 'ss-review-still' });
+        fig.innerHTML = `<div class="ss-review-still-ph">…</div><figcaption>${want < c.t ? 'before' : 'after'} @ ${esc(fmtT(s.t))}</figcaption>`;
+        row.appendChild(fig);
+        ReviewAPI.still({ scene_id: s.scene_id, file_id: s.file_id, t: s.t, width: 320 })
+          .then(uri => { fig.querySelector('.ss-review-still-ph').outerHTML = `<img src="${uri}" alt="">`; })
+          .catch(e => { fig.querySelector('.ss-review-still-ph').textContent = e.message; });
+      }
+      const from = (ev.playback_points || [])[i] != null ? ev.playback_points[i] : Math.max(0, c.t - 5);
+      const btn = SS.createElement('button', { className: 'ss-btn ss-btn-secondary ss-btn-sm',
+        textContent: `▶ from ${fmtT(from)}` });
+      btn.addEventListener('click', () => {
+        // Stash's own stream, seeked with a media fragment: no clip rendering.
+        const video = SS.createElement('video', { className: 'ss-review-video', attrs: {
+          controls: '', autoplay: '', src: `/scene/${encodeURIComponent(sceneId)}/stream#t=${from}`,
+        } });
+        btn.replaceWith(video);
+      });
+      row.appendChild(btn);
+    });
+  }
+
   async function loadMedia(card, ev) {
     const strip = card.querySelector('.ss-review-media');
     if (!strip) return;
+    if (Array.isArray(ev.cuts)) {
+      // The split card draws its stills inside each cut row, not in the generic strip.
+      loadSplitMedia(card, ev);
+      return;
+    }
     let stills = ev.stills || [];
     if (Array.isArray(ev.scenes)) {
       // Side by side: the n-th file's frame of every scene forms one row.

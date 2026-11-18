@@ -3857,6 +3857,17 @@ a.ss-upstream-endpoint-badge:hover {
 .ss-review-merge { margin-bottom: 8px; font-weight: 600; }
 .ss-review-merge table { font-weight: normal; margin-top: 4px; }
 .ss-review-media-dup .ss-review-still { width: 200px; }
+.ss-review-split-head { margin-bottom: 8px; }
+.ss-review-split-reasons { margin: 4px 0 0; padding-left: 18px; font-size: 0.8rem; color: #bbb; }
+.ss-review-split-cut { padding: 6px 8px; margin-bottom: 8px; border-left: 3px solid #64b5f6; background: rgba(255, 255, 255, 0.03); border-radius: 4px; }
+.ss-review-split-cut-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.ss-review-split-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ss-review-split-evidence { font-size: 0.8rem; color: #ccc; }
+.ss-review-split-stills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; align-items: flex-start; }
+.ss-review-split-leftovers { margin-top: 8px; font-size: 0.8rem; color: #888; }
+.ss-review-split-handoff { margin-bottom: 8px; }
+.ss-review-split-handoff ol { margin: 4px 0; padding-left: 22px; font-variant-numeric: tabular-nums; }
+.ss-review-split-leftovers ul, .ss-review-split-covering ul { margin: 4px 0 0; padding-left: 18px; }
 .ss-review-media { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: flex-start; }
 .ss-review-still { margin: 0; width: 160px; }
 .ss-review-still img, .ss-review-still-ph {

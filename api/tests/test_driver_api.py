@@ -92,6 +92,8 @@ def test_info_lists_visible_types(world, monkeypatch):
         {"type": "review_demo", "name": "Review Demo", "description": body["review_types"][0]["description"]},
         {"type": "scene_duplicates", "name": "Duplicate Scenes",
          "description": "Scenes holding the same content: merge them and keep the best file"},
+        {"type": "scene_splits", "name": "Split Multi-Scene Files",
+         "description": "Files holding several scenes: confirm the cut times, then hand the split to stash-curator"},
     ]
     monkeypatch.setattr(features, "show_unfinished", lambda: False)
     body = client.get(BASE).json()

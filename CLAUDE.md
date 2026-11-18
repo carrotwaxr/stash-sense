@@ -68,6 +68,10 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/review/duplicates.py` - The `scene_duplicates` review type: keeper suggestion, merge plan, mislabel choice, batch eligibility
 - `api/analyzers/scene_duplicates.py` - The `scene_duplicates` job: verifies candidates and upserts one recommendation per set in place (driver feed never sees a delete). User docs: `docs/features/duplicate-detection.md`
 - `docs/research/dupes-keeper-regression.md` - The keeper vs the owner's recorded picks (92.8% of 567 scored pairs); rerun when `duplicates/keeper.py` changes
+- `api/splits/` - Split-point detection (#131): pure planner package (signals, black and static detectors, series profiles, coverage, confidence) plus `SplitStore` (`DATA_DIR/splits.db`: cached signals, series labels, aliases)
+- `api/analyzers/scene_splits.py` - The `scene_splits` job: extracts signals once per file, plans every candidate from the cache, upserts in place. User docs: `docs/features/split-detection.md`
+- `api/review/splits.py` - The `scene_splits` review type: cut/trim text choices, snapping to black starts, redundant card, `resolution.details.split` hand-off to stash-curator
+- `docs/research/split-regression.md` - The planner vs the owner's labelled cuts (118 titles); rerun when `splits/planner.py` or `splits/detect.py` changes
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client
@@ -85,4 +89,6 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - Whisper `large-v3-turbo` ignores `task=translate` and returns the source language. Translation needs `large-v3`.
 - The unRAID host has no `python3` or `ffmpeg`: parse JSON with bash/sed there and run ffmpeg as `docker exec stash ffmpeg ...`.
 - Chromaprint output depends on the ffmpeg build: 4.4 and 6.1 differ on WMA. The image pins Ubuntu 24.04's ffmpeg 6.1.1 so stores built on the Xeon (same build) import exactly; changing the base image needs the import check re-run.
+- Split cuts go at the START of a black run: the black and the title card after it belong to the next scene. A time typed on the card snaps to a black start (4 s before to 2 s after).
+- Split signals are cached per (oshash, size) in `splits.db`; bumping `SIGNALS_VERSION` in `splits/signals.py` re-extracts every file, while a `PLANNER_VERSION` bump only re-plans from the cache.
 - Scene file paths can contain smart apostrophes (U+2019); fetch paths from the Stash API instead of typing them.

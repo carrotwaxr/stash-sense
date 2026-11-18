@@ -1104,6 +1104,60 @@ class StashClientUnified:
         )
         return data["findScenes"]["scenes"], data["findScenes"]["count"]
 
+    async def get_scenes_with_files(self, page: int, per_page: int = 500,
+                                    min_duration: Optional[float] = None) -> tuple[list[dict], int]:
+        """One page of scenes (id ASC) with each file's quality fields, primary file first (#131).
+
+        ``min_duration`` keeps scenes longer than that many seconds. Returns (scenes, total_count).
+        """
+        query = """
+        query ScenesWithFiles($filter: FindFilterType, $scene_filter: SceneFilterType) {
+          findScenes(filter: $filter, scene_filter: $scene_filter) {
+            count
+            scenes {
+              id
+              title
+              files {
+                id path basename size duration format video_codec width height bit_rate frame_rate
+                fingerprints { type value }
+              }
+            }
+          }
+        }
+        """
+        scene_filter = {}
+        if min_duration is not None:
+            scene_filter["duration"] = {"value": int(min_duration), "modifier": "GREATER_THAN"}
+        data = await self._execute(query, {
+            "filter": {"page": page, "per_page": per_page, "sort": "id", "direction": "ASC"},
+            "scene_filter": scene_filter,
+        })
+        return data["findScenes"]["scenes"], data["findScenes"]["count"]
+
+    async def find_tag_id_by_name(self, name: str) -> Optional[str]:
+        """Id of the tag named exactly ``name``, or None."""
+        query = """
+        query TagIdByName($name: String!) {
+          findTags(tag_filter: { name: { value: $name, modifier: EQUALS } }, filter: { per_page: 1 }) {
+            tags { id }
+          }
+        }
+        """
+        tags = (await self._execute(query, {"name": name}))["findTags"]["tags"]
+        return str(tags[0]["id"]) if tags else None
+
+    async def find_group_id_by_name(self, name: str) -> Optional[str]:
+        """Id of the group named exactly ``name``, or None."""
+        query = """
+        query GroupIdByName($name: String!) {
+          findGroups(group_filter: { name: { value: $name, modifier: EQUALS } }, filter: { per_page: 1 }) {
+            groups { id }
+          }
+        }
+        """
+        groups = (await self._execute(query, {"name": name}))["findGroups"]["groups"]
+        return str(groups[0]["id"]) if groups else None
+
     async def find_duplicate_scenes(self, distance: int = 10) -> list[list[str]]:
         """Groups of scene ids whose phashes are within ``distance`` (Stash's findDuplicateScenes).
 

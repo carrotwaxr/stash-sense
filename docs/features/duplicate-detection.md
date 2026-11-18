@@ -116,7 +116,7 @@ If a scene changed after the card loaded, accept is refused and the card reloads
 
 Quality decides, and the workflow is always merge first (to collect the metadata), then delete the lower-quality file. The longer file is never deleted.
 
-- **The longer file holds several scenes** (it is at least 1.5 times as long as the shorter file). The card says to split the longer file first and changes nothing: no merge and no delete. This keeps a scene from being merged into an unsplit multi-scene file. Split detection (#131, not built yet) is planned to run before duplicate detection; until then these cards leave both files alone.
+- **The longer file holds several scenes** (it is at least 1.5 times as long as the shorter file). The card says to split the longer file first and changes nothing: no merge and no delete. This keeps a scene from being merged into an unsplit multi-scene file. [Split detection](split-detection.md) is meant to run before duplicate detection; until the longer file is split, these cards leave both files alone.
 - **A re-cut where the shorter file is strictly better.** Both files stay and the scenes stay separate.
 - **A re-cut at equal quality, or where the longer cut is better.** At equal quality the longer, more complete cut is kept. The shorter scene merges into the longer cut's scene, whatever history either has: the longer scene's values win, empty fields are filled from the shorter scene, and performers, tags, URLs, groups and galleries are unioned. Then the shorter file is deleted.
 
