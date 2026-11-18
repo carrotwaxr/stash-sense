@@ -34,9 +34,13 @@ FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# libegl1 / libgles2: MediaPipe (body proportions) loads libEGL.so.1 when it creates an image. On 22.04
+# libgl1-mesa-glx pulled them in; 24.04's libgl1 doesn't.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
