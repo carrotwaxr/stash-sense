@@ -103,7 +103,13 @@ def metadata_conflict(scene_a: dict, scene_b: dict) -> str | None:
 
 
 def pair_class(ev: PairEvidence, scene_a: dict, scene_b: dict) -> str:
-    """duplicate | contained | partial | language_variant | mislabel | review | different."""
+    """duplicate | contained | partial | language_variant | mislabel | review | different | unverified.
+
+    ``unverified``: no evidence of any kind (no audio, sprites, keyframes or index overlap), so
+    there is nothing for a reviewer to judge and the pair makes no recommendation.
+    """
+    if ev.ber is None and ev.sprite is None and ev.keyframe_fraction is None and not ev.overlap:
+        return "unverified"
     kind = (ev.overlap or {}).get("kind")
     if kind == "incidental" and _no_video_evidence(ev):
         return "different"

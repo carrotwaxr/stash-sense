@@ -302,6 +302,15 @@ async def test_different_pair_makes_no_rec(stash, db, world, health_calls):
     assert result.items_processed == 1 and result.recommendations_created == 0
 
 
+async def test_pair_with_no_evidence_makes_no_rec_and_is_counted(stash, db, world, health_calls):
+    world.scene("a", None)
+    world.scene("b", None)              # candidates by shared stash id, but nothing readable to compare
+    analyzer, result = await run(stash, db)
+    assert recs(db) == []
+    assert analyzer.stats["unverified"] == 1
+    assert result.items_processed == 1 and result.recommendations_created == 0
+
+
 async def test_unhealthy_keeper_is_replaced_and_held_when_none_is_healthy(stash, db, world, monkeypatch, health_calls):
     world.scene("a", 1)
     world.scene("b", 1)

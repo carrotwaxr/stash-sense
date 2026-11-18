@@ -46,6 +46,10 @@ def test_different_produces_nothing():
     assert build_items([v("1", "2", "different")]) == ([], [])
 
 
+def test_unverified_produces_nothing():
+    assert build_items([v("1", "2", "unverified", PairEvidence())]) == ([], [])
+
+
 def test_growing_set_new_anchor_supersedes_old_key():
     items, sup = build_items([v("3", "5", "duplicate"), v("5", "9", "duplicate")],
                              previous_keys={"duplicate:5": {"5", "9"}})

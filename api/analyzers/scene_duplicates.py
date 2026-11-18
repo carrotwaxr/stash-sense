@@ -333,7 +333,9 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
             if self.is_stop_requested():
                 break
             out = await self._verify(cand)
-            if out and out[1] != "different":
+            if out and out[1] == "unverified":
+                stats["unverified"] += 1
+            elif out and out[1] != "different":
                 verified.append((cand, out[0], out[1]))
             self.update_progress(i, stats["created"])
 
@@ -341,7 +343,7 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
             status="pending", type=TYPE_ID, target_type=TARGET_TYPE, limit=1_000_000_000)}
         previous = {key: {str(s) for s in (r.details or {}).get("scene_ids") or []} for key, r in pending.items()}
         items, superseded = build_items(verified, previous)
-        stats.update({f"cls_{i.cls}": 1 for i in items})
+        stats.update(f"cls_{i.cls}" for i in items)      # items per class, not distinct classes
 
         produced: set[str] = set()
         for item in items:
@@ -378,9 +380,9 @@ class SceneDuplicatesAnalyzer(BaseAnalyzer):
 
         classes = {k[4:]: v for k, v in sorted(stats.items()) if k.startswith("cls_")}
         logger.warning(
-            "scene_duplicates: %d candidates, %d verified, sets %s; created %d, updated %d, unchanged %d, skipped %d, "
+            "scene_duplicates: %d candidates, %d verified, %d unverified, items %s; created %d, updated %d, unchanged %d, skipped %d, "
             "superseded %d, stale %d%s",
-            len(candidates), len(verified), classes or "none", stats["created"], stats["updated"],
+            len(candidates), len(verified), stats["unverified"], classes or "none", stats["created"], stats["updated"],
             stats["unchanged"], stats["skipped"], stats["superseded"], stats["stale"],
             " (stopped)" if self.is_stop_requested() else "")
         return AnalysisResult(items_processed=len(candidates), recommendations_created=stats["created"])
