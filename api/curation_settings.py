@@ -23,6 +23,19 @@ KEY_GROUPS = "excludeGroupIds"
 KEY_STUDIOS = "excludeStudioIds"
 KEY_CODECS = "disfavoredVideoCodecs"
 KEY_CONTAINERS = "disfavoredContainers"
+KEY_QUALITY_REPORT_ONLY = "qualityReportOnly"
+KEY_QUALITY_PERCENTILE = "qualityPeerPercentile"
+# Quality flag -> the setting holding the one work-queue group id for it (#133).
+QUALITY_GROUP_KEYS = {
+    "broken": "qualityGroupBroken",
+    "rip": "qualityGroupRip",
+    "below_studio": "qualityGroupBelowStudio",
+    "format": "qualityGroupFormat",
+}
+
+DEFAULT_QUALITY_PERCENTILE = 10.0
+MIN_QUALITY_PERCENTILE = 1.0
+MAX_QUALITY_PERCENTILE = 50.0
 
 CACHE_SECONDS = 60.0
 
@@ -68,6 +81,34 @@ def _split(value, *, lower: bool = False, ids: bool = False) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _parse_bool(value, default: bool) -> bool:
+    """A Stash BOOLEAN setting; other writers may store the strings "false" or "0"."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("false", "0", "no", "off"):
+        return False
+    if s in ("true", "1", "yes", "on"):
+        return True
+    return default
+
+
+def _parse_percentile(value) -> float:
+    try:
+        v = float(str(value).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_QUALITY_PERCENTILE
+    if v != v:  # NaN
+        return DEFAULT_QUALITY_PERCENTILE
+    return min(MAX_QUALITY_PERCENTILE, max(MIN_QUALITY_PERCENTILE, v))
+
+
+def _jsonable(v):
+    return [_jsonable(x) for x in v] if isinstance(v, (tuple, list)) else v
+
+
 @dataclass(frozen=True)
 class CurationSettings:
     exclude_tag_ids: tuple[str, ...] = ()
@@ -75,17 +116,34 @@ class CurationSettings:
     exclude_studio_ids: tuple[str, ...] = ()
     disfavored_video_codecs: tuple[str, ...] = ()
     disfavored_containers: tuple[str, ...] = ()
+    quality_report_only: bool = True
+    # (flag, group id) pairs; frozen dataclass, so no dict. See quality_groups.
+    quality_group_ids: tuple[tuple[str, str], ...] = ()
+    quality_peer_percentile: float = DEFAULT_QUALITY_PERCENTILE
 
     @classmethod
     def from_plugin_config(cls, cfg: dict | None) -> CurationSettings:
         cfg = cfg or {}
+        groups = []
+        for flag, key in QUALITY_GROUP_KEYS.items():
+            gid = _split(cfg.get(key), ids=True)
+            if gid:
+                groups.append((flag, gid[0]))
         return cls(
             exclude_tag_ids=_split(cfg.get(KEY_TAGS), ids=True),
             exclude_group_ids=_split(cfg.get(KEY_GROUPS), ids=True),
             exclude_studio_ids=_split(cfg.get(KEY_STUDIOS), ids=True),
             disfavored_video_codecs=_split(cfg.get(KEY_CODECS), lower=True),
             disfavored_containers=_split(cfg.get(KEY_CONTAINERS), lower=True),
+            quality_report_only=_parse_bool(cfg.get(KEY_QUALITY_REPORT_ONLY), True),
+            quality_group_ids=tuple(groups),
+            quality_peer_percentile=_parse_percentile(cfg.get(KEY_QUALITY_PERCENTILE)),
         )
+
+    @property
+    def quality_groups(self) -> dict[str, str]:
+        """Quality flag -> the group id its accepted cards add the scene to."""
+        return dict(self.quality_group_ids)
 
     @property
     def has_exclusions(self) -> bool:
@@ -100,7 +158,7 @@ class CurationSettings:
         )
 
     def to_dict(self) -> dict:
-        return {k: list(v) for k, v in asdict(self).items()}
+        return {k: _jsonable(v) for k, v in asdict(self).items()}
 
 
 @dataclass(frozen=True)

@@ -207,6 +207,19 @@
     },
   ];
 
+  // Quality flag work-queue groups (#133): one group ID per flag.
+  const QUALITY_GROUP_FIELDS = [
+    { key: 'qualityGroupBroken', label: 'Broken group ID' },
+    { key: 'qualityGroupRip', label: 'Rip group ID' },
+    { key: 'qualityGroupBelowStudio', label: 'Below studio group ID' },
+    { key: 'qualityGroupFormat', label: 'Format group ID' },
+  ];
+
+  // Report-only is on unless the stored value says off (missing means on).
+  function isQualityOff(value) {
+    return value === false || ['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
+  }
+
   async function stashGql(query, variables = {}) {
     const response = await fetch('/graphql', {
       method: 'POST',
@@ -485,7 +498,7 @@
     }));
     formatRow.appendChild(SS.createElement('span', {
       className: 'ss-setting-desc',
-      textContent: 'Comma-separated. Used only as tie-breakers when suggesting which file to keep; empty means no codec preference.',
+      textContent: 'Comma-separated. Tie-breakers when picking a keeper, and a file in one of these raises the quality "format" flag; empty means no preference.',
     }));
     const formatGrid = SS.createElement('div', { className: 'ss-picker-grid' });
     const codecInput = SS.createElement('input', {
@@ -504,6 +517,48 @@
     }
     formatRow.appendChild(formatGrid);
     body.appendChild(formatRow);
+
+    // Quality flags
+    const qualityRow = SS.createElement('div', { className: 'ss-setting-row-vertical' });
+    qualityRow.appendChild(SS.createElement('label', {
+      className: 'ss-setting-label', textContent: 'Quality flags',
+    }));
+    qualityRow.appendChild(SS.createElement('span', {
+      className: 'ss-setting-desc',
+      textContent: 'While report-only is on, accepting a quality card records your verdict and changes nothing. Turn it off and set a group ID for a flag to have accepted cards add the scene to that group.',
+    }));
+    const reportOnlyInput = SS.createElement('input', { attrs: { type: 'checkbox' } });
+    reportOnlyInput.checked = !isQualityOff(config.qualityReportOnly);
+    const reportOnlyLabel = SS.createElement('label', {
+      className: 'ss-setting-label',
+      children: [reportOnlyInput, document.createTextNode(' Report only')],
+    });
+    qualityRow.appendChild(reportOnlyLabel);
+    const qualityGrid = SS.createElement('div', { className: 'ss-picker-grid' });
+    const qualityGroupInputs = {};
+    for (const g of QUALITY_GROUP_FIELDS) {
+      const input = SS.createElement('input', {
+        className: 'ss-text-input',
+        attrs: { type: 'text', placeholder: 'group ID', value: config[g.key] || '' },
+      });
+      qualityGroupInputs[g.key] = input;
+      const cell = SS.createElement('div', { className: 'ss-picker' });
+      cell.appendChild(SS.createElement('label', { className: 'ss-setting-label', textContent: g.label }));
+      cell.appendChild(input);
+      qualityGrid.appendChild(cell);
+    }
+    const percentileInput = SS.createElement('input', {
+      className: 'ss-text-input',
+      attrs: { type: 'text', placeholder: '10', value: config.qualityPeerPercentile || '' },
+    });
+    const percentileCell = SS.createElement('div', { className: 'ss-picker' });
+    percentileCell.appendChild(SS.createElement('label', {
+      className: 'ss-setting-label', textContent: 'Below-studio percentile (1-50)',
+    }));
+    percentileCell.appendChild(percentileInput);
+    qualityGrid.appendChild(percentileCell);
+    qualityRow.appendChild(qualityGrid);
+    body.appendChild(qualityRow);
 
     // Save + status
     const saveRow = SS.createElement('div', { className: 'ss-setting-row' });
@@ -533,13 +588,18 @@
       setStatus('Saving...', null);
       try {
         // Stash's configurePlugin replaces the plugin's whole settings map, so
-        // read the current map, change only our five keys, write the full map back.
+        // read the current map, change only our own keys, write the full map back.
         const merged = { ...(await loadStashPluginConfig()) };
         for (const p of pickers) {
           merged[p.picker.key] = [...new Set(p.getIds())].join(',');
         }
         merged.disfavoredVideoCodecs = parseNameList(codecInput.value).join(',');
         merged.disfavoredContainers = parseNameList(containerInput.value).join(',');
+        merged.qualityReportOnly = reportOnlyInput.checked;
+        for (const g of QUALITY_GROUP_FIELDS) {
+          merged[g.key] = parseIdList(qualityGroupInputs[g.key].value).slice(0, 1).join(',');
+        }
+        merged.qualityPeerPercentile = percentileInput.value.trim();
         await stashGql(
           `mutation CurationSave($input: Map!) {
             configurePlugin(plugin_id: "${CURATION_PLUGIN_ID}", input: $input)

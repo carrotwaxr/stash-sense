@@ -131,6 +131,47 @@ def test_is_disfavored_by_codec_or_container():
     assert not s.is_disfavored({"video_codec": None, "format": None})
 
 
+# ---------------- quality flags (#133) ----------------
+
+def test_quality_defaults():
+    s = CurationSettings.from_plugin_config({})
+    assert s.quality_report_only is True
+    assert s.quality_groups == {}
+    assert s.quality_peer_percentile == 10.0
+
+
+def test_quality_values_parsed():
+    s = CurationSettings.from_plugin_config({
+        "qualityReportOnly": False, "qualityGroupBroken": "12",
+        "qualityGroupRip": " 13 ", "qualityPeerPercentile": "25",
+    })
+    assert s.quality_report_only is False
+    assert s.quality_groups == {"broken": "12", "rip": "13"}
+    assert s.quality_peer_percentile == 25.0
+    for off in ("false", "0"):
+        assert CurationSettings.from_plugin_config({"qualityReportOnly": off}).quality_report_only is False
+    assert CurationSettings.from_plugin_config({"qualityReportOnly": True}).quality_report_only is True
+
+
+def test_percentile_is_clamped():
+    def pct(v):
+        return CurationSettings.from_plugin_config({"qualityPeerPercentile": v}).quality_peer_percentile
+
+    assert pct("0") == 1.0
+    assert pct("90") == 50.0
+    assert pct("x") == 10.0
+
+
+def test_to_dict_includes_quality():
+    d = CurationSettings.from_plugin_config(
+        {"excludeTagIds": "3", "qualityGroupFormat": "7", "qualityReportOnly": "false"}
+    ).to_dict()
+    assert d["exclude_tag_ids"] == ["3"]
+    assert d["quality_report_only"] is False
+    assert d["quality_peer_percentile"] == 10.0
+    assert d["quality_group_ids"] == [["format", "7"]]
+
+
 # ---------------- resolution ----------------
 
 async def test_descendants_of_excluded_tag_group_and_studio_are_excluded(stash, library, real_cache):

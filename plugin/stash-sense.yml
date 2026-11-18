@@ -41,11 +41,35 @@ settings:
     type: STRING
   disfavoredVideoCodecs:
     displayName: Disfavored video codecs
-    description: Comma-separated lowercase codec names (e.g. hevc). Used only as tie-breakers when suggesting which file to keep. Easiest to edit in Stash Sense > Settings > Curation.
+    description: Comma-separated lowercase codec names (e.g. hevc). Tie-breakers when picking a keeper, and a file in a disfavored codec raises the quality "format" flag. Easiest to edit in Stash Sense > Settings > Curation.
     type: STRING
   disfavoredContainers:
     displayName: Disfavored containers
-    description: Comma-separated lowercase container names (e.g. wmv). Used only as tie-breakers when suggesting which file to keep. Easiest to edit in Stash Sense > Settings > Curation.
+    description: Comma-separated lowercase container names (e.g. wmv). Tie-breakers when picking a keeper, and a file in a disfavored container raises the quality "format" flag. Easiest to edit in Stash Sense > Settings > Curation.
+    type: STRING
+  qualityReportOnly:
+    displayName: Quality flags - report only
+    description: When on (the default), quality flags are only reported on review cards and accepting one changes nothing. Turn off to let accepted cards add scenes to the groups below.
+    type: BOOLEAN
+  qualityGroupBroken:
+    displayName: Quality flags - broken group ID
+    description: One Stash group ID; accepted cards add the scene to it when report-only is off (broken or truncated files).
+    type: STRING
+  qualityGroupRip:
+    displayName: Quality flags - rip group ID
+    description: One Stash group ID; accepted cards add the scene to it when report-only is off (tube or leak rips).
+    type: STRING
+  qualityGroupBelowStudio:
+    displayName: Quality flags - below studio group ID
+    description: One Stash group ID; accepted cards add the scene to it when report-only is off (files below the studio's release quality).
+    type: STRING
+  qualityGroupFormat:
+    displayName: Quality flags - format group ID
+    description: One Stash group ID; accepted cards add the scene to it when report-only is off (files in a disfavored format).
+    type: STRING
+  qualityPeerPercentile:
+    displayName: Quality flags - peer percentile
+    description: A file whose detail falls below this percentile of its studio and year peers is flagged below studio (1-50, default 10).
     type: STRING
 
 exec:
