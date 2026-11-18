@@ -3868,6 +3868,11 @@ a.ss-upstream-endpoint-badge:hover {
 .ss-review-split-handoff { margin-bottom: 8px; }
 .ss-review-split-handoff ol { margin: 4px 0; padding-left: 22px; font-variant-numeric: tabular-nums; }
 .ss-review-split-leftovers ul, .ss-review-split-covering ul { margin: 4px 0 0; padding-left: 18px; }
+.ss-review-quality-head { margin-bottom: 8px; }
+.ss-review-quality-note { margin-top: 4px; font-size: 0.8rem; color: #ffb74d; }
+.ss-review-quality-flag { padding: 6px 8px; margin-bottom: 8px; border-left: 3px solid #ffb74d; background: rgba(255, 255, 255, 0.03); border-radius: 4px; }
+.ss-review-quality-control { border-left-color: #64b5f6; }
+.ss-review-quality-list { margin: 4px 0 0; padding-left: 18px; font-size: 0.8rem; color: #bbb; }
 .ss-review-media { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: flex-start; }
 .ss-review-still { margin: 0; width: 160px; }
 .ss-review-still img, .ss-review-still-ph {
