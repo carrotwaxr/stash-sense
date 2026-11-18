@@ -188,7 +188,7 @@ async def test_get_recommendation_shape(world):
     client, db, stash, _ = world
     rec, a, b = await _seed(stash, db)
     body = client.get(f"{BASE}/recommendations/{rec.id}").json()
-    assert set(body) == {"recommendation", "preview"}
+    assert set(body) == {"recommendation", "preview", "preview_error"} and body["preview_error"] is None
     r = body["recommendation"]
     assert set(r) == REC_KEYS
     assert r["reviewable"] is True and r["resolution"] is None and r["evidence"] == {"tag": DEMO_TAG}
@@ -345,16 +345,21 @@ def test_feed_pages_and_resumes(world):
     # A change to an old rec shows up after the saved cursor, once.
     db.dismiss_recommendation(ids[0])
     with sqlite3.connect(db.db_path) as conn:
-        conn.execute("UPDATE recommendations SET updated_at = datetime('now', '-1 seconds') WHERE id = ?",
+        conn.execute("UPDATE recommendations SET updated_at = datetime('now', '-3 seconds') WHERE id = ?",
                      (ids[0],))
     changed = client.get(f"{BASE}/recommendations", params={"cursor": page2["next_cursor"]}).json()
     assert [(r["id"], r["status"]) for r in changed["recommendations"]] == [(ids[0], "dismissed")]
 
 
-def test_feed_holds_back_the_current_second(world):
+def test_feed_holds_back_the_last_two_seconds(world):
     client, db, *_ = world
     _make(db, 2)  # updated_at = now
     assert client.get(f"{BASE}/recommendations").json()["recommendations"] == []
+    with sqlite3.connect(db.db_path) as conn:
+        conn.execute("UPDATE recommendations SET updated_at = datetime('now', '-1 seconds')")
+    assert client.get(f"{BASE}/recommendations").json()["recommendations"] == []
+    _age_recs(db, 2)
+    assert len(client.get(f"{BASE}/recommendations").json()["recommendations"]) == 2
 
 
 def test_feed_filters_and_since(world):
@@ -464,3 +469,57 @@ async def test_finished_job_progress_is_final(world, monkeypatch):
     await asyncio.sleep(0)  # let any stray scheduled progress write run
     job = client.get(f"{BASE}/jobs/{job_id}").json()["job"]
     assert job["progress"] == {"processed": 7, "total": 7}
+
+
+def test_unauthenticated_bad_body_is_401_not_422(world, monkeypatch):
+    client, *_ = world
+    monkeypatch.setenv(driver_router.API_KEY_ENV, "s3cret")
+    r = client.post(f"{BASE}/recommendations/1/accept", content=b"{not json",
+                    headers={"Content-Type": "application/json"})
+    assert r.status_code == 401
+    r = client.post(f"{BASE}/jobs", json={"bogus": 1})
+    assert r.status_code == 401
+
+
+@pytest.mark.parametrize("priority", [-1000, 7, True, "5"])
+def test_priority_must_be_a_level(world, priority):
+    client, *_ = world
+    r = client.post(f"{BASE}/jobs", json={"type": "review_demo", "priority": priority})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_request"
+
+
+def test_priority_number_accepted(world):
+    client, *_ = world
+    r = client.post(f"{BASE}/jobs", json={"type": "review_demo", "priority": 0})
+    assert r.status_code == 201 and r.json()["job"]["priority"] == 0
+
+
+async def test_rec_readable_when_its_preview_fails(world):
+    client, db, stash, _ = world
+    rec, *_ = await _seed(stash, db)
+    del stash.scenes[rec.target_id]
+    r = client.get(f"{BASE}/recommendations/{rec.id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["recommendation"]["id"] == rec.id and body["preview"] is None
+    assert body["preview_error"]["code"] == "not_found"
+    assert client.post(f"{BASE}/recommendations/{rec.id}/dismiss").status_code == 200
+
+
+def test_dismiss_refuses_excluded_scene(world, monkeypatch):
+    client, db, *_ = world
+    import curation_settings
+    rec_id = db.create_recommendation(type="duplicate_scenes", target_type="scene", target_id="1", details={})
+
+    class Excl:
+        scene_ids = frozenset({"1"})
+
+        def excluded(self, ids):
+            return {i for i in ids if i in self.scene_ids}
+
+    async def current(stash, **kw):
+        return Excl()
+    monkeypatch.setattr(curation_settings, "current", current)
+    r = client.post(f"{BASE}/recommendations/{rec_id}/dismiss")
+    assert r.status_code == 403 and r.json()["error"]["code"] == "scene_excluded"
+    assert db.get_recommendation(rec_id).status == "pending"

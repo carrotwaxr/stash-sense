@@ -15,10 +15,10 @@ import hmac
 import json
 import os
 from collections.abc import Callable
-from datetime import UTC, datetime, timezone
-from typing import Any, Literal, Optional, Union
+from datetime import UTC, datetime
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -61,6 +61,9 @@ class DriverRoute(APIRoute):
 
         async def route(request: Request):
             try:
+                # Before the handler, so an unauthenticated caller gets 401 even for a
+                # malformed body (FastAPI parses bodies before running dependencies).
+                require_api_key(request)
                 return await handler(request)
             except DriverError as e:
                 return _error(e.status, e.code, e.message, **e.payload)
@@ -96,7 +99,6 @@ router = APIRouter(
     prefix="/api/v1/driver",
     tags=["driver-v1"],
     route_class=DriverRoute,
-    dependencies=[Depends(require_api_key)],
 )
 
 
@@ -262,12 +264,13 @@ class _Strict(BaseModel):
 
 
 PriorityName = Literal["critical", "high", "normal", "low"]
+PriorityNumber = Literal[0, 10, 50, 100]  # JobPriority values; lower runs first
 
 
 class StartJobRequest(_Strict):
     type: str
     params: dict = Field(default_factory=dict)
-    priority: PriorityName | int | None = None
+    priority: PriorityName | PriorityNumber | None = None
 
 
 class PreviewRequest(_Strict):
@@ -424,8 +427,15 @@ async def get_recommendation(rec_id: int):
     (with the suggested option) and its revision."""
     rec = _visible_rec(rec_id)
     await _check_rec_exclusion(rec)
-    review = await _review(rec, None) if rec.status == "pending" else None
-    return {"recommendation": _rec(rec), "preview": review}
+    review, review_error = None, None
+    if rec.status == "pending":
+        try:
+            review = await _review(rec, None)
+        except ReviewError as e:
+            # The rec stays readable (and dismissable) when its plan can't be built,
+            # e.g. its scene is gone from Stash.
+            review_error = {"code": e.code, "message": e.message}
+    return {"recommendation": _rec(rec), "preview": review, "preview_error": review_error}
 
 
 def _require_reviewable(rec: Recommendation) -> None:
@@ -467,6 +477,7 @@ async def dismiss_recommendation(rec_id: int, req: DismissRequest | None = None)
     """Dismiss a pending recommendation. Dismissing a dismissed one is a no-op;
     a resolved one is refused with 409 `not_pending`."""
     rec = _visible_rec(rec_id)
+    await _check_rec_exclusion(rec)
     db = _service().rec_db
     if rec.status == "resolved":
         raise DriverError(409, "not_pending", f"Recommendation {rec_id} is resolved")

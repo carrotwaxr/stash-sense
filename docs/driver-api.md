@@ -15,7 +15,7 @@ Set `STASH_SENSE_API_KEY` in the sidecar's environment. Every driver call must t
 ApiKey: <STASH_SENSE_API_KEY>
 ```
 
-A missing or wrong key gets `401 unauthorized`. When the variable is unset, the driver API is open; `GET /api/v1/driver` reports `auth_required: false`. The key protects only the driver routes. The plugin's internal routes stay open on the LAN, as before.
+A missing or wrong key gets `401 unauthorized`, checked before the request body is read. When the variable is unset, the driver API is open; `GET /api/v1/driver` reports `auth_required: false`. The key protects only the driver routes. The plugin's internal routes stay open on the LAN, as before.
 
 ## Conventions
 
@@ -60,7 +60,7 @@ A missing or wrong key gets `401 unauthorized`. When the variable is unset, the 
 {"type": "duplicate_performer", "priority": "high", "params": {}}
 ```
 
-- `priority` (optional) is `"critical"`, `"high"`, `"normal"`, `"low"` or the matching number (0, 10, 50, 100; lower runs first). It defaults to the type's `default_priority`.
+- `priority` (optional) is `"critical"`, `"high"`, `"normal"`, `"low"` or the matching number (0, 10, 50, 100; lower runs first). Other values get `422`. It defaults to the type's `default_priority`.
 - `params` (optional) must be empty or omitted until a job type declares params.
 
 Only one job per type is queued or running at a time.
@@ -132,17 +132,19 @@ Returns recommendations in the order they last changed (`updated_at`, then `id`)
 
 The list doubles as a change feed. Every status change (accept, dismiss, revert) and every re-analysis moves a recommendation's `updated_at` forward. Keep the last `next_cursor` and call again later to receive only what changed since. One recommendation may come back more than once across calls, once per change, so key on `id`.
 
-Rows from the current second are held back until that second ends, so a change shows up within about a second. This keeps a cursor from pointing into a second that can still gain rows.
+Rows from the current and previous second are held back, so a change shows up within about two seconds. `updated_at` has one-second resolution and is stamped when a write runs, not when it commits; the hold-back keeps a cursor from pointing into a second that can still gain rows behind it.
+
+The feed reports changes, not deletions. `duplicate_scenes` (unfinished) drops its pending recommendations on each run and recreates them with new ids. Treat a `404` on a recommendation you hold as "gone", and re-read a recommendation before acting on it.
 
 Errors: `400 invalid_since`, `400 invalid_cursor`.
 
 ### `GET /recommendations/{id}`
 
 ```json
-{"recommendation": <Recommendation>, "preview": <Preview> | null}
+{"recommendation": <Recommendation>, "preview": <Preview> | null, "preview_error": {"code": "not_found", "message": "..."} | null}
 ```
 
-For a pending, reviewable recommendation, `preview` is the plan accepting it would apply now, with the suggested option. Otherwise it is `null`. Errors: `404 not_found`, `403 hidden_type`, `403 scene_excluded`, and any preview error listed below.
+For a pending, reviewable recommendation, `preview` is the plan accepting it would apply now, with the suggested option. Otherwise it is `null`. When the plan can't be built (for example, the scene is gone from Stash), `preview` is `null` and `preview_error` carries the error's `code` and `message`; the recommendation itself is still returned, so it can be dismissed. Errors: `404 not_found`, `403 hidden_type`, `403 scene_excluded`.
 
 ### `POST /recommendations/{id}/preview`
 
@@ -223,11 +225,11 @@ Errors:
 {"reason": "not a duplicate", "permanent": false}
 ```
 
-Both fields are optional. A dismissed target is not recommended again by later runs; with `permanent: true` that also holds after its data changes. Returns `{"recommendation": <Recommendation>}`. Dismissing an already dismissed recommendation is a no-op. A resolved one gets `409 not_pending`.
+Both fields are optional. A dismissed target is not recommended again by later runs; with `permanent: true` that also holds after its data changes. Returns `{"recommendation": <Recommendation>}`. Dismissing an already dismissed recommendation is a no-op. A resolved one gets `409 not_pending`, and one naming an excluded scene gets `403 scene_excluded`.
 
 ## Apply log
 
-Every accept is logged before its first write, with the plan, the state it replaced, and each step that ran.
+Every accept is logged before its first write, with the plan, the state it replaced, and each step that ran. The log is an audit record: unlike the recommendation list, it is not filtered by hidden types or the exclusion list.
 
 ### `GET /apply-log?since=&type=&limit=`
 

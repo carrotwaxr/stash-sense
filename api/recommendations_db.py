@@ -19,8 +19,6 @@ from curation_settings import scene_exclusion_sql
 
 SCHEMA_VERSION = 11
 
-# Review framework (#127): one row per apply or revert, and the user's
-# corrections to suggestions. Append-only; reads are by recency or by rec.
 # v11 (#126 driver API): a job's result summary, and the index behind the
 # recommendations change feed (ORDER BY updated_at, id with a keyset cursor).
 def _apply_driver_schema(conn: sqlite3.Connection) -> None:
@@ -30,6 +28,9 @@ def _apply_driver_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE job_queue ADD COLUMN result JSON")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rec_updated ON recommendations(updated_at, id)")
 
+
+# Review framework (#127): one row per apply or revert, and the user's
+# corrections to suggestions. Append-only; reads are by recency or by rec.
 REVIEW_TABLES_SQL = """
     CREATE TABLE IF NOT EXISTS apply_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -683,10 +684,15 @@ class RecommendationsDB:
         after: the (updated_at, id) of the last row a caller saw; rows strictly after it.
         Every status or details change bumps updated_at, so a caller that keeps the
         last (updated_at, id) sees each later change once. updated_at has one-second
-        resolution, so rows from the current second are held back: a cursor never
-        points into a second that can still gain rows below it. Uses idx_rec_updated.
+        resolution and is stamped when a statement runs, not when it commits, so rows
+        from the current and previous second are held back: a cursor never points into
+        a second that can still gain rows below it, unless a write stays uncommitted
+        for over a second. Uses idx_rec_updated.
+
+        Rows deleted outright (duplicate_scenes drops and recreates its pending rows)
+        leave no trace here; callers see a 404 when they read them.
         """
-        query = "SELECT * FROM recommendations WHERE updated_at < datetime('now')"
+        query = "SELECT * FROM recommendations WHERE updated_at < datetime('now', '-1 second')"
         params: list = []
         if type:
             query += " AND type = ?"
