@@ -1047,6 +1047,28 @@ class StashClientUnified:
         data = await self._execute(query, {"filter": filter_input, "scene_filter": scene_filter})
         return data["findScenes"]["scenes"], data["findScenes"]["count"]
 
+    async def get_scene_files_page(self, page: int, per_page: int = 500) -> tuple[list[dict], int]:
+        """One page of scenes (oldest id first) with their files' paths, sizes, durations and hashes.
+
+        Returns (scenes, total_count). For the content index (#129).
+        """
+        query = """
+        query SceneFiles($filter: FindFilterType) {
+          findScenes(filter: $filter) {
+            count
+            scenes {
+              id
+              created_at
+              files { id path size duration fingerprints { type value } }
+            }
+          }
+        }
+        """
+        data = await self._execute(
+            query, {"filter": {"page": page, "per_page": per_page, "sort": "id", "direction": "ASC"}}
+        )
+        return data["findScenes"]["scenes"], data["findScenes"]["count"]
+
     async def get_scene_stream_url(self, scene_id: str) -> Optional[str]:
         """Get the stream URL for a scene."""
         query = """

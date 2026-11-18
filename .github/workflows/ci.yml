@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - run: pip install ruff==0.15.12
       - run: ruff check .
         working-directory: api
@@ -32,10 +32,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.ci.txt
       - run: pip install -r requirements.ci.txt
+      # ffmpeg with the chromaprint muxer runs the content index acceptance tests (#129); Ubuntu 24.04's build is the
+      # one in the image
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: python -m pytest tests/ -m "not heavy" -v --tb=short
         working-directory: api
 
@@ -46,7 +49,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - run: pip install pip-audit
       - name: Audit CI dependencies
         run: pip-audit -r requirements.ci.txt

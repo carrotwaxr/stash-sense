@@ -134,6 +134,17 @@ class FakeStash:
         return [self._render(s) for s in sorted(self.scenes.values(), key=lambda s: int(s["id"]))
                 if str(performer_id) in s["performer_ids"]]
 
+    async def get_scene_files_page(self, page: int, per_page: int = 500) -> tuple[list[dict], int]:
+        """findScenes sorted by id, paged from 1: a scene's files primary first, the count of every scene."""
+        self._maybe_fail("get_scene_files_page")
+        ordered = sorted(self.scenes.values(), key=lambda s: int(s["id"]))
+        chunk = ordered[(page - 1) * per_page: page * per_page]
+        return [copy.deepcopy({
+            "id": s["id"], "created_at": s.get("created_at") or f"2026-01-01T00:00:{int(s['id']) % 60:02d}Z",
+            "files": [{k: self.files[f][k] for k in ("id", "path", "size", "duration", "fingerprints")}
+                      for f in s["file_ids"]],
+        }) for s in chunk], len(ordered)
+
     async def get_plugin_configuration(self, plugin_id: str) -> dict:
         self._maybe_fail("get_plugin_configuration")
         return copy.deepcopy(self.plugin_config.get(plugin_id) or {})

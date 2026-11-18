@@ -13,9 +13,11 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 
-from . import AUDIO_ALGO, AUDIO_ALGO_VERSION, index as fpindex
+from . import AUDIO_ALGO, AUDIO_ALGO_VERSION
+from . import index as fpindex
 from .store import ContentFpStore
 
 log = logging.getLogger("content_fingerprint")
@@ -26,7 +28,10 @@ def overlaps_for(fid, fp, idx, fps, min_overlap_s=20.0, max_ber=0.25, min_votes=
     (``fid`` itself and the files in ``exclude`` skipped)."""
     out = []
     min_windows = max(3, int(round(min_overlap_s / fpindex.ITEM_SECONDS / 32)))
-    for other, off, _votes in fpindex.candidates(idx, fp, min_votes=min_votes, exclude={fid} | set(exclude or ())):
+    skip = exclude if exclude is not None else ()     # not copied: the job passes a set of the whole library
+    for other, off, _votes in fpindex.candidates(idx, fp, min_votes=min_votes):
+        if other == fid or other in skip:
+            continue
         ofp = fps.get(other)
         if ofp is None:
             continue
@@ -35,6 +40,53 @@ def overlaps_for(fid, fp, idx, fps, min_overlap_s=20.0, max_ber=0.25, min_votes=
             s = fpindex.ITEM_SECONDS
             out.append((fid, other, round(a0 * s, 2), round(a1 * s, 2), round(b0 * s, 2), round(b1 * s, 2), round(ber, 4)))
     return out
+
+
+class StoreFingerprints:
+    """``overlaps_for``'s ``fps`` read from the store one at a time, so a full-library pass doesn't hold every
+    fingerprint in memory."""
+
+    def __init__(self, store):
+        self.store = store
+
+    def get(self, fid):
+        return self.store.get_audio(fid, AUDIO_ALGO, AUDIO_ALGO_VERSION)
+
+
+def index_meta(path):
+    """What the index at ``path`` was built from ({n_files, id_sum, algo_version}), or None when there is none."""
+    try:
+        with open(os.path.join(path, "meta.json")) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def build_index(store, path, stride=4, max_files_per_value=50):
+    """Rebuild the index at ``path`` from every ok fingerprint in ``store``; the old index stays in place until the
+    new one is complete. Returns the loaded (memory-mapped) index."""
+    n = id_sum = 0
+
+    def entries():
+        nonlocal n, id_sum
+        for entry in store.iter_audio(AUDIO_ALGO, AUDIO_ALGO_VERSION):
+            n += 1
+            id_sum += entry[0]
+            yield entry
+
+    idx = fpindex.build(entries(), stride=stride, max_files_per_value=max_files_per_value)
+    tmp, old = path + ".new", path + ".old"
+    for d in (tmp, old):
+        shutil.rmtree(d, ignore_errors=True)
+    idx.save(tmp)
+    with open(os.path.join(tmp, "meta.json"), "w") as fh:
+        json.dump({"n_files": n, "id_sum": id_sum, "n_entries": len(idx), "algo_version": AUDIO_ALGO_VERSION}, fh)
+    del idx
+    if os.path.exists(path):
+        os.rename(path, old)
+    os.rename(tmp, path)
+    shutil.rmtree(old, ignore_errors=True)
+    return fpindex.Index.load(path)
 
 
 def _union(spans):

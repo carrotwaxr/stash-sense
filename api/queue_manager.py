@@ -312,6 +312,9 @@ class QueueManager:
             return FingerprintGenerationJob()
         if type_id == "database_update":
             return DatabaseUpdateJob()
+        if type_id == "content_fingerprint":
+            from jobs.content_fingerprint_job import ContentFingerprintJob
+            return ContentFingerprintJob()
         return AnalysisJob(type_id)
 
     def _check_schedules(self):
