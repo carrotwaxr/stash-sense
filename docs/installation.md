@@ -132,7 +132,7 @@ Add the Stash Sense plugin source in Stash:
 
 ## Step 4: Download Database and Models
 
-Navigate to **`/plugins/stash-sense`** in your Stash UI to open the Stash Sense dashboard, then go to the **Settings** tab.
+Click **Stash Sense** in Stash's top navigation bar (or go to **`/plugins/stash-sense`**) to open the Stash Sense dashboard, then go to the **Settings** tab.
 
 ### Download the Face Recognition Database
 
