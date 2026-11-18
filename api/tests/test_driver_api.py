@@ -526,3 +526,91 @@ def test_dismiss_refuses_excluded_scene(world, monkeypatch):
     r = client.post(f"{BASE}/recommendations/{rec_id}/dismiss")
     assert r.status_code == 403 and r.json()["error"]["code"] == "scene_excluded"
     assert db.get_recommendation(rec_id).status == "pending"
+
+
+# ---------------- split result (#131) ----------------
+
+SPLIT = {"scene_id": "7", "file_id": "70", "oshash": "abc", "size": 1000, "duration": 3000.0,
+         "ranges": [{"start": 0.0, "end": 1500.0}, {"start": 1500.0, "end": 3000.0}], "cuts": [1500.0]}
+RESULT = {"status": "applied", "cut_scene_ids": ["501", "502"], "strategy": "reencode", "message": ""}
+
+
+def _accepted_split(db, store, *, split=True):
+    """A recommendation resolved the way an accepted split plan resolves it (task 8)."""
+    rec_id = db.create_recommendation(type="scene_duplicates", target_type="scene", target_id="7", details={})
+    accept_id = store.begin(action="apply", rec_id=rec_id, rec_type="scene_duplicates", target_type="scene",
+                            target_id="7", option={}, plan={}, plan_token="t", prior_state={})
+    store.finish(accept_id, status="applied", result={"steps": []})
+    db.resolve_recommendation(rec_id, action="applied", details={
+        "apply_log_id": accept_id, "option": {}, **({"split": SPLIT} if split else {})})
+    _age_recs(db)
+    return rec_id, accept_id
+
+
+def _split_entries(store):
+    return [e for e in store.list(ascending=True) if e["action"] == "split_result"]
+
+
+def test_split_result_records_and_bumps_feed(world):
+    client, db, *_ = world
+    store = ReviewStore(db.db_path)
+    rec_id, accept_id = _accepted_split(db, store)
+    before = db.get_recommendation(rec_id)
+    r = client.post(f"{BASE}/recommendations/{rec_id}/split-result", json=RESULT)
+    assert r.status_code == 200 and set(r.json()) == {"recommendation"}
+    rec = r.json()["recommendation"]
+    assert set(rec) == REC_KEYS and rec["status"] == "resolved"
+    assert rec["resolution"]["action"] == "applied"
+    details = rec["resolution"]["details"]
+    assert details["split"] == SPLIT and details["apply_log_id"] == accept_id
+    assert {k: v for k, v in details["split_result"].items() if k != "reported_at"} == RESULT
+    assert details["split_result"]["reported_at"]
+    assert rec["updated_at"] > driver_router._ts(before.updated_at)
+    assert db.get_recommendation(rec_id).resolved_at == before.resolved_at
+    (entry,) = _split_entries(store)
+    assert entry["status"] == "applied" and entry["rec_id"] == rec_id
+    assert entry["result"]["accept_log_id"] == accept_id
+
+
+def test_split_result_refused_unless_accepted_split(world):
+    client, db, *_ = world
+    store = ReviewStore(db.db_path)
+    pending = db.create_recommendation(type="scene_duplicates", target_type="scene", target_id="8", details={})
+    r = client.post(f"{BASE}/recommendations/{pending}/split-result", json=RESULT)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "not_accepted"
+    whole, _ = _accepted_split(db, store, split=False)
+    r = client.post(f"{BASE}/recommendations/{whole}/split-result", json=RESULT)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "no_split"
+    assert client.post(f"{BASE}/recommendations/999/split-result", json=RESULT).status_code == 404
+    assert _split_entries(store) == []
+
+
+def test_split_result_is_idempotent(world):
+    client, db, *_ = world
+    store = ReviewStore(db.db_path)
+    rec_id, _ = _accepted_split(db, store)
+    url = f"{BASE}/recommendations/{rec_id}/split-result"
+    assert client.post(url, json=RESULT).status_code == 200
+    assert client.post(url, json=RESULT).status_code == 200
+    assert len(_split_entries(store)) == 1
+    other = {**RESULT, "status": "failed", "cut_scene_ids": [], "message": "ffmpeg exited 1"}
+    r = client.post(url, json=other)
+    assert r.status_code == 200
+    stored = r.json()["recommendation"]["resolution"]["details"]["split_result"]
+    assert {k: v for k, v in stored.items() if k != "reported_at"} == other
+    assert len(_split_entries(store)) == 2
+
+
+@pytest.mark.parametrize("body", [
+    {"status": "done"},
+    {},
+    {"status": "applied", "bogus": 1},
+    {"status": "applied", "cut_scene_ids": "501"},
+])
+def test_split_result_validation(world, body):
+    client, db, *_ = world
+    store = ReviewStore(db.db_path)
+    rec_id, _ = _accepted_split(db, store)
+    r = client.post(f"{BASE}/recommendations/{rec_id}/split-result", json=body)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_request"
+    assert _split_entries(store) == []

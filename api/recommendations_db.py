@@ -845,6 +845,22 @@ class RecommendationsDB:
             )
             return cursor.rowcount > 0
 
+    def update_resolution_details(self, rec_id: int, details: dict) -> bool:
+        """Replace a resolved recommendation's resolution details and bump updated_at.
+
+        Leaves status, resolution_action and resolved_at alone. Returns True if updated.
+        """
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE recommendations
+                SET resolution_details = ?, updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (json.dumps(details), rec_id)
+            )
+            return cursor.rowcount > 0
+
     def dismiss_recommendation(self, rec_id: int, reason: Optional[str] = None, permanent: bool = False) -> bool:
         """Dismiss a recommendation and add to dismissed_targets."""
         with self._connection() as conn:

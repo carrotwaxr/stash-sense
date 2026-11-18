@@ -288,6 +288,13 @@ class DismissRequest(_Strict):
     permanent: bool = False
 
 
+class SplitResultBody(_Strict):
+    status: Literal["applied", "failed"]
+    cut_scene_ids: list[str] = Field(default_factory=list)
+    strategy: str = ""
+    message: str = ""
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -485,6 +492,48 @@ async def dismiss_recommendation(rec_id: int, req: DismissRequest | None = None)
         db.dismiss_recommendation(rec_id, reason=req.reason if req else None,
                                   permanent=bool(req and req.permanent))
     return {"recommendation": _rec(db.get_recommendation(rec_id))}
+
+
+@router.post("/recommendations/{rec_id}/split-result")
+async def report_split_result(rec_id: int, req: SplitResultBody):
+    """Record what an external tool did with an accepted split.
+
+    Only a resolved recommendation whose resolution details hold `split` accepts a
+    result; a pending one gets 409 `not_accepted`, one without a split 409 `no_split`.
+    The result is stored at `resolution.details.split_result` (with `reported_at`),
+    logged in the apply log as a `split_result` entry, and moves the recommendation's
+    `updated_at` so the feed shows it. Reporting the same result again is a no-op;
+    a different one replaces it and is logged again.
+    """
+    rec = _visible_rec(rec_id)
+    await _check_rec_exclusion(rec)
+    if rec.status != "resolved":
+        raise DriverError(409, "not_accepted", f"Recommendation {rec_id} has not been accepted")
+    details = dict(rec.resolution_details or {})
+    if not details.get("split"):
+        raise DriverError(409, "no_split", f"Recommendation {rec_id} was accepted without a split")
+    body = req.model_dump()
+    previous = details.get("split_result")
+    if previous and {k: v for k, v in previous.items() if k != "reported_at"} == body:
+        return {"recommendation": _rec(rec)}
+
+    svc = _service()
+    entry_id = svc.store.begin(
+        action="split_result", rec_id=rec.id, rec_type=rec.type,
+        target_type=rec.target_type, target_id=rec.target_id, option=None,
+        plan={"split_result": body}, plan_token=None,
+        prior_state={"split_result": previous},
+    )
+    stored = {**body, "reported_at": datetime.now(UTC).isoformat(timespec="seconds")}
+    details["split_result"] = stored
+    try:
+        svc.rec_db.update_resolution_details(rec.id, details)
+    except Exception as e:
+        svc.store.finish(entry_id, status="failed", result={}, error=str(e))
+        raise
+    svc.store.finish(entry_id, status="applied",
+                     result={"accept_log_id": details.get("apply_log_id"), **stored})
+    return {"recommendation": _rec(svc.rec_db.get_recommendation(rec.id))}
 
 
 # ---------------- apply log ----------------

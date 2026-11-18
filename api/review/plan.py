@@ -107,6 +107,19 @@ class SceneMerge:
 
 
 @dataclass
+class SplitHandoff:
+    """An accepted split for an external tool (stash-curator #111) to execute; stash-sense writes nothing for it."""
+
+    scene_id: str
+    file_id: str
+    oshash: str
+    size: int
+    duration: float
+    ranges: list[dict]  # [{"start": s, "end": s}], one per output scene, contiguous except keep_from/keep_until trims
+    cuts: list[float]
+
+
+@dataclass
 class Plan:
     rec_id: int
     rec_type: str
@@ -117,6 +130,8 @@ class Plan:
     primary_file: PrimaryFileChange | None = None
     # Runs first; delete FileRefs name the scene a file is on before the merge.
     merge: SceneMerge | None = None
+    # Handed to an external tool on accept; the executor records it and writes nothing.
+    split: SplitHandoff | None = None
 
     @property
     def bytes_reclaimed(self) -> int:
@@ -128,7 +143,7 @@ class Plan:
 
     @property
     def is_empty(self) -> bool:
-        return not (self.field_changes or self.delete_files or self.primary_file or self.merge)
+        return not (self.field_changes or self.delete_files or self.primary_file or self.merge or self.split)
 
     def token(self) -> str:
         """Fingerprint of what this plan would do, given the state it was built from.
@@ -153,6 +168,8 @@ class Plan:
                 "sources": self.merge.sources,
                 "values": self.merge.values,
             }
+        if self.split:  # likewise: plans without a split keep their old tokens
+            payload["split"] = asdict(self.split)
         blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(blob.encode()).hexdigest()[:24]
 
@@ -173,6 +190,7 @@ class Plan:
             delete_files=[FileRef(**f) for f in d.get("delete_files") or []],
             primary_file=PrimaryFileChange(**d["primary_file"]) if d.get("primary_file") else None,
             merge=SceneMerge(**d["merge"]) if d.get("merge") else None,
+            split=SplitHandoff(**d["split"]) if d.get("split") else None,
         )
 
 

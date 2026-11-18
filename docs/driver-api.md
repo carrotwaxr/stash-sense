@@ -227,6 +227,30 @@ Errors:
 
 Both fields are optional. A dismissed target is not recommended again by later runs; with `permanent: true` that also holds after its data changes. Returns `{"recommendation": <Recommendation>}`. Dismissing an already dismissed recommendation is a no-op. A resolved one gets `409 not_pending`, and one naming an excluded scene gets `403 scene_excluded`.
 
+### `POST /recommendations/{id}/split-result`
+
+```json
+{"status": "applied", "cut_scene_ids": ["501", "502"], "strategy": "reencode", "message": ""}
+```
+
+For a review plan that hands a split to an external tool. Accepting such a plan writes nothing to Stash: the accepted recommendation's `resolution.details` carries the split for the tool to execute, and the tool reports back here.
+
+`resolution.details.split`, when present:
+
+```json
+{"scene_id": "7", "file_id": "70", "oshash": "abc", "size": 1000, "duration": 3000.0,
+ "ranges": [{"start": 0.0, "end": 1500.0}, {"start": 1500.0, "end": 3000.0}],
+ "cuts": [1500.0]}
+```
+
+`ranges` has one entry per output scene, in seconds of the file, contiguous except where the start or end is trimmed. `split: null` (or no `split` key) means the scene is to be left whole, and there is nothing to execute or report.
+
+Body: `status` is `applied` or `failed` (required); `cut_scene_ids` (the scenes the tool created, default `[]`), `strategy` and `message` (default `""`) are optional, and unknown fields are refused with `422 invalid_request`.
+
+Returns `{"recommendation": <Recommendation>}`. The body is stored at `resolution.details.split_result` together with `reported_at` (UTC, ISO 8601), the recommendation's `updated_at` moves forward so the change feed shows it, and the apply log gets an entry with `action: "split_result"` whose `result.accept_log_id` is the accept's entry. Reporting the same result again returns 200 and writes nothing; a different result replaces the stored one and is logged again. `status`, `resolution.action` and `resolved_at` do not change.
+
+Errors: `404 not_found`, `403 hidden_type`, `403 scene_excluded`, `409 not_accepted` (the recommendation is not resolved), `409 no_split` (resolved without `details.split`).
+
 ## Apply log
 
 Every accept is logged before its first write, with the plan, the state it replaced, and each step that ran. The log is an audit record: unlike the recommendation list, it is not filtered by hidden types or the exclusion list.
@@ -268,7 +292,7 @@ Returns `{"entry": <ApplyLogEntry>}`, or `404 not_found`.
 }
 ```
 
-- `action` is `apply`, or `revert` for an undo made in the Stash UI. On a revert, `reverts_id` names the entry it undid, and that entry's `reverted_by` points back.
+- `action` is `apply`, `revert` for an undo made in the Stash UI, or `split_result` for a result an external tool reported for an accepted split. On a revert, `reverts_id` names the entry it undid, and that entry's `reverted_by` points back.
 - `status` is `applying`, `applied` or `failed`. An `applying` entry is still in flight; re-read it with `GET /apply-log/{id}`. Because the feed moves by id, it won't return that entry again.
 - `batch_id` groups entries that a batch accept in the Stash UI applied together.
 
