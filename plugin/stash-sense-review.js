@@ -135,7 +135,90 @@
     return esc(v);
   }
 
-  function evidenceHtml(ev) {
+  const FLAG_LABELS = {
+    supercut_candidate: 'longer cut kept too',
+    upscale_pair: 'upscale + original',
+    held_unhealthy: 'held: no healthy file',
+    tie: 'practically equal',
+  };
+
+  function fmtMbps(bitRate) {
+    return bitRate ? `${(bitRate / 1e6).toFixed(1)} Mbps` : '';
+  }
+
+  function fmtFps(fps) {
+    return fps ? `${Number(fps).toFixed(Number.isInteger(Number(fps)) ? 0 : 2)} fps` : '';
+  }
+
+  function fmtOffset(s) {
+    return s == null ? '' : ` at ${s >= 0 ? '+' : '-'}${Math.abs(s).toFixed(1)} s`;
+  }
+
+  /** One file of a duplicate set: size, codec, resolution, bitrate, fps, duration, health and what the plan does with it. */
+  function dupFileHtml(f, keepIds, deleteIds) {
+    const id = String(f.file_id);
+    const fate = keepIds.has(id) ? '<span class="ss-review-badge ss-review-badge-keep">keep</span>'
+      : deleteIds.has(id) ? '<span class="ss-review-badge ss-review-badge-delete">delete</span>' : '';
+    const unhealthy = f.health && f.health !== 'ok'
+      ? `<span class="ss-review-badge ss-review-badge-warn">${esc(f.health)}</span>` : '';
+    const facts = [
+      SS.formatSize(f.size || 0),
+      f.video_codec ? esc(f.video_codec) : '',
+      f.width ? `${esc(f.width)}×${esc(f.height)}` : '',
+      esc(fmtMbps(f.bit_rate)),
+      esc(fmtFps(f.frame_rate)),
+      f.duration ? SS.formatDuration(f.duration) : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="ss-review-dup-file ${keepIds.has(id) ? 'is-keep' : deleteIds.has(id) ? 'is-delete' : ''}" data-file-id="${esc(f.file_id)}">
+      <div>${fate}${f.is_primary ? '<span class="ss-review-badge">primary</span>' : ''}${unhealthy}</div>
+      <div class="ss-review-path">${esc(f.path)}</div>
+      <div class="ss-review-dup-facts">${facts}</div>
+    </div>`;
+  }
+
+  function dupPairsHtml(ev) {
+    const pairs = ev.pairs || [];
+    if (!pairs.length) return '';
+    const rows = pairs.map(pr => {
+      const e = pr.evidence || {};
+      const sprite = Array.isArray(e.sprite) ? `d85 ${esc(e.sprite[0])} / d80 ${esc(e.sprite[1])}`
+        : (e.sprite && typeof e.sprite === 'object' ? `d85 ${esc(e.sprite.d85)} / d80 ${esc(e.sprite.d80)}` : '');
+      const audio = e.ber == null ? '' : `${esc(Number(e.ber).toFixed(2))}${esc(fmtOffset(e.ber_offset_s))}`;
+      const kf = e.keyframe_fraction == null ? '' : `${esc(Math.round(e.keyframe_fraction * 100))}%${esc(fmtOffset(e.keyframe_offset_s))}`;
+      const src = Array.isArray(pr.sources) ? pr.sources.join(', ') : (pr.sources || '');
+      return `<tr><td>#${esc(pr.scene_a)} ↔ #${esc(pr.scene_b)}</td><td>${esc(pr.cls)}</td>
+        <td>${audio}</td><td>${sprite}</td><td>${kf}</td><td>${esc(src)}</td></tr>`;
+    }).join('');
+    return `<table class="ss-review-ev-files ss-review-dup-pairs"><thead><tr>
+      <th>Scenes</th><th>Class</th><th>Audio BER</th><th>Sprites</th><th>Keyframes</th><th>Found by</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  }
+
+  /** A duplicate set: one column per scene, the keeper reason, flags and the evidence per pair. */
+  function dupEvidenceHtml(ev, p) {
+    const keepIds = new Set((p.plan.keep_files || []).map(f => String(f.file_id)));
+    const deleteIds = new Set((p.plan.delete_files || []).map(f => String(f.file_id)));
+    const cols = ev.scenes.map(s => {
+      const badges = [
+        s.play_count ? `<span class="ss-review-badge">${esc(s.play_count)} plays</span>` : '',
+        s.o_counter ? `<span class="ss-review-badge">O ${esc(s.o_counter)}</span>` : '',
+        s.rating100 != null ? `<span class="ss-review-badge">rated ${esc(s.rating100)}</span>` : '',
+        s.organized ? '<span class="ss-review-badge ss-review-badge-ok">organized</span>' : '',
+      ].join('');
+      return `<div class="ss-review-dup-scene">
+        <div class="ss-review-ev-scene"><a href="/scenes/${esc(s.id)}" target="_blank">#${esc(s.id)}</a> ${esc(s.title || '(untitled)')}</div>
+        <div class="ss-review-dup-meta">${s.date ? `${esc(s.date)} ` : ''}${badges}</div>
+        ${(s.files || []).map(f => dupFileHtml(f, keepIds, deleteIds)).join('')}
+      </div>`;
+    }).join('');
+    const flags = (ev.flags || []).map(f => `<span class="ss-review-badge ss-review-badge-warn">${esc(FLAG_LABELS[f] || f)}</span>`).join('');
+    return `<div class="ss-review-dup-scenes">${cols}</div>
+      ${ev.keeper_reason ? `<div class="ss-review-reason">${esc(ev.keeper_reason)}${flags ? `<div class="ss-review-flags">${flags}</div>` : ''}</div>` : ''}
+      ${dupPairsHtml(ev)}`;
+  }
+
+  function evidenceHtml(ev, p) {
+    if (Array.isArray(ev.scenes) && p) return dupEvidenceHtml(ev, p);
     const parts = [];
     if (ev.scene) {
       parts.push(`<div class="ss-review-ev-scene">Scene <a href="/scenes/${esc(ev.scene.id)}" target="_blank">#${esc(ev.scene.id)}</a> ${esc(ev.scene.title)}</div>`);
@@ -166,12 +249,21 @@
       rows.push(`<tr><td>primary file</td><td class="ss-review-before">#${esc(plan.primary_file.before)}</td>
         <td>→</td><td class="ss-review-after">#${esc(plan.primary_file.after)}</td></tr>`);
     }
+    let mergeHtml = '';
+    if (plan.merge) {
+      const m = plan.merge;
+      const vals = Object.entries(m.values || {}).map(([k, v]) =>
+        `<tr><td>${esc(k)}</td><td class="ss-review-after">${fmtValue(v)}</td></tr>`).join('');
+      mergeHtml = `<div class="ss-review-merge">Merge scenes ${(m.sources || []).map(i => `#${esc(i)}`).join(', ')} into #${esc(m.destination)}
+        ${vals ? `<table class="ss-review-changes"><tbody>${vals}</tbody></table>` : ''}</div>`;
+    }
     return `
+      ${mergeHtml}
       ${rows.length ? `<table class="ss-review-changes"><tbody>${rows.join('')}</tbody></table>` : ''}
       ${plan.keep_files.length ? `<div class="ss-review-keep"><strong>Keep</strong>${fileListHtml(plan.keep_files)}</div>` : ''}
       ${plan.delete_files.length ? `<div class="ss-review-delete"><strong>Delete</strong>${fileListHtml(plan.delete_files)}
         <div class="ss-review-reclaim">Reclaims ${SS.formatSize(plan.bytes_reclaimed)}</div></div>` : ''}
-      ${!rows.length && !plan.delete_files.length ? '<p class="ss-review-noop">No change: accepting only resolves it.</p>' : ''}
+      ${!rows.length && !plan.delete_files.length && !plan.merge ? '<p class="ss-review-noop">No change: accepting only resolves it.</p>' : ''}
     `;
   }
 
@@ -192,9 +284,24 @@
   async function loadMedia(card, ev) {
     const strip = card.querySelector('.ss-review-media');
     if (!strip) return;
-    for (const s of ev.stills || []) {
+    let stills = ev.stills || [];
+    if (Array.isArray(ev.scenes)) {
+      // Side by side: the n-th file's frame of every scene forms one row.
+      const per = ev.scenes.map(sc => stills.filter(s => String(s.scene_id) === String(sc.id)));
+      const known = new Set(per.flat());
+      const rest = stills.filter(s => !known.has(s));
+      stills = [];
+      for (let i = 0; per.some(g => i < g.length); i++) {
+        for (const g of per) if (i < g.length) stills.push(g[i]);
+      }
+      stills.push(...rest);
+      strip.classList.add('ss-review-media-dup');
+    }
+    for (const s of stills) {
       const fig = SS.createElement('figure', { className: 'ss-review-still' });
-      fig.innerHTML = `<div class="ss-review-still-ph">…</div><figcaption>file #${esc(s.file_id)} @ ${SS.formatDuration(s.t)}</figcaption>`;
+      const cap = Array.isArray(ev.scenes) ? `scene #${esc(s.scene_id)} @ ${SS.formatDuration(s.t)}`
+        : `file #${esc(s.file_id)} @ ${SS.formatDuration(s.t)}`;
+      fig.innerHTML = `<div class="ss-review-still-ph">…</div><figcaption>${cap}</figcaption>`;
       strip.appendChild(fig);
       ReviewAPI.still({ scene_id: s.scene_id, file_id: s.file_id, t: s.t, width: 320 })
         .then(uri => { fig.querySelector('.ss-review-still-ph').outerHTML = `<img src="${uri}" alt="">`; })
@@ -230,7 +337,7 @@
         ${p.high_confidence ? '<span class="ss-review-badge ss-review-badge-ok">high confidence</span>' : ''}
       </div>
       <div class="ss-review-body">
-        <section class="ss-review-evidence"><h4>Evidence</h4>${evidenceHtml(p.evidence)}<div class="ss-review-media"></div></section>
+        <section class="ss-review-evidence"><h4>Evidence</h4>${evidenceHtml(p.evidence, p)}<div class="ss-review-media"></div></section>
         <section class="ss-review-outcome"><h4>Outcome</h4>${outcomeHtml(p)}</section>
       </div>
       ${p.choices.length ? `<div class="ss-review-choices">${choicesHtml(p)}</div>` : ''}
