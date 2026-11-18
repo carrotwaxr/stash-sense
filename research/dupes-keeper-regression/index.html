@@ -1051,10 +1051,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#disagreements-66" class="md-nav__link">
+  <a href="#disagreements-41" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Disagreements (66)
+        Disagreements (41)
       
     </span>
   </a>
@@ -1062,10 +1062,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#superset-62" class="md-nav__link">
+  <a href="#superset-55" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Superset (62)
+        Superset (55)
       
     </span>
   </a>
@@ -1077,6 +1077,17 @@
     <span class="md-ellipsis">
       
         Ties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferred
       
     </span>
   </a>
@@ -1110,10 +1121,11 @@
 <li><strong>agree</strong>: duplicate pairs: the suggestion keeps exactly the file the owner kept. Contained pairs: the suggestion keeps the short file only when the owner did (<code>keep_short</code>), and drops it when the owner chose <code>long_better</code>.</li>
 <li><strong>superset</strong>: duplicate pairs only: the suggestion keeps the owner's file plus the other one (an upscale pair or a longer cut). Nothing the owner wanted is deleted, so this counts as agreement.</li>
 <li><strong>tie</strong>: the suggestion flagged the pair as practically equal and kept the other file. Either is right, so ties are left out of the agreement rate.</li>
+<li><strong>deferred</strong>: contained pairs only: the suggestion says to split the longer file first (<code>split_first</code>: the long file is at least 1.5x the short one, so it probably holds several scenes) and keeps both files, while the owner deleted the short one. The owner's picks predate splitting (#131), so the suggestion defers instead of disagreeing. Like ties, deferred records are left out of the agreement rate. When the owner kept the short file, a <code>split_first</code> suggestion is an <strong>agree</strong>.</li>
 <li><strong>disagree</strong>: everything else. Every one is listed below with the suggestion's reason.</li>
 </ul>
 <p>For contained pairs the short side is the one with the larger cover. The keeper decides by duration; where the two differ the reason is marked "short side by duration differs from cover".</p>
-<p>Agreement is (agree + superset) / (records - tie).</p>
+<p>Agreement is (agree + superset) / (records - tie - deferred).</p>
 <h2 id="totals">Totals</h2>
 <table>
 <thead>
@@ -1123,6 +1135,7 @@
 <th>agree</th>
 <th>superset</th>
 <th>tie</th>
+<th>deferred</th>
 <th>disagree</th>
 <th>Agreement</th>
 </tr>
@@ -1131,33 +1144,36 @@
 <tr>
 <td>duplicate</td>
 <td>385</td>
-<td>271</td>
-<td>62</td>
+<td>278</td>
+<td>55</td>
 <td>16</td>
+<td>0</td>
 <td>36</td>
 <td>333/369 (90.2%)</td>
 </tr>
 <tr>
 <td>contained</td>
 <td>311</td>
-<td>281</td>
+<td>193</td>
 <td>0</td>
 <td>0</td>
-<td>30</td>
-<td>281/311 (90.4%)</td>
+<td>113</td>
+<td>5</td>
+<td>193/198 (97.5%)</td>
 </tr>
 <tr>
 <td>all</td>
 <td>696</td>
-<td>552</td>
-<td>62</td>
+<td>471</td>
+<td>55</td>
 <td>16</td>
-<td>66</td>
-<td>614/680 (90.3%)</td>
+<td>113</td>
+<td>41</td>
+<td>526/567 (92.8%)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="disagreements-66">Disagreements (66)</h2>
+<h2 id="disagreements-41">Disagreements (41)</h2>
 <table>
 <thead>
 <tr>
@@ -1172,136 +1188,10 @@
 </thead>
 <tbody>
 <tr>
-<td>014e10f30133</td>
-<td>contained</td>
-<td>h264 720x480 1.3 Mbps 29.97 fps 20.4 min mp4</td>
-<td>h264 720x480 1.3 Mbps 29.97 fps 31.5 min mp4</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>0dcd070e94a6</td>
-<td>contained</td>
-<td>hevc 1920x1080 2.2 Mbps 23.98 fps 114.4 min mp4</td>
-<td>h264 720x406 1.2 Mbps 29.97 fps 19.3 min mp4</td>
-<td>delete short (B)</td>
-<td>keep short (B) too</td>
-<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
-</tr>
-<tr>
-<td>0fa8965bfcaa</td>
-<td>contained</td>
-<td>mpeg4 576x320 0.8 Mbps 29.97 fps 18.3 min avi</td>
-<td>mpeg4 512x384 1.0 Mbps 29.97 fps 67.0 min avi</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>194a5b4748eb</td>
-<td>contained</td>
-<td>h264 762x576 2.7 Mbps 25 fps 14.0 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>1dc9856838f5</td>
-<td>contained</td>
-<td>h264 720x540 2.8 Mbps 59.94 fps 25.4 min mkv</td>
-<td>hevc 1444x1080 5.5 Mbps 59.94 fps 38.5 min mkv</td>
-<td>delete short (A)</td>
-<td>keep short (A) too</td>
-<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
-</tr>
-<tr>
-<td>2f3e24ac1325</td>
-<td>contained</td>
-<td>h264 762x576 2.4 Mbps 25 fps 15.0 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>3e8be0f91995</td>
-<td>contained</td>
-<td>av1 1920x1080 9.5 Mbps 30 fps 27.9 min mp4</td>
-<td>h264 360x134 0.5 Mbps 30 fps 136.9 min mp4</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>41b86ac863e7</td>
-<td>contained</td>
-<td>h264 854x354 1.5 Mbps 30 fps 18.2 min mp4</td>
-<td>mpeg4 576x320 1.4 Mbps 29.97 fps 71.7 min avi</td>
-<td>delete short (A)</td>
-<td>keep short (A) too</td>
-<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
-</tr>
-<tr>
-<td>453a26f7b29a</td>
-<td>contained</td>
-<td>h264 762x576 2.4 Mbps 25 fps 8.2 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>5b24f886a73f</td>
-<td>contained</td>
-<td>h264 762x576 2.5 Mbps 25 fps 17.5 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>62788e79b95f</td>
-<td>contained</td>
-<td>msmpeg4v3 512x384 0.9 Mbps 29.97 fps 23.7 min avi</td>
-<td>msmpeg4v3 512x384 1.0 Mbps 29.97 fps 95.0 min avi</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>64d15510fa2d</td>
-<td>contained</td>
-<td>mpeg4 720x416 2.0 Mbps 29.97 fps 8.1 min avi</td>
-<td>mpeg4 720x416 2.3 Mbps 29.97 fps 86.8 min avi</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
 <td>6dbf3af76a1d</td>
 <td>contained</td>
 <td>h264 640x480 1.5 Mbps 30 fps 12.9 min mp4</td>
 <td>h264 640x480 1.5 Mbps 30 fps 16.9 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>849a9e36c4b2</td>
-<td>contained</td>
-<td>h264 762x576 2.6 Mbps 25 fps 13.4 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>883f88e53bfa</td>
-<td>contained</td>
-<td>h264 554x416 0.4 Mbps 29.97 fps 17.6 min mp4</td>
-<td>h264 640x360 0.4 Mbps 30 fps 80.1 min mp4</td>
 <td>keep short (A) too</td>
 <td>delete short (A)</td>
 <td>Its content is inside the longer file at equal or better quality.</td>
@@ -1325,15 +1215,6 @@
 <td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
 </tr>
 <tr>
-<td>8ee6148c93f6</td>
-<td>contained</td>
-<td>h264 640x360 1.1 Mbps 25 fps 22.4 min mp4</td>
-<td>h264 640x360 1.1 Mbps 25 fps 53.4 min mp4</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
 <td>96e52fdef3c7</td>
 <td>contained</td>
 <td>mpeg4 480x360 1.6 Mbps 29.97 fps 12.8 min mkv</td>
@@ -1343,100 +1224,10 @@
 <td>Its content is inside the longer file at equal or better quality.</td>
 </tr>
 <tr>
-<td>a5573d8ce9bd</td>
-<td>contained</td>
-<td>mpeg4 512x384 1.0 Mbps 29.97 fps 93.0 min avi</td>
-<td>av1 1280x960 1.2 Mbps 30 fps 51.2 min mp4</td>
-<td>keep short (B) too</td>
-<td>delete short (B)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>a98e625ed674</td>
-<td>contained</td>
-<td>h264 762x576 2.4 Mbps 25 fps 7.8 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>af2cc13eba39</td>
-<td>contained</td>
-<td>mpeg4 512x288 0.9 Mbps 29.97 fps 11.1 min avi</td>
-<td>mpeg4 512x288 1.0 Mbps 29.97 fps 28.6 min avi</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>af686b3ed00b</td>
-<td>contained</td>
-<td>mpeg4 512x384 1.1 Mbps 29.97 fps 14.7 min avi</td>
-<td>mpeg4 512x384 1.2 Mbps 29.97 fps 82.3 min avi</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>b9fbd765afd5</td>
-<td>contained</td>
-<td>h264 720x480 1.5 Mbps 29.97 fps 24.7 min mp4</td>
-<td>h264 720x480 1.3 Mbps 29.97 fps 45.3 min mp4</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
 <td>be37fb664ea0</td>
 <td>contained</td>
 <td>mpeg4 576x320 1.0 Mbps 29.97 fps 48.7 min avi</td>
 <td>mpeg4 512x384 1.0 Mbps 29.97 fps 67.0 min avi</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>d1c4e69498ba</td>
-<td>contained</td>
-<td>h264 720x480 1.5 Mbps 29.97 fps 29.6 min mp4</td>
-<td>h264 720x480 1.3 Mbps 29.97 fps 56.9 min mp4</td>
-<td>keep short (A) too</td>
-<td>delete short (A)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>e0f672f94017</td>
-<td>contained</td>
-<td>h264 706x480 2.2 Mbps 23.98 fps 74.0 min mkv</td>
-<td>h264 706x480 2.3 Mbps 23.98 fps 6.3 min mkv</td>
-<td>keep short (B) too</td>
-<td>delete short (B)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>e1ce79d0a718</td>
-<td>contained</td>
-<td>h264 706x480 2.2 Mbps 23.98 fps 74.0 min mkv</td>
-<td>h264 706x480 2.3 Mbps 23.98 fps 11.7 min mkv</td>
-<td>keep short (B) too</td>
-<td>delete short (B)</td>
-<td>Its content is inside the longer file at equal or better quality.</td>
-</tr>
-<tr>
-<td>ecd063c373e9</td>
-<td>contained</td>
-<td>av1 1920x1080 5.1 Mbps 30 fps 4.2 min mp4</td>
-<td>av1 1920x1080 4.6 Mbps 25 fps 13.7 min mp4</td>
-<td>delete short (A)</td>
-<td>keep short (A) too</td>
-<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
-</tr>
-<tr>
-<td>f3bc79692825</td>
-<td>contained</td>
-<td>h264 762x576 2.4 Mbps 25 fps 9.2 min mkv</td>
-<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
 <td>keep short (A) too</td>
 <td>delete short (A)</td>
 <td>Its content is inside the longer file at equal or better quality.</td>
@@ -1767,7 +1558,7 @@
 </tr>
 </tbody>
 </table>
-<h2 id="superset-62">Superset (62)</h2>
+<h2 id="superset-55">Superset (55)</h2>
 <p>The suggestion keeps the owner's file and one more.</p>
 <table>
 <thead>
@@ -1900,15 +1691,6 @@
 <td>Keeps the best copy: more effective detail (720x480 at 1.3 Mbps beats 480x360 at 1.6 Mbps) The longest file is kept too because it may hold extra content.</td>
 </tr>
 <tr>
-<td>2d5cadcb6fb1</td>
-<td>duplicate</td>
-<td>hevc 1280x960 9.8 Mbps 29.97 fps 32.8 min mp4</td>
-<td>h264 640x480 1.5 Mbps 30 fps 32.8 min mp4</td>
-<td>keep A</td>
-<td>keep B + A</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
-</tr>
-<tr>
 <td>2dfcfdfa1b97</td>
 <td>duplicate</td>
 <td>av1 1920x1080 4.4 Mbps 23.98 fps 31.6 min mp4</td>
@@ -2023,15 +1805,6 @@
 <td>h264 640x480 1.3 Mbps 29.97 fps 20.4 min mp4</td>
 <td>keep A</td>
 <td>keep B + A</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
-</tr>
-<tr>
-<td>60f56cc69f19</td>
-<td>duplicate</td>
-<td>h264 624x480 1.1 Mbps 30 fps 43.2 min mp4</td>
-<td>hevc 1408x1080 8.3 Mbps 59.94 fps 43.3 min mp4</td>
-<td>keep B</td>
-<td>keep A + B</td>
 <td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
 </tr>
 <tr>
@@ -2224,15 +1997,6 @@
 <td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
 </tr>
 <tr>
-<td>c1522804f3b5</td>
-<td>duplicate</td>
-<td>hevc 1280x720 2.0 Mbps 29.97 fps 90.9 min mkv</td>
-<td>mpeg4 608x336 1.0 Mbps 23.98 fps 93.3 min avi</td>
-<td>keep A</td>
-<td>keep B + A</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
-</tr>
-<tr>
 <td>c18cb1f3c046</td>
 <td>duplicate</td>
 <td>av1 1920x1080 2.5 Mbps 30 fps 16.6 min mp4</td>
@@ -2248,15 +2012,6 @@
 <td>h264 720x480 2.0 Mbps 59.94 fps 26.1 min mp4</td>
 <td>keep B</td>
 <td>keep B + A</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
-</tr>
-<tr>
-<td>c2e9f6ad295b</td>
-<td>duplicate</td>
-<td>mpeg4 512x384 1.2 Mbps 29.97 fps 32.0 min avi</td>
-<td>hevc 1400x1080 5.2 Mbps 59.94 fps 32.1 min mp4</td>
-<td>keep B</td>
-<td>keep A + B</td>
 <td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
 </tr>
 <tr>
@@ -2296,15 +2051,6 @@
 <td>Keeps the best copy: more effective detail (1920x1080 at 8.0 Mbps beats 576x320 at 0.8 Mbps) The longest file is kept too because it may hold extra content.</td>
 </tr>
 <tr>
-<td>d91ffc2c2296</td>
-<td>duplicate</td>
-<td>hevc 1420x1080 4.6 Mbps 59.94 fps 28.9 min mp4</td>
-<td>h264 720x480 2.0 Mbps 59.94 fps 28.9 min mkv</td>
-<td>keep A</td>
-<td>keep B + A</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
-</tr>
-<tr>
 <td>e4f1eb173982</td>
 <td>duplicate</td>
 <td>h264 1280x720 1.4 Mbps 24 fps 20.4 min mp4</td>
@@ -2312,15 +2058,6 @@
 <td>keep B</td>
 <td>keep A + B</td>
 <td>Keeps the best copy: more effective detail (1280x720 at 1.4 Mbps beats 1280x720 at 1.3 Mbps) The longest file is kept too because it may hold extra content.</td>
-</tr>
-<tr>
-<td>f6d20ef52e19</td>
-<td>duplicate</td>
-<td>mpeg4 512x400 1.2 Mbps 29.97 fps 32.1 min avi</td>
-<td>hevc 1400x1080 5.2 Mbps 59.94 fps 32.1 min mp4</td>
-<td>keep B</td>
-<td>keep A + B</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
 </tr>
 <tr>
 <td>fc5082343b1c</td>
@@ -2331,19 +2068,12 @@
 <td>keep A + B</td>
 <td>Keeps the best copy: more effective detail (1280x720 at 2.4 Mbps beats 720x480 at 2.2 Mbps) The longest file is kept too because it may hold extra content.</td>
 </tr>
-<tr>
-<td>feb6dc7f9e33</td>
-<td>duplicate</td>
-<td>hevc 1420x1080 4.7 Mbps 59.94 fps 30.1 min mp4</td>
-<td>h264 720x480 2.0 Mbps 59.94 fps 31.2 min mkv</td>
-<td>keep A</td>
-<td>keep B + A</td>
-<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
-</tr>
 </tbody>
 </table>
 <h2 id="ties">Ties</h2>
 <p>16 records were practically equal files.</p>
+<h2 id="deferred">Deferred</h2>
+<p>113 contained records are deferred to splitting (#131): the suggestion keeps both files so the long one can be split first, and the owner had deleted the short one.</p>
 
 
 
