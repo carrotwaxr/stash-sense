@@ -31,6 +31,8 @@ CACHE_SECONDS = 60.0
 # "12|endpoint|uuid", which never matches a scene id), plus these details keys. rec_scene_ids() and
 # scene_exclusion_sql() must agree; tests check that they do.
 DETAIL_SCENE_KEYS = ("scene_id", "scene_a_id", "scene_b_id", "local_scene_id")
+# Details keys holding a list of scene ids (#130 duplicate sets: target_type "scene_set").
+DETAIL_SCENE_LIST_KEYS = ("scene_ids",)
 
 
 class ExclusionUnavailable(RuntimeError):
@@ -212,6 +214,10 @@ def rec_scene_ids(target_type: str, target_id, details: dict | None) -> set[str]
         v = (details or {}).get(key)
         if v is not None:
             ids.add(str(v))
+    for key in DETAIL_SCENE_LIST_KEYS:
+        v = (details or {}).get(key)
+        if isinstance(v, list):
+            ids.update(str(i) for i in v if i is not None)
     return ids
 
 
@@ -229,4 +235,10 @@ def scene_exclusion_sql(scene_ids) -> tuple[str, list]:
     in_set = "IN (SELECT value FROM json_each(?))"
     parts = [f"(target_type = 'scene' AND target_id {in_set})"]
     parts += [f"CAST(json_extract(details, '$.{k}') AS TEXT) {in_set}" for k in DETAIL_SCENE_KEYS]
+    # Each part is true when the row names one of the ids; the whole is NOT (any part).
+    parts += [
+        f"(json_type(details, '$.{k}') = 'array' AND EXISTS ("
+        f"SELECT 1 FROM json_each(details, '$.{k}') WHERE CAST(value AS TEXT) {in_set}))"
+        for k in DETAIL_SCENE_LIST_KEYS
+    ]
     return "NOT (" + " OR ".join(f"COALESCE({p}, 0)" for p in parts) + ")", [arr] * len(parts)

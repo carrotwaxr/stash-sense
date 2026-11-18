@@ -207,6 +207,39 @@ def test_rec_scene_ids_shapes():
     assert rec_scene_ids("performer", "10", {}) == set()
 
 
+def test_scene_ids_list_key():
+    """#130: a scene_set rec names its members in details.scene_ids; Python and SQL agree."""
+    import json
+    import sqlite3
+
+    from curation_settings import scene_exclusion_sql
+
+    recs = [
+        (1, "scene_set", "set-a", {"scene_ids": ["5", "9"]}),
+        (2, "scene_set", "set-b", {"scene_ids": ["5", "6"]}),
+        (3, "scene_set", "set-c", {"scene_ids": [7, 9]}),  # ints in JSON
+        (4, "scene_set", "set-d", {}),
+        (5, "scene_set", "set-e", {"scene_ids": None}),
+        (6, "scene_set", "set-f", {"scene_ids": "9"}),  # not a list
+    ]
+    excluded = {"9"}
+    expected = {2, 4, 5, 6}
+
+    assert {r[0] for r in recs if not rec_scene_ids(r[1], r[2], r[3]) & excluded} == expected
+    assert rec_scene_ids("scene_set", "x", {"scene_ids": ["5", 9]}) == {"5", "9"}
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE recommendations (id INTEGER, target_type TEXT, target_id TEXT, details TEXT)")
+    conn.executemany(
+        "INSERT INTO recommendations VALUES (?, ?, ?, ?)",
+        [(i, tt, tid, json.dumps(d)) for i, tt, tid, d in recs],
+    )
+    conn.execute("INSERT INTO recommendations VALUES (7, 'scene_set', 'set-g', NULL)")
+    cond, params = scene_exclusion_sql(excluded)
+    got = {r[0] for r in conn.execute(f"SELECT id FROM recommendations WHERE {cond}", params)}
+    assert got == expected | {7}
+
+
 # ---------------- analyzers ----------------
 
 async def test_analyzer_skips_scenes_with_excluded_child_tag(stash, db, library, real_cache):

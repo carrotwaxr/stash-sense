@@ -577,6 +577,11 @@ class StashClientUnified:
         studio { id }
         performers { id }
         tags { id }
+        play_count
+        o_counter
+        stash_ids { endpoint stash_id }
+        groups { group { id } scene_index }
+        galleries { id }
         files {
           id
           path
@@ -588,6 +593,7 @@ class StashClientUnified:
           width
           height
           bit_rate
+          frame_rate
           fingerprints { type value }
         }
     """
@@ -1137,25 +1143,31 @@ class StashClientUnified:
 
     async def merge_scenes(
         self, source_ids: list[str], destination_id: str,
+        values: dict | None = None, play_history: bool = True, o_history: bool = True,
     ) -> dict:
-        """Merge source scenes into destination scene via Stash's sceneMerge mutation."""
+        """Merge source scenes into destination scene via Stash's sceneMerge mutation.
+
+        Stash moves the sources' files to the destination, applies `values`
+        (SceneUpdateInput shape, without id) and destroys the sources. It
+        unions nothing itself: the caller computes the merged values.
+        """
         query = """
         mutation SceneMerge($input: SceneMergeInput!) {
           sceneMerge(input: $input) {
-            count
+            id
           }
         }
         """
-        variables = {
-            "input": {
-                "source": source_ids,
-                "destination": destination_id,
-                "play_history": True,
-                "o_history": True,
-            }
+        merge_input: dict = {
+            "source": source_ids,
+            "destination": destination_id,
+            "play_history": play_history,
+            "o_history": o_history,
         }
-        data = await self._execute(query, variables)
-        return data.get("sceneMerge", {})
+        if values:
+            merge_input["values"] = {"id": destination_id, **values}
+        data = await self._execute(query, {"input": merge_input})
+        return data.get("sceneMerge") or {}
 
     async def destroy_scene(
         self, scene_id: str, delete_file: bool = False, delete_generated: bool = True,
