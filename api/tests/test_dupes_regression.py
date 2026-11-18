@@ -5,8 +5,8 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE = 614  # agree + superset on the first run (of 696 records, 16 ties)
-MAX_DISAGREE = 66  # disagreements on the first run
+BASELINE = 526  # agree + superset (of 696 records: 16 ties, 113 deferred to splitting)
+MAX_DISAGREE = 41  # disagreements (66 before the 2026-11-18 rules)
 
 
 def _report_module():

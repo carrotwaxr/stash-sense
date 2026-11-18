@@ -62,7 +62,7 @@ Every card has a class. The class decides what the card offers and what accept d
 | Class | What it means | What the card offers |
 | --- | --- | --- |
 | **Duplicate** | The same content in both scenes. | Merge the scenes, keep the best file, delete the rest. You can pick another file, or a second file to keep. |
-| **Contained** | One scene sits inside a longer file. | As a duplicate, but the longer file is never deleted. The shorter file goes only when the longer one is as good or better. |
+| **Contained** | One scene sits inside a longer file. | The longer file is never deleted. See [Contained cards](#contained-cards). |
 | **Partial** | A long stretch is shared, but each side has more. | Nothing changes. Accept only marks it resolved. |
 | **Language variant** | The same picture with another soundtrack. | Merge the scenes and keep every file. |
 | **Mislabel** | The files match, but the metadata disagrees: different Stash-Box IDs, studios, or no performer in common. | Choose which scene has the right metadata. The scenes merge into it. |
@@ -89,7 +89,9 @@ A few cases keep two files:
 
 - **An upscale pair.** If a set holds both an original and an upscale, Stash Sense keeps the best of each and deletes the other copies.
 - **A longer file that is worse.** If the best file is much shorter than another copy, the longest file is kept too, because it may hold extra content, such as a supercut. You decide.
-- **A contained scene that is better.** If the short file is better quality than the long one that holds it, both stay.
+- **A contained scene that is better.** If the short file is strictly better quality than the longer cut that holds it, both stay. See [Contained cards](#contained-cards).
+
+An AI upscale is detected from the file name, the folder, the encoder tag, or an av1 file much larger in pixels or size than its siblings. hevc and vp9 files are never flagged by size alone, since real HD releases use them.
 
 The disfavored codecs and containers come from the exclusion and format settings in [Curation Settings](curation-settings.md). They only break near ties. They never override a clear difference in quality.
 
@@ -99,7 +101,7 @@ Before a card offers to delete anything, the job probes the file it would keep a
 
 ### How well it agrees with you
 
-On the owner's library, the suggestion matched the recorded pick in 90.3% of 680 decided pairs, with practical ties left out. The pairs and every disagreement are listed in [the keeper regression](../research/dupes-keeper-regression.md).
+On the owner's library, the suggestion matched the recorded pick in 92.8% of 567 scored pairs. Practical ties and contained pairs deferred to splitting are left out. The pairs and every disagreement are listed in [the keeper regression](../research/dupes-keeper-regression.md).
 
 ## What accept does
 
@@ -109,6 +111,16 @@ Accept runs the outcome the card shows, in this order:
 2. **Delete the files not kept.** A confirm names each file by path and size first. If Stash has a trash folder (**Settings > System > Trash path**), the files go there. If not, they are **permanently deleted**.
 
 If a scene changed after the card loaded, accept is refused and the card reloads. Every accept is logged, and metadata can be reverted from the [apply log](review.md#the-apply-log). Deleted files cannot be brought back.
+
+### Contained cards
+
+Quality decides, and the workflow is always merge first (to collect the metadata), then delete the lower-quality file. The longer file is never deleted.
+
+- **The longer file holds several scenes** (it is at least 1.5 times as long as the shorter file). The card says to split the longer file first and changes nothing: no merge and no delete. This keeps a scene from being merged into an unsplit multi-scene file. Split detection (#131, not built yet) is planned to run before duplicate detection; until then these cards leave both files alone.
+- **A re-cut where the shorter file is strictly better.** Both files stay and the scenes stay separate.
+- **A re-cut at equal quality, or where the longer cut is better.** At equal quality the longer, more complete cut is kept. The shorter scene merges into the longer cut's scene, whatever history either has: the longer scene's values win, empty fields are filled from the shorter scene, and performers, tags, URLs, groups and galleries are unioned. Then the shorter file is deleted.
+
+If you pick another option on the card, it is honored: choosing to keep only the longer file deletes the shorter file and merges its scene into the longer one. Contained cards are never in the batch accept.
 
 ### Mislabel cards
 

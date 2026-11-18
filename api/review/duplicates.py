@@ -13,7 +13,8 @@ File health comes from the content index store (DATA_DIR/content_fp.db), opened 
 
 Per class:
 - duplicate: merge, keep the keeper (and a second file when the keeper suggests one), delete the rest
-- contained: as duplicate, but the long file is never deleted
+- contained: the long file is never deleted. When the short file is deleted, its scene merges into the long file's
+  scene; when nothing is deleted (split the longer file first, or both kept) the scenes stay separate
 - mislabel: merge into the scene the user says has the right metadata; nothing is unioned
 - language_variant: merge, keep every file
 - partial, review: nothing changes; accept only resolves
@@ -269,12 +270,18 @@ class SceneDuplicatesReviewType(ReviewType):
         plan.delete_files = [FileRef.from_stash(f.scene_id, f.stash) for f in doomed]
 
         # 5-6. destination and merge
+        merge = len(scenes) > 1 and cls not in NO_MERGE
         if cls == "mislabel":
             dest_id = chosen["metadata_from"]
+        elif cls == "contained":
+            # merge first, then delete the lower quality file: the scene of the longer cut stays; with nothing
+            # deleted (split the long file first, or both kept) the scenes stay separate
+            dest_id = long_file.scene_id
+            merge = merge and bool(doomed)
         else:
             dest_id = destination_for(main)
         dest = by_scene[dest_id]
-        if len(scenes) > 1 and cls not in NO_MERGE:
+        if merge:
             sources = sorted((s for s in scenes if str(s["id"]) != dest_id), key=lambda s: (_rank(s), _num(s["id"])))
             values = {} if cls == "mislabel" else _merge_values(dest, sources)
             plan.merge = SceneMerge(dest_id, [str(s["id"]) for s in sources], values, sources)

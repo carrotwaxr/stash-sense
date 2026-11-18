@@ -332,7 +332,7 @@ async def test_language_variant_keeps_both_files(svc, stash, db):
 
 async def test_contained_keeps_long_file(stash, db):
     # the long file is better: the short one goes
-    s1, s2, fa, fb = pair(stash, a={"duration": 3000.0}, b={"duration": 600.0, "width": 1280, "height": 720})
+    s1, s2, fa, fb = pair(stash, a={"duration": 1000.0}, b={"duration": 800.0, "width": 1280, "height": 720})
     rec = rec_for(db, "contained", [s1, s2])
     p = await RT.preview(rec, None, stash)
     assert [f.file_id for f in p.plan.delete_files] == [fb]
@@ -341,11 +341,95 @@ async def test_contained_keeps_long_file(stash, db):
     assert fa not in p.plan.delete_file_ids and p.plan.delete_files == []
 
     # the short file is better: both kept
-    s3, s4, fc, fd = pair(stash, a={"oshash": "long", "duration": 3000.0, "width": 1280, "height": 720},
-                          b={"oshash": "short", "duration": 600.0})
+    s3, s4, fc, fd = pair(stash, a={"oshash": "long", "duration": 1000.0, "width": 1280, "height": 720},
+                          b={"oshash": "short", "duration": 800.0})
     p = await RT.preview(rec_for(db, "contained", [s3, s4]), None, stash)
     assert p.plan.delete_files == []
     assert not p.high_confidence
+
+
+async def test_contained_split_first_no_merge(svc, stash, db):
+    # the long file is 5x the short one: it holds several scenes, so nothing happens until it is split
+    s1, s2, fa, fb = pair(stash, a={"duration": 3000.0}, b={"duration": 600.0, "width": 1280, "height": 720},
+                          sb={"play_count": 4})
+    rec = rec_for(db, "contained", [s1, s2])
+
+    p = await RT.preview(rec, None, stash)
+    assert "split_first" in p.evidence["flags"]
+    assert p.plan.merge is None and p.plan.delete_files == [] and p.plan.primary_file is None
+    assert "split the longer file first" in p.evidence["keeper_reason"].lower()
+    assert "split the longer file first" in p.summary.lower()
+    assert not p.high_confidence
+
+    out = await accept(svc, rec)
+    assert out["entry"]["status"] == "applied"
+    assert {s1, s2} <= set(stash.scenes) and {fa, fb} <= set(stash.files)
+
+    # the same card whatever the quality
+    s3, s4, *_ = pair(stash, a={"oshash": "l2", "duration": 3000.0}, b={"oshash": "s2", "duration": 600.0})
+    p = await RT.preview(rec_for(db, "contained", [s3, s4]), None, stash)
+    assert "split_first" in p.evidence["flags"] and p.plan.merge is None and p.plan.delete_files == []
+
+
+async def test_contained_keep_both_no_merge(stash, db):
+    # a re-cut where the short file is better: both stay, so the scenes stay separate
+    s1, s2, *_ = pair(stash, a={"duration": 1000.0, "width": 1280, "height": 720}, b={"duration": 800.0})
+    p = await RT.preview(rec_for(db, "contained", [s1, s2]), None, stash)
+    assert p.plan.delete_files == [] and p.plan.merge is None
+    assert "split_first" not in p.evidence["flags"] and not p.high_confidence
+
+
+async def test_contained_equal_quality_longer_cut_wins(stash, db):
+    # at equal quality the longer, more complete cut is kept and the short scene merges into it
+    s1, s2, fa, fb = pair(stash, a={"duration": 1000.0}, b={"duration": 800.0})
+    p = await RT.preview(rec_for(db, "contained", [s1, s2]), None, stash)
+    assert [f.file_id for f in p.plan.delete_files] == [fb]
+    assert p.plan.merge.destination == s1 and p.plan.merge.sources == [s2]
+
+
+async def test_contained_delete_short_merges_into_long(svc, stash, db):
+    # a re-cut where the long cut is better; the short scene has the history
+    s1, s2, fa, fb = pair(
+        stash, a={"duration": 1000.0}, b={"duration": 800.0, "width": 1280, "height": 720},
+        sa={"title": "Long title", "performer_ids": ["p1"]},
+        sb={"title": "Short title", "play_count": 5, "rating100": 90, "date": "2020-02-02",
+            "performer_ids": ["p2"], "tag_ids": ["t1"]})
+    rec = rec_for(db, "contained", [s1, s2])
+
+    p = await RT.preview(rec, None, stash)
+    m = p.plan.merge
+    assert m.destination == s1 and m.sources == [s2]
+    assert [f.file_id for f in p.plan.delete_files] == [fb]
+    assert "title" not in m.values  # the long scene's values win
+    assert m.values["date"] == "2020-02-02" and m.values["rating100"] == 90
+    assert m.values["performer_ids"] == ["p1", "p2"] and m.values["tag_ids"] == ["t1"]
+    assert p.plan.primary_file is None
+    assert "merge 2 scenes" in p.summary and "delete 1 file" in p.summary
+    assert not p.high_confidence
+
+    await accept(svc, rec)
+    assert list(stash.scenes) == [s1] and fb not in stash.files and fa in stash.files
+    s = stash.scenes[s1]
+    assert s["title"] == "Long title" and s["date"] == "2020-02-02" and s["performer_ids"] == ["p1", "p2"]
+
+
+async def test_contained_user_deletes_short_of_split_first_card(svc, stash, db):
+    s1, s2, fa, fb = pair(stash, a={"duration": 3000.0}, b={"duration": 600.0, "width": 1280, "height": 720},
+                          sb={"play_count": 4, "title": "short"})
+    rec = rec_for(db, "contained", [s1, s2])
+
+    p = await RT.preview(rec, {"keep": "aaaa", "keep_extra": ""}, stash)
+    assert p.plan.merge.destination == s1 and p.plan.merge.sources == [s2]
+    assert [f.file_id for f in p.plan.delete_files] == [fb]
+    assert fa not in p.plan.delete_file_ids
+
+    # the long file is never deleted, whatever is picked
+    for pick in ({"keep": "bbbb", "keep_extra": ""}, {"keep": "bbbb", "keep_extra": "aaaa"}):
+        p = await RT.preview(rec, pick, stash)
+        assert fa not in p.plan.delete_file_ids and p.plan.merge is None
+
+    await accept(svc, rec, {"keep": "aaaa", "keep_extra": ""})
+    assert list(stash.scenes) == [s1] and fb not in stash.files and fa in stash.files
 
 
 async def test_no_codec_mention_when_lists_empty(stash, db, monkeypatch):

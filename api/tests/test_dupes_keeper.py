@@ -34,8 +34,8 @@ def test_upscale_detected_by_file():
     # a studio 4K h264 is never flagged by pixels alone
     studio = mk("s", codec="h264", width=3840, height=2160)
     assert not is_upscale(studio, [h264])
-    # an av1 with no non-modern sibling has nothing to be an upscale of
-    assert not is_upscale(av1_big, [mk("z", codec="hevc")])
+    # an av1 with no non-av1 sibling has nothing to be an upscale of
+    assert not is_upscale(av1_big, [mk("z", codec="av1")])
     # flags and encoder tag
     assert is_upscale(mk("n", upscale_name=True), [h264])
     assert is_upscale(mk("p", upscale_path=True), [h264])
@@ -211,19 +211,39 @@ def test_broken_keeper_falls_through():
     assert "held_unhealthy" in s.flags
 
 
-def test_contained_tie_keeps_long():
-    long_ = mk("long", duration=1200.0)
-    short = mk("short", duration=600.0)
-    s = suggest([short, long_], kind="contained")
-    assert s.keep == ["long"] and s.delete == ["short"]
+def test_contained_recut():
+    # a re-cut: the long file is under 1.5x the short one
+    long_ = mk("long", duration=1000.0)
+    short = mk("short", duration=800.0)
+    s = suggest([_720("short", duration=800.0), long_], kind="contained")
+    assert s.keep == ["long"] and s.delete == ["short"] and "split_first" not in s.flags
     assert "inside the longer file" in s.reason
-    # a better short file keeps both
-    long_worse = _720("long", duration=1200.0)
+    # equal quality: the longer, more complete cut wins
+    s = suggest([short, long_], kind="contained")
+    assert s.keep == ["long"] and s.delete == ["short"] and "split_first" not in s.flags
+    # only a strictly better short file keeps both
+    long_worse = _720("long", duration=1000.0)
     s = suggest([short, long_worse], kind="contained")
-    assert set(s.keep) == {"long", "short"} and s.delete == []
-    # the long file is never deleted, even when the short one is the unhealthy one's rival
+    assert set(s.keep) == {"long", "short"} and s.delete == [] and "split_first" not in s.flags
+    # the long file is never deleted, even when it failed its health check
     s = suggest([short, long_worse], kind="contained", health={"long": "suspect"})
     assert "long" in s.keep
+
+
+def test_contained_split_first():
+    short = mk("short", duration=600.0)
+    for long_ in (mk("long", duration=1200.0), _720("long", duration=1200.0),
+                  mk("long", duration=1200.0, width=3840, height=2160, bit_rate=30_000_000)):
+        s = suggest([short, long_], kind="contained")
+        assert set(s.keep) == {"long", "short"} and s.delete == []
+        assert s.flags == ["split_first"]
+        assert "split the longer file first" in s.reason.lower()
+    # just under 1.5x is a re-cut
+    s = suggest([mk("short", duration=800.0), mk("long", duration=1199.0)], kind="contained")
+    assert "split_first" not in s.flags
+    # exactly 1.5x splits first
+    s = suggest([mk("short", duration=800.0), mk("long", duration=1200.0)], kind="contained")
+    assert s.flags == ["split_first"]
 
 
 def test_suggestion_is_order_independent():
@@ -238,3 +258,14 @@ def test_tie_flagged():
     s = suggest([mk("t2"), mk("t1")])
     assert s.keep == ["t1"] and s.delete == ["t2"]
     assert "tie" in s.flags
+
+
+def test_hevc_not_upscale_by_size():
+    small = mk("s", codec="h264", width=720, height=406, size=300_000_000)
+    hevc = mk("h", codec="hevc", width=1920, height=1080, size=900_000_000)
+    assert not is_upscale(hevc, [small])
+    vp9 = mk("v", codec="vp9", width=1920, height=1080, size=900_000_000)
+    assert not is_upscale(vp9, [small])
+    half = mk("m", codec="h264", width=960, height=540, size=300_000_000)
+    av1 = mk("a", codec="av1", width=1920, height=1080, size=900_000_000)
+    assert is_upscale(av1, [half])

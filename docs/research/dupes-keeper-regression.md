@@ -7,54 +7,30 @@ Outcomes:
 - **agree**: duplicate pairs: the suggestion keeps exactly the file the owner kept. Contained pairs: the suggestion keeps the short file only when the owner did (`keep_short`), and drops it when the owner chose `long_better`.
 - **superset**: duplicate pairs only: the suggestion keeps the owner's file plus the other one (an upscale pair or a longer cut). Nothing the owner wanted is deleted, so this counts as agreement.
 - **tie**: the suggestion flagged the pair as practically equal and kept the other file. Either is right, so ties are left out of the agreement rate.
+- **deferred**: contained pairs only: the suggestion says to split the longer file first (`split_first`: the long file is at least 1.5x the short one, so it probably holds several scenes) and keeps both files, while the owner deleted the short one. The owner's picks predate splitting (#131), so the suggestion defers instead of disagreeing. Like ties, deferred records are left out of the agreement rate. When the owner kept the short file, a `split_first` suggestion is an **agree**.
 - **disagree**: everything else. Every one is listed below with the suggestion's reason.
 
 For contained pairs the short side is the one with the larger cover. The keeper decides by duration; where the two differ the reason is marked "short side by duration differs from cover".
 
-Agreement is (agree + superset) / (records - tie).
+Agreement is (agree + superset) / (records - tie - deferred).
 
 ## Totals
 
-| Kind | Records | agree | superset | tie | disagree | Agreement |
-|---|---|---|---|---|---|---|
-| duplicate | 385 | 271 | 62 | 16 | 36 | 333/369 (90.2%) |
-| contained | 311 | 281 | 0 | 0 | 30 | 281/311 (90.4%) |
-| all | 696 | 552 | 62 | 16 | 66 | 614/680 (90.3%) |
+| Kind | Records | agree | superset | tie | deferred | disagree | Agreement |
+|---|---|---|---|---|---|---|---|
+| duplicate | 385 | 278 | 55 | 16 | 0 | 36 | 333/369 (90.2%) |
+| contained | 311 | 193 | 0 | 0 | 113 | 5 | 193/198 (97.5%) |
+| all | 696 | 471 | 55 | 16 | 113 | 41 | 526/567 (92.8%) |
 
-## Disagreements (66)
+## Disagreements (41)
 
 | Record | Kind | Side A | Side B | Human | Suggestion | Reason |
 |---|---|---|---|---|---|---|
-| 014e10f30133 | contained | h264 720x480 1.3 Mbps 29.97 fps 20.4 min mp4 | h264 720x480 1.3 Mbps 29.97 fps 31.5 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 0dcd070e94a6 | contained | hevc 1920x1080 2.2 Mbps 23.98 fps 114.4 min mp4 | h264 720x406 1.2 Mbps 29.97 fps 19.3 min mp4 | delete short (B) | keep short (B) too | The shorter file is better quality and the longer one holds extra content, so both are kept. |
-| 0fa8965bfcaa | contained | mpeg4 576x320 0.8 Mbps 29.97 fps 18.3 min avi | mpeg4 512x384 1.0 Mbps 29.97 fps 67.0 min avi | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 194a5b4748eb | contained | h264 762x576 2.7 Mbps 25 fps 14.0 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 1dc9856838f5 | contained | h264 720x540 2.8 Mbps 59.94 fps 25.4 min mkv | hevc 1444x1080 5.5 Mbps 59.94 fps 38.5 min mkv | delete short (A) | keep short (A) too | The shorter file is better quality and the longer one holds extra content, so both are kept. |
-| 2f3e24ac1325 | contained | h264 762x576 2.4 Mbps 25 fps 15.0 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 3e8be0f91995 | contained | av1 1920x1080 9.5 Mbps 30 fps 27.9 min mp4 | h264 360x134 0.5 Mbps 30 fps 136.9 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 41b86ac863e7 | contained | h264 854x354 1.5 Mbps 30 fps 18.2 min mp4 | mpeg4 576x320 1.4 Mbps 29.97 fps 71.7 min avi | delete short (A) | keep short (A) too | The shorter file is better quality and the longer one holds extra content, so both are kept. |
-| 453a26f7b29a | contained | h264 762x576 2.4 Mbps 25 fps 8.2 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 5b24f886a73f | contained | h264 762x576 2.5 Mbps 25 fps 17.5 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 62788e79b95f | contained | msmpeg4v3 512x384 0.9 Mbps 29.97 fps 23.7 min avi | msmpeg4v3 512x384 1.0 Mbps 29.97 fps 95.0 min avi | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 64d15510fa2d | contained | mpeg4 720x416 2.0 Mbps 29.97 fps 8.1 min avi | mpeg4 720x416 2.3 Mbps 29.97 fps 86.8 min avi | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
 | 6dbf3af76a1d | contained | h264 640x480 1.5 Mbps 30 fps 12.9 min mp4 | h264 640x480 1.5 Mbps 30 fps 16.9 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 849a9e36c4b2 | contained | h264 762x576 2.6 Mbps 25 fps 13.4 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| 883f88e53bfa | contained | h264 554x416 0.4 Mbps 29.97 fps 17.6 min mp4 | h264 640x360 0.4 Mbps 30 fps 80.1 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
 | 8a299c91ad06 | contained | av1 1312x960 2.0 Mbps 30 fps 15.6 min mp4 | h264 540x360 0.7 Mbps 30 fps 22.3 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
 | 8ec03211fdf0 | contained | mpeg4 608x352 1.5 Mbps 29.97 fps 28.0 min avi | av1 1920x1080 11.7 Mbps 29.97 fps 37.5 min mp4 | delete short (A) | keep short (A) too | The shorter file is better quality and the longer one holds extra content, so both are kept. |
-| 8ee6148c93f6 | contained | h264 640x360 1.1 Mbps 25 fps 22.4 min mp4 | h264 640x360 1.1 Mbps 25 fps 53.4 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
 | 96e52fdef3c7 | contained | mpeg4 480x360 1.6 Mbps 29.97 fps 12.8 min mkv | h264 480x360 1.0 Mbps 29.97 fps 16.4 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| a5573d8ce9bd | contained | mpeg4 512x384 1.0 Mbps 29.97 fps 93.0 min avi | av1 1280x960 1.2 Mbps 30 fps 51.2 min mp4 | keep short (B) too | delete short (B) | Its content is inside the longer file at equal or better quality. |
-| a98e625ed674 | contained | h264 762x576 2.4 Mbps 25 fps 7.8 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| af2cc13eba39 | contained | mpeg4 512x288 0.9 Mbps 29.97 fps 11.1 min avi | mpeg4 512x288 1.0 Mbps 29.97 fps 28.6 min avi | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| af686b3ed00b | contained | mpeg4 512x384 1.1 Mbps 29.97 fps 14.7 min avi | mpeg4 512x384 1.2 Mbps 29.97 fps 82.3 min avi | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| b9fbd765afd5 | contained | h264 720x480 1.5 Mbps 29.97 fps 24.7 min mp4 | h264 720x480 1.3 Mbps 29.97 fps 45.3 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
 | be37fb664ea0 | contained | mpeg4 576x320 1.0 Mbps 29.97 fps 48.7 min avi | mpeg4 512x384 1.0 Mbps 29.97 fps 67.0 min avi | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| d1c4e69498ba | contained | h264 720x480 1.5 Mbps 29.97 fps 29.6 min mp4 | h264 720x480 1.3 Mbps 29.97 fps 56.9 min mp4 | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
-| e0f672f94017 | contained | h264 706x480 2.2 Mbps 23.98 fps 74.0 min mkv | h264 706x480 2.3 Mbps 23.98 fps 6.3 min mkv | keep short (B) too | delete short (B) | Its content is inside the longer file at equal or better quality. |
-| e1ce79d0a718 | contained | h264 706x480 2.2 Mbps 23.98 fps 74.0 min mkv | h264 706x480 2.3 Mbps 23.98 fps 11.7 min mkv | keep short (B) too | delete short (B) | Its content is inside the longer file at equal or better quality. |
-| ecd063c373e9 | contained | av1 1920x1080 5.1 Mbps 30 fps 4.2 min mp4 | av1 1920x1080 4.6 Mbps 25 fps 13.7 min mp4 | delete short (A) | keep short (A) too | The shorter file is better quality and the longer one holds extra content, so both are kept. |
-| f3bc79692825 | contained | h264 762x576 2.4 Mbps 25 fps 9.2 min mkv | h264 762x576 2.9 Mbps 25 fps 87.2 min mkv | keep short (A) too | delete short (A) | Its content is inside the longer file at equal or better quality. |
 | 068f08177620 | duplicate | h264 640x368 1.2 Mbps 29.97 fps 49.5 min mp4 | h264 640x480 0.7 Mbps 25 fps 49.5 min mp4 | keep A | keep B | Keeps the best copy: more effective detail (640x480 at 0.7 Mbps beats 640x368 at 1.2 Mbps) |
 | 0eecb3c853bc | duplicate | h264 1920x1080 12.3 Mbps 29.97 fps 30.6 min mp4 | hevc 1920x1080 5.0 Mbps 29.97 fps 30.8 min mp4 | keep B | keep A | Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) |
 | 16511487bec1 | duplicate | h264 720x540 1.8 Mbps 25 fps 9.0 min mp4 | h264 720x576 1.4 Mbps 25 fps 8.7 min mp4 | keep B | keep A | Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) |
@@ -92,7 +68,7 @@ Agreement is (agree + superset) / (records - tie).
 | ef1f5476f39a | duplicate | h264 640x480 1.2 Mbps 29.97 fps 42.2 min mp4 | mpeg4 640x480 2.3 Mbps 29.97 fps 42.3 min avi | keep B | keep A | Keeps the best copy: same picture; the better container |
 | f3109b4681da | duplicate | h264 624x480 1.2 Mbps 29.96 fps 19.4 min mp4 | h264 720x540 2.4 Mbps 30 fps 19.1 min mp4 | keep A | keep B | Keeps the best copy: more effective detail (720x540 at 2.4 Mbps beats 624x480 at 1.2 Mbps) |
 
-## Superset (62)
+## Superset (55)
 
 The suggestion keeps the owner's file and one more.
 
@@ -111,7 +87,6 @@ The suggestion keeps the owner's file and one more.
 | 2643cc6266fd | duplicate | h264 646x364 0.5 Mbps 25 fps 24.8 min mp4 | h264 960x540 2.0 Mbps 23.98 fps 23.0 min mp4 | keep B | keep B + A | Keeps the best copy: more effective detail (960x540 at 2.0 Mbps beats 646x364 at 0.5 Mbps) The longest file is kept too because it may hold extra content. |
 | 26a21eb40654 | duplicate | av1 956x724 2.9 Mbps 24 fps 62.5 min mp4 | h264 640x482 0.9 Mbps 24 fps 62.8 min mp4 | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | 2a18147671b3 | duplicate | h264 720x480 1.3 Mbps 29.97 fps 16.0 min mp4 | mpeg4 480x360 1.6 Mbps 23.98 fps 17.9 min avi | keep A | keep A + B | Keeps the best copy: more effective detail (720x480 at 1.3 Mbps beats 480x360 at 1.6 Mbps) The longest file is kept too because it may hold extra content. |
-| 2d5cadcb6fb1 | duplicate | hevc 1280x960 9.8 Mbps 29.97 fps 32.8 min mp4 | h264 640x480 1.5 Mbps 30 fps 32.8 min mp4 | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | 2dfcfdfa1b97 | duplicate | av1 1920x1080 4.4 Mbps 23.98 fps 31.6 min mp4 | h264 640x480 1.3 Mbps 29.97 fps 31.6 min mp4 | keep B | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | 300627ce29fd | duplicate | h264 720x480 1.3 Mbps 29.97 fps 15.1 min mp4 | h264 656x480 1.9 Mbps 30 fps 13.1 min mp4 | keep A | keep B + A | Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content. |
 | 303fcde79ae4 | duplicate | h264 960x544 2.3 Mbps 29.97 fps 28.6 min mp4 | h264 768x432 1.6 Mbps 29.97 fps 32.6 min mp4 | keep B | keep A + B | Keeps the best copy: more effective detail (960x544 at 2.3 Mbps beats 768x432 at 1.6 Mbps) The longest file is kept too because it may hold extra content. |
@@ -125,7 +100,6 @@ The suggestion keeps the owner's file and one more.
 | 5c1ff1509f2d | duplicate | h264 852x480 1.5 Mbps 30 fps 19.6 min mkv | mpeg4 512x288 1.0 Mbps 23.98 fps 21.0 min avi | keep A | keep A + B | Keeps the best copy: more effective detail (852x480 at 1.5 Mbps beats 512x288 at 1.0 Mbps) The longest file is kept too because it may hold extra content. |
 | 5df856912e7f | duplicate | av1 1920x1080 2.8 Mbps 25 fps 40.9 min mp4 | h264 1280x720 3.1 Mbps 30 fps 40.9 min mp4 | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | 60462ddd355b | duplicate | av1 1920x1080 4.4 Mbps 23.98 fps 20.4 min mp4 | h264 640x480 1.3 Mbps 29.97 fps 20.4 min mp4 | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
-| 60f56cc69f19 | duplicate | h264 624x480 1.1 Mbps 30 fps 43.2 min mp4 | hevc 1408x1080 8.3 Mbps 59.94 fps 43.3 min mp4 | keep B | keep A + B | Keeps the best original and the best AI upscale; the other copies are worse. |
 | 621e932c5570 | duplicate | h264 640x480 1.0 Mbps 25 fps 12.7 min mp4 | av1 3840x2160 10.1 Mbps 50 fps 12.7 min mp4 | keep B | keep A + B | Keeps the best original and the best AI upscale; the other copies are worse. |
 | 672ee32d70cf | duplicate | h264 1920x1080 3.1 Mbps 30 fps 26.2 min mp4 | h264 1920x1080 8.2 Mbps 30 fps 24.8 min mp4 | keep A | keep B + A | Keeps the best copy: more effective detail (1920x1080 at 8.2 Mbps beats 1920x1080 at 3.1 Mbps) The longest file is kept too because it may hold extra content. |
 | 6a6f041ae18e | duplicate | h264 720x540 1.4 Mbps 25 fps 17.4 min mp4 | mpeg4 576x320 1.9 Mbps 29.97 fps 19.0 min avi | keep B | keep A + B | Keeps the best copy: more effective detail (720x540 at 1.4 Mbps beats 576x320 at 1.9 Mbps) The longest file is kept too because it may hold extra content. |
@@ -147,20 +121,19 @@ The suggestion keeps the owner's file and one more.
 | b4fa9e49b1af | duplicate | av1 1920x1080 5.4 Mbps 29.97 fps 29.2 min mp4 | h264 640x480 1.6 Mbps 30 fps 29.2 min mp4 | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | ba69665cfd72 | duplicate | h264 1920x1080 24.1 Mbps 59.94 fps 29.4 min mp4 | h264 1440x1080 3.1 Mbps 30 fps 33.6 min mp4 | keep A | keep A + B | Keeps the best copy: more effective detail (1920x1080 at 24.1 Mbps beats 1440x1080 at 3.1 Mbps) The longest file is kept too because it may hold extra content. |
 | bec980ac1454 | duplicate | h264 1280x720 3.1 Mbps 24 fps 19.3 min mp4 | av1 1920x1080 7.2 Mbps 23.98 fps 19.3 min mp4 | keep B | keep A + B | Keeps the best original and the best AI upscale; the other copies are worse. |
-| c1522804f3b5 | duplicate | hevc 1280x720 2.0 Mbps 29.97 fps 90.9 min mkv | mpeg4 608x336 1.0 Mbps 23.98 fps 93.3 min avi | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | c18cb1f3c046 | duplicate | av1 1920x1080 2.5 Mbps 30 fps 16.6 min mp4 | h264 1920x1080 1.9 Mbps 29.97 fps 19.8 min mp4 | keep B | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | c2d194046482 | duplicate | h264 632x480 1.2 Mbps 60 fps 26.1 min mp4 | h264 720x480 2.0 Mbps 59.94 fps 26.1 min mp4 | keep B | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
-| c2e9f6ad295b | duplicate | mpeg4 512x384 1.2 Mbps 29.97 fps 32.0 min avi | hevc 1400x1080 5.2 Mbps 59.94 fps 32.1 min mp4 | keep B | keep A + B | Keeps the best original and the best AI upscale; the other copies are worse. |
 | c6f32c77cdf3 | duplicate | h264 720x480 1.5 Mbps 29.97 fps 17.8 min mp4 | h264 720x528 1.3 Mbps 29.97 fps 19.4 min mp4 | keep B | keep A + B | Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content. |
 | cad5fbdf6e3a | duplicate | h264 720x480 2.6 Mbps 29.97 fps 23.6 min mp4 | av1 1920x1080 5.0 Mbps 29.97 fps 24.0 min mp4 | keep B | keep A + B | Keeps the best original and the best AI upscale; the other copies are worse. |
 | cf477b6e633a | duplicate | h264 720x404 1.7 Mbps 23.97 fps 55.6 min mp4 | h264 1920x1080 12.6 Mbps 29.97 fps 50.1 min mp4 | keep B | keep B + A | Keeps the best copy: more effective detail (1920x1080 at 12.6 Mbps beats 720x404 at 1.7 Mbps) The longest file is kept too because it may hold extra content. |
 | d72c1185a129 | duplicate | h264 1920x1080 8.0 Mbps 29.97 fps 40.9 min mp4 | h264 576x320 0.8 Mbps 25 fps 45.5 min mp4 | keep A | keep A + B | Keeps the best copy: more effective detail (1920x1080 at 8.0 Mbps beats 576x320 at 0.8 Mbps) The longest file is kept too because it may hold extra content. |
-| d91ffc2c2296 | duplicate | hevc 1420x1080 4.6 Mbps 59.94 fps 28.9 min mp4 | h264 720x480 2.0 Mbps 59.94 fps 28.9 min mkv | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 | e4f1eb173982 | duplicate | h264 1280x720 1.4 Mbps 24 fps 20.4 min mp4 | h264 1280x720 1.3 Mbps 30 fps 23.7 min mp4 | keep B | keep A + B | Keeps the best copy: more effective detail (1280x720 at 1.4 Mbps beats 1280x720 at 1.3 Mbps) The longest file is kept too because it may hold extra content. |
-| f6d20ef52e19 | duplicate | mpeg4 512x400 1.2 Mbps 29.97 fps 32.1 min avi | hevc 1400x1080 5.2 Mbps 59.94 fps 32.1 min mp4 | keep B | keep A + B | Keeps the best original and the best AI upscale; the other copies are worse. |
 | fc5082343b1c | duplicate | h264 1280x720 2.4 Mbps 29.97 fps 10.2 min mp4 | h264 720x480 2.2 Mbps 30 fps 11.8 min mkv | keep A | keep A + B | Keeps the best copy: more effective detail (1280x720 at 2.4 Mbps beats 720x480 at 2.2 Mbps) The longest file is kept too because it may hold extra content. |
-| feb6dc7f9e33 | duplicate | hevc 1420x1080 4.7 Mbps 59.94 fps 30.1 min mp4 | h264 720x480 2.0 Mbps 59.94 fps 31.2 min mkv | keep A | keep B + A | Keeps the best original and the best AI upscale; the other copies are worse. |
 
 ## Ties
 
 16 records were practically equal files.
+
+## Deferred
+
+113 contained records are deferred to splitting (#131): the suggestion keeps both files so the long one can be split first, and the owner had deleted the short one.

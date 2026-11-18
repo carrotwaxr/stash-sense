@@ -17,7 +17,7 @@ from duplicates.keeper import FileFeatures, suggest  # noqa: E402
 
 FIXTURE = ROOT / "api" / "tests" / "fixtures" / "dupes_keeper_regression.jsonl"
 REPORT = ROOT / "docs" / "research" / "dupes-keeper-regression.md"
-OUTCOMES = ("agree", "superset", "tie", "disagree")
+OUTCOMES = ("agree", "superset", "tie", "deferred", "disagree")
 KINDS = ("duplicate", "contained")
 SHORT_SIDE_NOTE = "short side by duration differs from cover"
 
@@ -79,7 +79,10 @@ def score(records: list[dict]) -> list[dict]:
                 reason = f"{reason} ({SHORT_SIDE_NOTE})"
             keeps_short = short in s.keep
             human_keeps_short = rec["pick_raw"] == "keep_short"
-            outcome = "agree" if keeps_short == human_keeps_short else "disagree"
+            if "split_first" in s.flags and not human_keeps_short:
+                outcome = "deferred"  # the owner's old pick predates splitting; the suggestion defers to #131
+            else:
+                outcome = "agree" if keeps_short == human_keeps_short else "disagree"
             human = f"keep short ({short.upper()}) too" if human_keeps_short else f"delete short ({short.upper()})"
             suggestion = f"keep short ({short.upper()}) too" if keeps_short else f"delete short ({short.upper()})"
         scored.append(
@@ -126,17 +129,22 @@ def render(scored: list[dict]) -> str:
         "pair or a longer cut). Nothing the owner wanted is deleted, so this counts as agreement.",
         "- **tie**: the suggestion flagged the pair as practically equal and kept the other file. Either is right, so "
         "ties are left out of the agreement rate.",
+        "- **deferred**: contained pairs only: the suggestion says to split the longer file first (`split_first`: "
+        "the long file is at least 1.5x the short one, so it probably holds several scenes) and keeps both files, "
+        "while the owner deleted the short one. The owner's picks predate splitting (#131), so the suggestion "
+        "defers instead of disagreeing. Like ties, deferred records are left out of the agreement rate. When the "
+        "owner kept the short file, a `split_first` suggestion is an **agree**.",
         "- **disagree**: everything else. Every one is listed below with the suggestion's reason.",
         "",
         "For contained pairs the short side is the one with the larger cover. The keeper decides by duration; where "
         f"the two differ the reason is marked \"{SHORT_SIDE_NOTE}\".",
         "",
-        "Agreement is (agree + superset) / (records - tie).",
+        "Agreement is (agree + superset) / (records - tie - deferred).",
         "",
         "## Totals",
         "",
-        "| Kind | Records | agree | superset | tie | disagree | Agreement |",
-        "|---|---|---|---|---|---|---|",
+        "| Kind | Records | agree | superset | tie | deferred | disagree | Agreement |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     total = Counter()
     for k in KINDS:
@@ -144,13 +152,13 @@ def render(scored: list[dict]) -> str:
         n = sum(c.values())
         total.update(c)
         lines.append(
-            f"| {k} | {n} | {c['agree']} | {c['superset']} | {c['tie']} | {c['disagree']} | "
-            f"{_rate(c['agree'] + c['superset'], n - c['tie'])} |"
+            f"| {k} | {n} | {c['agree']} | {c['superset']} | {c['tie']} | {c['deferred']} | {c['disagree']} | "
+            f"{_rate(c['agree'] + c['superset'], n - c['tie'] - c['deferred'])} |"
         )
     n = sum(total.values())
     lines.append(
-        f"| all | {n} | {total['agree']} | {total['superset']} | {total['tie']} | {total['disagree']} | "
-        f"{_rate(total['agree'] + total['superset'], n - total['tie'])} |"
+        f"| all | {n} | {total['agree']} | {total['superset']} | {total['tie']} | {total['deferred']} | "
+        f"{total['disagree']} | {_rate(total['agree'] + total['superset'], n - total['tie'] - total['deferred'])} |"
     )
 
     cols = "| Record | Kind | Side A | Side B | Human | Suggestion | Reason |"
@@ -176,7 +184,10 @@ def render(scored: list[dict]) -> str:
     ]
     lines += [row(r) for r in superset]
 
-    lines += ["", "## Ties", "", f"{total['tie']} records were practically equal files.", ""]
+    lines += ["", "## Ties", "", f"{total['tie']} records were practically equal files.", "",
+              "## Deferred", "", f"{total['deferred']} contained records are deferred to splitting (#131): the "
+              "suggestion keeps both files so the long one can be split first, and the owner had deleted the short one.",
+              ""]
     return "\n".join(lines)
 
 
