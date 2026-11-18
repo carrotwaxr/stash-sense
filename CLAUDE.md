@@ -63,6 +63,7 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/analyzers/base_upstream.py` - Base class for upstream analyzers with logic versioning
 - `api/curation_settings.py` - #125 exclusion list and disfavored formats, read from the plugin's settings in Stash; fail-closed guard used by jobs, review and scene endpoints
 - `api/driver_router.py` - Stable driver API v1 for external tools (#126) at `/api/v1/driver`; shapes pinned by `tests/test_driver_api.py`, documented in `docs/driver-api.md`. Breaking changes go to a v2 router
+- `api/content_fingerprint/` - Content index (#129): pure package (stdlib + numpy, no sidecar imports) for audio fingerprints, keyframe signatures, the inverted index, matcher and import check; also runs standalone (`python -m content_fingerprint.cli`). `api/jobs/content_fingerprint_job.py` wraps it as the `content_fingerprint` job; store is `DATA_DIR/content_fp.db`. User docs: `docs/features/content-index.md`
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client
@@ -79,4 +80,5 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - Stash only picks up a subtitle as English when it is named `<video>.en.srt`; a plain `.srt` is not recognized as English.
 - Whisper `large-v3-turbo` ignores `task=translate` and returns the source language. Translation needs `large-v3`.
 - The unRAID host has no `python3` or `ffmpeg`: parse JSON with bash/sed there and run ffmpeg as `docker exec stash ffmpeg ...`.
+- Chromaprint output depends on the ffmpeg build: 4.4 and 6.1 differ on WMA. The image pins Ubuntu 24.04's ffmpeg 6.1.1 so stores built on the Xeon (same build) import exactly; changing the base image needs the import check re-run.
 - Scene file paths can contain smart apostrophes (U+2019); fetch paths from the Stash API instead of typing them.

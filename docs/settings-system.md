@@ -43,6 +43,7 @@ Only user overrides are stored. Absence means "use the tier default."
 | `detection_size` | int | 160-1280 | Face detection input resolution (pixels) |
 | `media_job_nice` | int | 0-19 | Nice level for ffmpeg run by CPU-heavy jobs (default 10; 19 yields to everything else) |
 | `media_job_threads` | int | 0-64 | Thread cap per ffmpeg run by CPU-heavy jobs (default 0 = ffmpeg decides) |
+| `content_index_workers` | int | 1-16 | Files the content index fingerprints at once (default 2) |
 
 ### Rate Limits
 

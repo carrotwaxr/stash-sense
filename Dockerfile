@@ -1,23 +1,23 @@
 # syntax=docker/dockerfile:1
 
 # Stage 1: Build dependencies
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS build
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Python and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
     python3-pip \
     build-essential \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
 WORKDIR /app
 
@@ -30,13 +30,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.docker.txt
 
 # Stage 2: Runtime
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    libgl1-mesa-glx \
+    python3.12 \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -45,8 +45,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
 WORKDIR /app
 
@@ -58,7 +58,7 @@ ENV PATH="/app/venv/bin:$PATH"
 # mismatch (e.g. a wheel built for CUDA 13) ONNX Runtime silently falls back
 # to CPU at runtime, so fail the build instead. libcuda.so.1 comes from the
 # host driver at runtime and is absent here, so it is ignored.
-RUN missing=$(ldd /app/venv/lib/python3.11/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so \
+RUN missing=$(ldd /app/venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so \
         | grep "not found" | grep -v "libcuda.so.1" || true); \
     if [ -n "$missing" ]; then echo "onnxruntime CUDA provider cannot load:"; echo "$missing"; exit 1; fi
 

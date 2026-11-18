@@ -300,6 +300,20 @@ _register(
 )
 
 _register(
+    "content_fingerprint",
+    "Content Index",
+    "Fingerprints the audio and keyframes of every file and finds files sharing content",
+    ResourceType.CPU_HEAVY,
+    JobPriority.LOW,
+    supports_incremental=True,
+    schedulable=True,
+    default_interval_hours=24,
+    allowed_intervals=INTERVALS_FREQUENT,
+    # Unfinished until #130 consumes it and the checklist in #129 is ticked.
+    production_ready=False,
+)
+
+_register(
     "review_demo",
     "Review Demo",
     "Test type for the review framework: scenes tagged 'stash-sense-review-demo'",

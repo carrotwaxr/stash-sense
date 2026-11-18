@@ -99,6 +99,10 @@ _define("media_job_threads", "Media Job Threads",
         "Thread cap per ffmpeg run by CPU-heavy jobs. 0 = let ffmpeg decide (one per core)",
         "performance", SettingType.INT, fallback=0, min_val=0, max_val=64)
 
+_define("content_index_workers", "Content Index Workers",
+        "Files the content index fingerprints at once. Each runs ffmpeg under the two settings above",
+        "performance", SettingType.INT, fallback=2, min_val=1, max_val=16)
+
 # -- Rate Limits --
 _define("stash_api_rate", "Stash API Rate",
         "Maximum requests per second to local Stash instance",

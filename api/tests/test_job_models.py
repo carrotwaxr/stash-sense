@@ -353,8 +353,16 @@ class TestJobRegistry:
             "fingerprint_generation",
             "database_update",
             "review_demo",
+            "content_fingerprint",
         }
         assert set(JOB_REGISTRY.keys()) == expected
+
+    def test_content_fingerprint(self):
+        d = JOB_REGISTRY["content_fingerprint"]
+        assert d.resource == ResourceType.CPU_HEAVY   # so run_media_command applies the nice / thread knobs
+        assert d.default_priority == JobPriority.LOW
+        assert d.production_ready is False
+        assert d.writes_media is False
 
     def test_duplicate_performer(self):
         d = JOB_REGISTRY["duplicate_performer"]

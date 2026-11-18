@@ -49,14 +49,20 @@ def build(entries, stride=4, max_files_per_value=50):
     if not vals:
         return Index(*(np.zeros(0, dtype=np.uint32) for _ in range(3)))
     v, f, p = np.concatenate(vals), np.concatenate(fids), np.concatenate(poss)
+    del vals, fids, poss
     order = np.lexsort((f, v))
     v, f, p = v[order], f[order], p[order]
-    # files per value: count distinct (value, file) pairs
-    first_of_pair = np.ones(len(v), dtype=bool)
-    first_of_pair[1:] = (v[1:] != v[:-1]) | (f[1:] != f[:-1])
-    uv, inv = np.unique(v, return_inverse=True)
-    files_per_value = np.bincount(inv, weights=first_of_pair, minlength=len(uv))
-    keep = files_per_value[inv] <= max_files_per_value
+    del order
+    # files per value: distinct (value, file) pairs in each run of equal values (v is sorted, so no second sort)
+    new_value = np.ones(len(v), dtype=bool)
+    new_value[1:] = v[1:] != v[:-1]
+    first_of_pair = new_value.copy()
+    first_of_pair[1:] |= f[1:] != f[:-1]
+    starts = np.flatnonzero(new_value)
+    del new_value
+    files_per_value = np.add.reduceat(first_of_pair.astype(np.uint32), starts)
+    del first_of_pair
+    keep = np.repeat(files_per_value <= max_files_per_value, np.diff(np.append(starts, len(v))))
     return Index(v[keep], f[keep], p[keep])
 
 

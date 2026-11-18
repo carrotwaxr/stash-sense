@@ -6,7 +6,7 @@ must not contend with the sidecar's database. stash-sense ATTACHes this file whe
 
 import sqlite3
 
-CONTENT_FP_SCHEMA_VERSION = 2
+CONTENT_FP_SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS content_fp_schema_version (version INTEGER NOT NULL);
@@ -54,6 +54,34 @@ CREATE TABLE IF NOT EXISTS audio_overlaps (
     PRIMARY KEY (file_a, file_b, algo_version, a_start)
 );
 CREATE INDEX IF NOT EXISTS idx_audio_overlaps_b ON audio_overlaps (file_b);
+
+-- v3: a 64-bit dHash of every keyframe (9x8 grey of the frame's centre, 12% cropped per side). Keyframes only: decoding
+-- every frame costs ~40x more (48 s against 1.3 s for 5 min of 1080p AV1), and encoders put keyframes on shot cuts, so
+-- two encodes of one video share many of them. times: little-endian uint32 milliseconds; hashes: little-endian uint64.
+-- Near-flat frames (fades, black) are left out: their hash is noise.
+CREATE TABLE IF NOT EXISTS video_signatures (
+    file_id      INTEGER NOT NULL REFERENCES content_files (id) ON DELETE CASCADE,
+    algo         TEXT    NOT NULL,
+    algo_version INTEGER NOT NULL,
+    params       TEXT    NOT NULL,
+    status       TEXT    NOT NULL,            -- ok | no_video | failed
+    n_items      INTEGER NOT NULL DEFAULT 0,
+    times        BLOB,
+    hashes       BLOB,
+    error        TEXT,
+    seconds      REAL,
+    created_at   TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (file_id, algo, algo_version)
+);
+
+-- v3: files whose audio has been looked up in the index at this algorithm version. A file queried against the index
+-- finds every overlap with the files indexed at that time; files fingerprinted later find it when they are queried.
+CREATE TABLE IF NOT EXISTS audio_match_state (
+    file_id      INTEGER NOT NULL REFERENCES content_files (id) ON DELETE CASCADE,
+    algo_version INTEGER NOT NULL,
+    queried_at   TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (file_id, algo_version)
+);
 """
 
 
