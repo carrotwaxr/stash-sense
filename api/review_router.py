@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+import curation_settings
 import features
 from review import REVIEW_TYPES
 from review.media import StillError, extract_still
@@ -67,7 +68,8 @@ async def list_review_types():
     """Review types visible with the current feature settings, with pending counts."""
     svc = get_review_service()
     hidden = features.hidden_recommendation_types()
-    counts = svc.rec_db.get_recommendation_counts()
+    excluded = (await curation_settings.current(svc.stash, allow_stale=True)).scene_ids
+    counts = svc.rec_db.get_recommendation_counts(exclude_scene_ids=excluded)
     return {"types": [
         {
             "type_id": t.type_id,

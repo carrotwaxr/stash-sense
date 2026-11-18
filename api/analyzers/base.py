@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Optional, TYPE_CHECKING
 
+from curation_settings import Exclusion, rec_scene_ids
+
 if TYPE_CHECKING:
     from ..stash_client_unified import StashClientUnified
     from ..recommendations_db import RecommendationsDB
@@ -38,6 +40,10 @@ class BaseAnalyzer(ABC):
 
     type: str  # Recommendation type this analyzer produces
 
+    # The #125 exclusion list. The analysis job loads it before run();
+    # a recommendation naming a scene is refused while it is None.
+    exclusion: Optional[Exclusion] = None
+
     def __init__(
         self,
         stash: "StashClientUnified",
@@ -50,6 +56,7 @@ class BaseAnalyzer(ABC):
         self._items_total: Optional[int] = None
         self._stop_requested = False
         self._job_progress_callback: Optional[Callable[[int, Optional[int]], None]] = None
+        self.excluded_skipped = 0
 
     def set_items_total(self, total: int):
         """Report total items to process for this run."""
@@ -100,7 +107,16 @@ class BaseAnalyzer(ABC):
         confidence: float = None,
         source_analysis_id: int = None,
     ) -> int | None:
-        """Create a recommendation if not already dismissed."""
+        """Create a recommendation unless dismissed or naming an excluded scene."""
+        scene_ids = rec_scene_ids(target_type, target_id, details)
+        if scene_ids:
+            if self.exclusion is None:
+                raise RuntimeError(
+                    f"{type(self).__name__}: load the exclusion list before creating scene recommendations"
+                )
+            if self.exclusion.excluded(scene_ids):
+                self.excluded_skipped += 1
+                return None
         if self.is_dismissed(target_type, target_id):
             return None
 

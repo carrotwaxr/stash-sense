@@ -217,6 +217,8 @@ async def create_performer_from_stashbox(request: CreatePerformerRequest):
     """Create a performer in Stash from StashBox data, then add to scene."""
     if not _stash_url:
         raise HTTPException(status_code=400, detail="STASH_URL not configured")
+    from recommendations_router import require_scenes_allowed
+    await require_scenes_allowed(request.scene_id)  # #125, before anything is created
 
     # 1. Fetch performer data from StashBox
     client = _get_stashbox_client(request.endpoint)
@@ -311,6 +313,8 @@ async def link_performer_to_scene(request: LinkPerformerRequest):
     """Add an existing Stash performer to a scene. Optionally update stash_ids."""
     if not _stash_url:
         raise HTTPException(status_code=400, detail="STASH_URL not configured")
+    from recommendations_router import require_scenes_allowed
+    await require_scenes_allowed(request.scene_id)  # #125
 
     from stash_client_unified import StashClientUnified
     stash_client = StashClientUnified(_stash_url, _stash_api_key)

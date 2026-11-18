@@ -95,6 +95,9 @@
       container.appendChild(renderHardwareBanner(systemInfo));
     }
 
+    // Curation (shared settings stored in Stash)
+    container.appendChild(await renderCurationCategory());
+
     // Models section
     container.appendChild(await renderModelsCategory());
 
@@ -177,6 +180,399 @@
       banner.appendChild(row);
     }
     return banner;
+  }
+
+  // ==================== Curation Category ====================
+  // Shared curation settings live in the stash-sense plugin's settings in Stash
+  // (configuration { plugins }["stash-sense"]), so other tools can read them too.
+  // The browser reads and writes them straight through Stash GraphQL.
+
+  const CURATION_PLUGIN_ID = 'stash-sense';
+
+  const CURATION_PICKERS = [
+    {
+      key: 'excludeTagIds', label: 'Tags', noun: 'tag',
+      field: 'findTags', list: 'tags',
+      hint: 'A tag also excludes its child tags.',
+    },
+    {
+      key: 'excludeGroupIds', label: 'Groups', noun: 'group',
+      field: 'findGroups', list: 'groups',
+      hint: 'A group also excludes its sub-groups.',
+    },
+    {
+      key: 'excludeStudioIds', label: 'Studios', noun: 'studio',
+      field: 'findStudios', list: 'studios',
+      hint: 'A studio also excludes its child studios.',
+    },
+  ];
+
+  async function stashGql(query, variables = {}) {
+    const response = await fetch('/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!response.ok) throw new Error(`Stash returned HTTP ${response.status}`);
+    const result = await response.json();
+    if (result.errors) throw new Error(result.errors[0]?.message || 'GraphQL error');
+    return result.data;
+  }
+
+  async function loadStashPluginConfig() {
+    const data = await stashGql('query CurationConfig { configuration { plugins } }');
+    return data?.configuration?.plugins?.[CURATION_PLUGIN_ID] || {};
+  }
+
+  function parseIdList(value) {
+    const seen = new Set();
+    for (const part of String(value || '').split(',')) {
+      const id = part.trim();
+      if (/^\d+$/.test(id)) seen.add(id);
+    }
+    return [...seen];
+  }
+
+  function parseNameList(value) {
+    const seen = new Set();
+    for (const part of String(value || '').split(',')) {
+      const name = part.trim().toLowerCase();
+      if (name) seen.add(name);
+    }
+    return [...seen];
+  }
+
+  async function resolveEntityNames(picker, ids) {
+    const names = new Map();
+    if (!ids.length) return names;
+    try {
+      const data = await stashGql(
+        `query CurationNames($ids: [ID!]) {
+          ${picker.field}(ids: $ids, filter: { per_page: -1 }) {
+            ${picker.list} { id name }
+          }
+        }`,
+        { ids }
+      );
+      for (const item of data?.[picker.field]?.[picker.list] || []) {
+        names.set(String(item.id), item.name);
+      }
+    } catch (e) {
+      console.warn(`[Stash Sense] Could not resolve ${picker.noun} names:`, e);
+    }
+    return names;
+  }
+
+  async function searchEntities(picker, q) {
+    const data = await stashGql(
+      `query CurationSearch($filter: FindFilterType) {
+        ${picker.field}(filter: $filter) {
+          ${picker.list} { id name }
+        }
+      }`,
+      { filter: { q, per_page: 10 } }
+    );
+    return data?.[picker.field]?.[picker.list] || [];
+  }
+
+  /**
+   * One picker: removable chips for the selected entities plus a search box.
+   * Returns { element, getIds }.
+   */
+  function createEntityPicker(picker, initialIds, initialNames) {
+    const selected = initialIds.slice();
+    const names = new Map(initialNames);
+
+    const wrap = SS.createElement('div', { className: 'ss-picker' });
+    wrap.appendChild(SS.createElement('label', {
+      className: 'ss-setting-label', textContent: picker.label,
+    }));
+    const chips = SS.createElement('div', { className: 'ss-chips' });
+    wrap.appendChild(chips);
+
+    const searchWrap = SS.createElement('div', { className: 'ss-picker-search' });
+    const input = SS.createElement('input', {
+      className: 'ss-text-input',
+      attrs: {
+        type: 'text',
+        placeholder: `Search ${picker.label.toLowerCase()} to add...`,
+        autocomplete: 'off',
+      },
+    });
+    const dropdown = SS.createElement('div', { className: 'ss-picker-dropdown' });
+    dropdown.style.display = 'none';
+    searchWrap.appendChild(input);
+    searchWrap.appendChild(dropdown);
+    wrap.appendChild(searchWrap);
+
+    function renderChips() {
+      chips.textContent = '';
+      if (!selected.length) {
+        chips.appendChild(SS.createElement('span', {
+          className: 'ss-setting-desc', textContent: `No ${picker.label.toLowerCase()} excluded`,
+        }));
+        return;
+      }
+      for (const id of selected) {
+        const chip = SS.createElement('span', { className: 'ss-chip' });
+        chip.appendChild(SS.createElement('span', {
+          className: 'ss-chip-label',
+          textContent: names.get(id) || `#${id} (not found)`,
+          attrs: { title: `${picker.noun} id ${id}` },
+        }));
+        chip.appendChild(SS.createElement('button', {
+          className: 'ss-chip-remove',
+          textContent: '×',
+          attrs: { type: 'button', 'aria-label': `Remove ${names.get(id) || id}` },
+          events: {
+            click: () => {
+              const i = selected.indexOf(id);
+              if (i >= 0) selected.splice(i, 1);
+              renderChips();
+            },
+          },
+        }));
+        chips.appendChild(chip);
+      }
+    }
+
+    function hideDropdown() {
+      dropdown.style.display = 'none';
+      dropdown.textContent = '';
+    }
+
+    function showMessage(text) {
+      dropdown.textContent = '';
+      dropdown.appendChild(SS.createElement('div', {
+        className: 'ss-picker-empty', textContent: text,
+      }));
+      dropdown.style.display = 'block';
+    }
+
+    function showResults(items) {
+      const fresh = items.filter(it => !selected.includes(String(it.id)));
+      if (!fresh.length) {
+        showMessage(items.length ? 'Already selected' : 'No matches');
+        return;
+      }
+      dropdown.textContent = '';
+      for (const it of fresh) {
+        const id = String(it.id);
+        dropdown.appendChild(SS.createElement('div', {
+          className: 'ss-picker-option',
+          textContent: it.name,
+          attrs: { title: `${picker.noun} id ${id}` },
+          events: {
+            // mousedown so it fires before the input's blur hides the dropdown
+            mousedown: (ev) => {
+              ev.preventDefault();
+              if (!selected.includes(id)) selected.push(id);
+              names.set(id, it.name);
+              input.value = '';
+              hideDropdown();
+              renderChips();
+            },
+          },
+        }));
+      }
+      dropdown.style.display = 'block';
+    }
+
+    let debounce = null;
+    let requestSeq = 0;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      const q = input.value.trim();
+      if (!q) {
+        requestSeq++;
+        hideDropdown();
+        return;
+      }
+      debounce = setTimeout(async () => {
+        const seq = ++requestSeq;
+        try {
+          const items = await searchEntities(picker, q);
+          if (seq === requestSeq) showResults(items);
+        } catch (e) {
+          if (seq === requestSeq) showMessage(`Search failed: ${e.message}`);
+        }
+      }, 250);
+    });
+    input.addEventListener('blur', () => {
+      requestSeq++;
+      setTimeout(hideDropdown, 100);
+    });
+
+    wrap.appendChild(SS.createElement('span', {
+      className: 'ss-setting-desc', textContent: picker.hint,
+    }));
+
+    renderChips();
+    return { element: wrap, getIds: () => selected.slice() };
+  }
+
+  function describeCurationStatus(result) {
+    if (!result || (result.error && !result.settings)) {
+      return { ok: false, text: `Sidecar unreachable (${result?.error || 'no response'}); it will pick up the saved settings within a minute.` };
+    }
+    if (result.error) {
+      return { ok: false, text: `Sidecar could not resolve the exclusion list: ${result.error}` };
+    }
+    if (typeof result.excluded_scene_count === 'number') {
+      const n = result.excluded_scene_count;
+      return { ok: true, text: `${n} scene${n === 1 ? '' : 's'} excluded` };
+    }
+    return { ok: true, text: 'Excluded scene count not available' };
+  }
+
+  async function fetchCurationStatus() {
+    try {
+      const settings = await SS.getSettings();
+      return await SS.runPluginOperation('curation_settings', { sidecar_url: settings.sidecarUrl });
+    } catch (e) {
+      return { error: e.message };
+    }
+  }
+
+  async function renderCurationCategory() {
+    const section = SS.createElement('div', { className: 'ss-settings-category' });
+    section.appendChild(SS.createElement('div', {
+      className: 'ss-settings-cat-header',
+      children: [SS.createElement('h2', { textContent: 'Curation' })],
+    }));
+    const body = SS.createElement('div', { className: 'ss-settings-cat-body' });
+    section.appendChild(body);
+
+    let config;
+    try {
+      config = await loadStashPluginConfig();
+    } catch (e) {
+      body.appendChild(SS.createElement('div', {
+        className: 'ss-setting-row',
+        children: [SS.createElement('span', {
+          className: 'ss-curation-status ss-curation-error',
+          textContent: `Could not load curation settings from Stash: ${e.message}`,
+        })],
+      }));
+      return section;
+    }
+
+    // Never touch: three pickers
+    const pickers = [];
+    const excludeRow = SS.createElement('div', { className: 'ss-setting-row-vertical' });
+    excludeRow.appendChild(SS.createElement('label', {
+      className: 'ss-setting-label', textContent: 'Never touch',
+    }));
+    excludeRow.appendChild(SS.createElement('span', {
+      className: 'ss-setting-desc',
+      textContent: 'Scenes matching any of these are skipped by every curation job and refused by write actions. A tag excludes its child tags, a group its sub-groups, a studio its child studios.',
+    }));
+    const pickerGrid = SS.createElement('div', { className: 'ss-picker-grid' });
+    for (const picker of CURATION_PICKERS) {
+      const ids = parseIdList(config[picker.key]);
+      const names = await resolveEntityNames(picker, ids);
+      const p = createEntityPicker(picker, ids, names);
+      pickers.push({ picker, ...p });
+      pickerGrid.appendChild(p.element);
+    }
+    excludeRow.appendChild(pickerGrid);
+    body.appendChild(excludeRow);
+
+    // Disfavored formats
+    const formatRow = SS.createElement('div', { className: 'ss-setting-row-vertical' });
+    formatRow.appendChild(SS.createElement('label', {
+      className: 'ss-setting-label', textContent: 'Disfavored formats',
+    }));
+    formatRow.appendChild(SS.createElement('span', {
+      className: 'ss-setting-desc',
+      textContent: 'Comma-separated. Used only as tie-breakers when suggesting which file to keep; empty means no codec preference.',
+    }));
+    const formatGrid = SS.createElement('div', { className: 'ss-picker-grid' });
+    const codecInput = SS.createElement('input', {
+      className: 'ss-text-input',
+      attrs: { type: 'text', placeholder: 'e.g. hevc, vp9', value: config.disfavoredVideoCodecs || '' },
+    });
+    const containerInput = SS.createElement('input', {
+      className: 'ss-text-input',
+      attrs: { type: 'text', placeholder: 'e.g. wmv, avi', value: config.disfavoredContainers || '' },
+    });
+    for (const [label, input] of [['Video codecs', codecInput], ['Containers', containerInput]]) {
+      const cell = SS.createElement('div', { className: 'ss-picker' });
+      cell.appendChild(SS.createElement('label', { className: 'ss-setting-label', textContent: label }));
+      cell.appendChild(input);
+      formatGrid.appendChild(cell);
+    }
+    formatRow.appendChild(formatGrid);
+    body.appendChild(formatRow);
+
+    // Save + status
+    const saveRow = SS.createElement('div', { className: 'ss-setting-row' });
+    const status = SS.createElement('span', { className: 'ss-curation-status' });
+    const saveBtn = SS.createElement('button', {
+      className: 'ss-btn ss-btn-primary', textContent: 'Save',
+      attrs: { type: 'button' },
+    });
+    saveRow.appendChild(status);
+    saveRow.appendChild(saveBtn);
+    body.appendChild(saveRow);
+
+    function setStatus(text, kind) {
+      status.textContent = text;
+      status.className = 'ss-curation-status' + (kind ? ` ss-curation-${kind}` : '');
+    }
+
+    // Excluded count from the sidecar (tolerate failure)
+    fetchCurationStatus().then((result) => {
+      if (status.textContent) return;
+      const s = describeCurationStatus(result);
+      setStatus(s.ok ? s.text : '', null);
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      setStatus('Saving...', null);
+      try {
+        // Stash's configurePlugin replaces the plugin's whole settings map, so
+        // read the current map, change only our five keys, write the full map back.
+        const merged = { ...(await loadStashPluginConfig()) };
+        for (const p of pickers) {
+          merged[p.picker.key] = [...new Set(p.getIds())].join(',');
+        }
+        merged.disfavoredVideoCodecs = parseNameList(codecInput.value).join(',');
+        merged.disfavoredContainers = parseNameList(containerInput.value).join(',');
+        await stashGql(
+          `mutation CurationSave($input: Map!) {
+            configurePlugin(plugin_id: "${CURATION_PLUGIN_ID}", input: $input)
+          }`,
+          { input: merged }
+        );
+        codecInput.value = merged.disfavoredVideoCodecs;
+        containerInput.value = merged.disfavoredContainers;
+      } catch (e) {
+        setStatus(`Save failed: ${e.message}`, 'error');
+        saveBtn.disabled = false;
+        return;
+      }
+
+      if (typeof SS.clearSettingsCache === 'function') SS.clearSettingsCache();
+      setStatus('Saved to Stash. Updating sidecar...', null);
+      let result;
+      try {
+        const settings = await SS.getSettings();
+        const args = { sidecar_url: settings.sidecarUrl };
+        const refreshed = await SS.runPluginOperation('curation_refresh', args);
+        result = refreshed?.error && !refreshed?.settings
+          ? refreshed
+          : await SS.runPluginOperation('curation_settings', args);
+      } catch (e) {
+        result = { error: e.message };
+      }
+      const s = describeCurationStatus(result);
+      setStatus(`Saved. ${s.text}`, s.ok ? 'ok' : 'warn');
+      saveBtn.disabled = false;
+    });
+
+    return section;
   }
 
   // ==================== Models Category ====================

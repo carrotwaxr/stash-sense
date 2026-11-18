@@ -21,6 +21,7 @@ nav:
     - Configuration: configuration.md
   - Features:
     - Reviewing Recommendations: features/review.md
+    - Curation Settings: features/curation-settings.md
     - Performer Identification: features/performer-identification.md
     - Scene Tagger: features/scene-tagger.md
     - Upstream Changes: features/upstream-changes.md

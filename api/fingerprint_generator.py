@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, AsyncIterator
 from enum import Enum
 
+import curation_settings
 import face_config
 
 if TYPE_CHECKING:
@@ -172,6 +173,9 @@ class SceneFingerprintGenerator:
         self._stop_requested = False
 
         try:
+            # #125: excluded scenes are never fingerprinted. Fresh read per run.
+            exclusion = await curation_settings.current(self.stash, max_age=0)
+
             # Get total scene count
             _, total = await self.stash.get_scenes_for_fingerprinting(limit=1, offset=0)
             self._progress.total_scenes = total
@@ -197,6 +201,12 @@ class SceneFingerprintGenerator:
                     scene_id = int(scene["id"])
                     self._progress.current_scene_id = scene_id
                     self._progress.current_scene_title = scene.get("title", f"Scene {scene_id}")
+
+                    if exclusion.is_excluded(scene_id):
+                        self._progress.skipped += 1
+                        self._progress.processed_scenes += 1
+                        yield self._progress
+                        continue
 
                     # Check if we need to process this scene
                     existing = self.rec_db.get_scene_fingerprint(scene_id)

@@ -775,6 +775,9 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
     Extracts full-resolution frames from the video stream using ffmpeg,
     detects faces, clusters them by person, and returns matches.
     """
+    from recommendations_router import require_scenes_allowed
+    await require_scenes_allowed(request.scene_id)  # #125: excluded scenes are never scanned
+
     t_start = time.time()
 
     if not check_ffmpeg_available():
