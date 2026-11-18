@@ -238,7 +238,7 @@ def test_contained_split_first():
         s = suggest([short, long_], kind="contained")
         assert set(s.keep) == {"long", "short"} and s.delete == []
         assert s.flags == ["split_first"]
-        assert "split" in s.reason and "longer file" in s.reason
+        assert "split the longer file first" in s.reason.lower()
     # just under 1.5x is a re-cut
     s = suggest([mk("short", duration=800.0), mk("long", duration=1199.0)], kind="contained")
     assert "split_first" not in s.flags

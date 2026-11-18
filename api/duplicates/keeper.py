@@ -231,8 +231,8 @@ def suggest(
         if failed(long_):
             return result([short, long_], "The longer file failed its health check, so both files are kept.", [])
         if long_.duration >= SPLIT_FIRST_RATIO * short.duration:
-            return result([short, long_], "The longer file probably holds several scenes: split it first, then "
-                                          "merge and delete. Both files are kept.", ["split_first"])
+            return result([short, long_], "Split the longer file first: it probably holds several scenes. "
+                                          "Both files are kept until then.", ["split_first"])
         if failed(short):
             return result([long_], "Its content is inside the longer file, and the shorter file failed its health "
                                    "check.", [])
