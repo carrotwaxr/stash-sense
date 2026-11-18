@@ -180,7 +180,8 @@ class FakeStash:
                    if min_duration is None
                    or (s["file_ids"] and self.files[s["file_ids"][0]]["duration"] > min_duration)]
         chunk = ordered[(page - 1) * per_page: page * per_page]
-        return [{"id": s["id"], "title": s["title"],
+        return [{"id": s["id"], "title": s["title"], "date": s["date"],
+                 "studio": {"id": s["studio_id"]} if s["studio_id"] else None,
                  "files": [copy.deepcopy(self.files[f]) for f in s["file_ids"]]} for s in chunk], len(ordered)
 
     async def find_tag_id_by_name(self, name: str) -> Optional[str]:
