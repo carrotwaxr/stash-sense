@@ -90,6 +90,23 @@ class PrimaryFileChange:
 
 
 @dataclass
+class SceneMerge:
+    """Stash's sceneMerge: sources' files move to the destination, sources are destroyed.
+
+    Stash unions nothing itself, so values carries the merged metadata.
+    """
+
+    destination: str
+    sources: list[str]
+    values: dict  # SceneUpdateInput fields, each in SCENE_FIELDS
+    source_snapshots: list[dict] = field(default_factory=list)  # review-shape scenes, for the apply log
+
+    @property
+    def scene_ids(self) -> list[str]:
+        return [str(self.destination), *(str(s) for s in self.sources)]
+
+
+@dataclass
 class Plan:
     rec_id: int
     rec_type: str
@@ -98,6 +115,8 @@ class Plan:
     keep_files: list[FileRef] = field(default_factory=list)
     delete_files: list[FileRef] = field(default_factory=list)
     primary_file: PrimaryFileChange | None = None
+    # Runs first; delete FileRefs name the scene a file is on before the merge.
+    merge: SceneMerge | None = None
 
     @property
     def bytes_reclaimed(self) -> int:
@@ -109,7 +128,7 @@ class Plan:
 
     @property
     def is_empty(self) -> bool:
-        return not (self.field_changes or self.delete_files or self.primary_file)
+        return not (self.field_changes or self.delete_files or self.primary_file or self.merge)
 
     def token(self) -> str:
         """Fingerprint of what this plan would do, given the state it was built from.
@@ -128,6 +147,12 @@ class Plan:
             "keep": sorted((f.file_id, f.path, f.size, sorted(f.fingerprints.items()))
                            for f in self.keep_files),
         }
+        if self.merge:  # only when present, so tokens of plans without a merge stay valid
+            payload["merge"] = {
+                "destination": self.merge.destination,
+                "sources": self.merge.sources,
+                "values": self.merge.values,
+            }
         blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(blob.encode()).hexdigest()[:24]
 
@@ -147,6 +172,7 @@ class Plan:
             keep_files=[FileRef(**f) for f in d.get("keep_files") or []],
             delete_files=[FileRef(**f) for f in d.get("delete_files") or []],
             primary_file=PrimaryFileChange(**d["primary_file"]) if d.get("primary_file") else None,
+            merge=SceneMerge(**d["merge"]) if d.get("merge") else None,
         )
 
 

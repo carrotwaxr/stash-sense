@@ -84,11 +84,13 @@ logger = logging.getLogger(__name__)
 
 
 def _plan_scene_ids(plan: Plan) -> set[str]:
-    """Every scene a plan writes: field changes, primary file, and the scenes of deleted files."""
+    """Every scene a plan writes: field changes, primary file, merged scenes, and the scenes of deleted files."""
     ids = {c.entity_id for c in plan.field_changes}
     ids |= {f.scene_id for f in plan.delete_files}
     if plan.primary_file:
         ids.add(plan.primary_file.scene_id)
+    if plan.merge:
+        ids.update(plan.merge.scene_ids)
     return {str(i) for i in ids if i is not None}
 
 
@@ -350,14 +352,27 @@ class ReviewService:
                 _plan_scene_ids(plan)
                 | ({entry["target_id"]} if entry.get("target_type") == "scene" else set())
             )
+            steps = (entry.get("result") or {}).get("steps", [])
+            merge_ran = bool(plan.merge) and (
+                entry["status"] == "applied" or any(st.get("step") == "merge_scenes" for st in steps)
+            )
             if entry["status"] == "failed":
                 # Only the scenes whose update step ran were written.
-                written = {st["scene_id"] for st in (entry.get("result") or {}).get("steps", [])
-                           if st.get("step") == "update_scene"}
+                written = {st["scene_id"] for st in steps if st.get("step") == "update_scene"}
                 plan.field_changes = [c for c in plan.field_changes if c.entity_id in written]
+            merged_sources = [str(s) for s in plan.merge.sources] if merge_ran else []
+            if merge_ran:
+                # The merge wrote the destination's fields; the log holds what they were.
+                md = entry["prior_state"]["merge_destination"]
+                plan.field_changes += [
+                    FieldChange("scene", md["scene_id"], k, before=v, after=plan.merge.values[k])
+                    for k, v in md["fields"].items()
+                ]
             if not plan.field_changes:
                 raise NotRevertible(
-                    "Nothing to revert: this apply only deleted files, which the log records but cannot restore"
+                    "Nothing to revert: this apply only "
+                    + ("merged scenes and deleted files" if merge_ran else "deleted files")
+                    + ", which the log records but cannot restore"
                 )
 
             current: dict[str, dict] = {}
@@ -398,4 +413,5 @@ class ReviewService:
             return {
                 "entry": new_entry,
                 "files_not_restored": entry["prior_state"].get("deleted_files") or [],
+                "merged_scenes_not_restored": merged_sources,
             }

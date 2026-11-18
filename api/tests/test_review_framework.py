@@ -1,6 +1,8 @@
 """Review framework (#127) end to end against FakeStash, through the review_demo type."""
 
+import hashlib
 import inspect
+import json
 import sqlite3
 
 import pytest
@@ -14,6 +16,7 @@ from review.plan import (
     FileRef,
     Plan,
     PrimaryFileChange,
+    SceneMerge,
     scene_field_values,
     values_equal,
 )
@@ -543,3 +546,118 @@ async def test_token_covers_file_fingerprints(svc, stash, db, tag):
     stash.files[small]["fingerprints"] = [{"type": "oshash", "value": "changed"}]
     with pytest.raises(Stale):
         await svc.accept(rec.id, option=p["option"], plan_token=p["plan_token"], confirm_delete=[small])
+
+
+# ---------------- merge ----------------
+
+def _merge_pair(stash):
+    """Scene 1 (destination) holds file A, scene 2 (source) holds file B."""
+    a = stash.add_file("/m/a.mp4", 1 * GB, oshash="a1")
+    b = stash.add_file("/m/b.mp4", 2 * GB, oshash="b1")
+    dest = stash.add_scene(a, title="dest title", tag_ids=("t1",))
+    src = stash.add_scene(b, title="source title", tag_ids=("t2",))
+    return dest, src, a, b
+
+
+async def _merge_plan(stash, dest, src, a, b, *, values=None, **kw):
+    """Merge src into dest, keep B, delete A (dest's primary)."""
+    kw.setdefault("primary_file", PrimaryFileChange(dest, a, b))
+    kw.setdefault("keep_files", [FileRef.from_stash(src, stash.files[b])])
+    kw.setdefault("delete_files", [FileRef.from_stash(dest, stash.files[a])])
+    return Plan(
+        rec_id=0, rec_type="review_demo", option={},
+        merge=SceneMerge(dest, [src],
+                         values if values is not None else {"title": "merged", "tag_ids": ["t1", "t2"]},
+                         [await stash.get_scene_for_review(src)]),
+        **kw,
+    )
+
+
+async def test_merge_then_delete(stash, store):
+    dest, src, a, b = _merge_pair(stash)
+    plan = await _merge_plan(stash, dest, src, a, b)
+
+    entry = await apply_plan(plan, stash, store, target_type="scene", target_id=dest)
+
+    assert src not in stash.scenes
+    assert stash.scenes[dest]["file_ids"] == [b]
+    assert a not in stash.files and b in stash.files
+    assert stash.scenes[dest]["title"] == "merged" and stash.scenes[dest]["tag_ids"] == ["t1", "t2"]
+    assert [s["step"] for s in entry["result"]["steps"]] == ["merge_scenes", "set_primary_file", "delete_files"]
+    merged = entry["prior_state"]["merged_scenes"]
+    assert [m["id"] for m in merged] == [src] and merged[0]["title"] == "source title"
+    assert [f["id"] for f in merged[0]["files"]] == [b]
+    md = entry["prior_state"]["merge_destination"]
+    assert md["scene_id"] == dest and md["fields"] == {"title": "dest title", "tag_ids": ["t1"]}
+    assert Plan.from_dict(entry["plan"]).merge == plan.merge
+
+
+async def test_merge_refuses_missing_source(stash, store):
+    dest, src, a, b = _merge_pair(stash)
+    plan = await _merge_plan(stash, dest, src, a, b)
+    del stash.scenes[src]  # deleted after the preview
+
+    with pytest.raises(PlanRejected, match="no longer exists"):
+        await apply_plan(plan, stash, store, target_type="scene", target_id=dest)
+    assert stash.writes == 0 and store.count() == 0 and a in stash.files
+
+
+async def test_merge_never_deletes_every_file(stash, store):
+    dest, src, a, b = _merge_pair(stash)
+    plan = await _merge_plan(stash, dest, src, a, b, delete_files=[
+        FileRef.from_stash(dest, stash.files[a]), FileRef.from_stash(src, stash.files[b])])
+
+    with pytest.raises(PlanRejected, match="every file"):
+        await apply_plan(plan, stash, store, target_type="scene", target_id=dest)
+    assert stash.writes == 0 and store.count() == 0 and src in stash.scenes
+
+
+async def test_merge_rejects_malformed_plans(stash, store):
+    dest, src, a, b = _merge_pair(stash)
+
+    async def rejected(match, **kw):
+        plan = await _merge_plan(stash, dest, src, a, b, **kw)
+        with pytest.raises(PlanRejected, match=match):
+            await apply_plan(plan, stash, store, target_type="scene", target_id=dest)
+
+    await rejected("primary file", primary_file=None)
+    await rejected("not writable", values={"files": []})
+    await rejected("no longer on scene", delete_files=[FileRef.from_stash(src, stash.files[a])])
+    plan = await _merge_plan(stash, dest, src, a, b)
+    plan.merge.sources = []
+    with pytest.raises(PlanRejected, match="no source"):
+        await apply_plan(plan, stash, store, target_type="scene", target_id=dest)
+    plan.merge.sources = [src, dest]
+    with pytest.raises(PlanRejected, match="destination"):
+        await apply_plan(plan, stash, store, target_type="scene", target_id=dest)
+    assert stash.writes == 0 and store.count() == 0
+
+
+async def test_merge_token_changes(stash):
+    dest, src, a, b = _merge_pair(stash)
+    one = await _merge_plan(stash, dest, src, a, b)
+    other = await _merge_plan(stash, dest, src, a, b, values={"title": "another", "tag_ids": ["t1", "t2"]})
+    assert one.token() != other.token()
+
+    # A plan without a merge keeps the token it had before merges existed.
+    plain = Plan(rec_id=3, rec_type="review_demo", option={"keep": b},
+                 field_changes=[FieldChange("scene", dest, "title", "x", "y")])
+    payload = {"rec_id": 3, "rec_type": "review_demo", "option": {"keep": b},
+               "field_changes": [{"entity_type": "scene", "entity_id": dest, "field": "title",
+                                  "before": "x", "after": "y"}],
+               "primary_file": None, "delete": [], "keep": []}
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    assert plain.token() == hashlib.sha256(blob.encode()).hexdigest()[:24]
+
+
+async def test_revert_after_merge(svc, stash, store):
+    dest, src, a, b = _merge_pair(stash)
+    entry = await apply_plan(await _merge_plan(stash, dest, src, a, b), stash, store,
+                             target_type="scene", target_id=dest)
+
+    out = await svc.revert(entry["id"])
+
+    assert stash.scenes[dest]["title"] == "dest title" and stash.scenes[dest]["tag_ids"] == ["t1"]
+    assert out["merged_scenes_not_restored"] == [src]
+    assert [f["path"] for f in out["files_not_restored"]] == ["/m/a.mp4"]
+    assert store.get(entry["id"])["reverted_by"] == out["entry"]["id"]
