@@ -36,6 +36,9 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.ci.txt
       - run: pip install -r requirements.ci.txt
+      # ffmpeg with the chromaprint muxer runs the content index acceptance tests (#129); Ubuntu 24.04's build is the
+      # one in the image
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: python -m pytest tests/ -m "not heavy" -v --tb=short
         working-directory: api
 
