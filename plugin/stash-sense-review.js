@@ -129,10 +129,24 @@
 
   // ==================== Card ====================
 
+  // Effective detail is in pixels; megapixels read better on a card.
+  function mp(px) {
+    const v = Number(px);
+    return Number.isFinite(v) ? `${(v / 1e6).toFixed(v < 1e6 ? 2 : 1)} MP` : '?';
+  }
+
+  function fmtItem(x) {
+    if (x && typeof x === 'object') {
+      if ('group_id' in x) return `group ${x.group_id}${x.scene_index != null ? ` #${x.scene_index}` : ''}`;
+      return JSON.stringify(x);
+    }
+    return String(x);
+  }
+
   function fmtValue(v) {
     if (v === null || v === undefined || v === '') return '<em>empty</em>';
-    if (Array.isArray(v)) return v.length ? esc(v.join(', ')) : '<em>none</em>';
-    return esc(v);
+    if (Array.isArray(v)) return v.length ? esc(v.map(fmtItem).join(', ')) : '<em>none</em>';
+    return esc(fmtItem(v));
   }
 
   const FLAG_LABELS = {
@@ -265,9 +279,85 @@
     return `${head}${rows || '<div class="ss-review-noop">No cuts: the file stays whole.</div>'}${snapped}${left}`;
   }
 
+  const QUALITY_LABELS = {
+    broken: 'Broken',
+    rip: 'Tube or leak rip',
+    below_studio: "Below the studio's release",
+    format: 'Disfavored format',
+  };
+  const QUALITY_ORDER = ['broken', 'rip', 'below_studio', 'format'];
+
+  function fmtPct(x) {
+    return x == null ? '' : `${Math.round(Number(x) * 100)}%`;
+  }
+
+  /** The body of one flag's block; each shape comes from scene_quality assemble(). */
+  function qualityFlagBody(flag, e) {
+    e = e || {};
+    if (flag === 'broken') {
+      const reasons = (e.reasons || []).map(r => `<li>${esc(r)}</li>`).join('');
+      return `<div class="ss-review-dup-meta">status <span class="ss-review-badge ss-review-badge-warn">${esc(e.status || 'unknown')}</span>
+        ${e.tier != null ? `tier ${esc(e.tier)}` : ''}</div>${reasons ? `<ul class="ss-review-quality-list">${reasons}</ul>` : ''}`;
+    }
+    if (flag === 'rip') {
+      const sigs = (e.signals || []).map(x => `<li>${esc(x.signal)}: ${esc(x.text)}</li>`).join('');
+      return `<div class="ss-review-dup-meta">score <span class="ss-review-badge ss-review-badge-warn">${esc(e.score != null ? Number(e.score).toFixed(2) : '')}</span></div>
+        ${sigs ? `<ul class="ss-review-quality-list">${sigs}</ul>` : ''}`;
+    }
+    if (flag === 'below_studio') {
+      const sh = e.sharpness;
+      const num = (v) => (v == null ? '?' : esc(Number(v).toFixed(2)));
+      return `<div class="ss-review-dup-meta">effective detail ${mp(e.eff)} against a peer median of ${mp(e.peer_median)}
+        (${esc(e.group || 'unknown group')}, ${esc(e.peers != null ? e.peers : '?')} peers)</div>
+        <div class="ss-review-dup-meta">${esc(fmtPct(e.share_better))} of peers are better${e.score != null ? `, score ${num(e.score)}` : ''}</div>
+        ${sh ? `<div class="ss-review-dup-meta">sharpness: blur ${num(sh.blur)}, block ${num(sh.block)}</div>` : ''}`;
+    }
+    if (flag === 'format') {
+      return `<div class="ss-review-dup-meta">${esc(e.reason || '')}</div>`;
+    }
+    return '';
+  }
+
+  /** A quality card: scene, file line, report-only note, one block per raised flag (or per score on a control card). */
+  function qualityEvidenceHtml(ev) {
+    const f = ev.file || {};
+    const line = [
+      f.basename ? esc(f.basename) : '',
+      f.width && f.height ? `${esc(f.width)}×${esc(f.height)}` : '',
+      f.codec ? esc(f.codec) : '',
+      f.bit_rate ? esc(fmtMbps(f.bit_rate)) : '',
+      f.duration ? esc(fmtT(f.duration)) : '',
+    ].filter(Boolean).join(' · ');
+    const head = `<div class="ss-review-quality-head">
+      ${ev.scene ? `<div class="ss-review-ev-scene">Scene <a href="/scenes/${esc(ev.scene.id)}" target="_blank">#${esc(ev.scene.id)}</a> ${esc(ev.scene.title || '(untitled)')}</div>` : ''}
+      ${line ? `<div class="ss-review-path">${line}</div>` : ''}
+      ${ev.report_only ? '<div class="ss-review-quality-note">Report-only: accepting records your answer and changes nothing</div>' : ''}
+    </div>`;
+
+    const q = ev.quality || {};
+    const raised = QUALITY_ORDER.filter(k => q[k] !== undefined);
+    if (raised.length) {
+      const groups = ev.groups || {};
+      return head + raised.map(k => `<div class="ss-review-quality-flag" data-flag="${esc(k)}">
+        <strong>${esc(QUALITY_LABELS[k] || k)}</strong>
+        ${groups[k] ? `<span class="ss-review-dup-meta">group ${esc(groups[k])}</span>` : ''}
+        ${qualityFlagBody(k, q[k])}</div>`).join('');
+    }
+
+    // A control card: nothing was raised, so show what the detectors scored.
+    const sc = ev.scores || {};
+    const rows = QUALITY_ORDER.filter(k => sc[k] !== undefined && sc[k] !== null).map(k =>
+      `<li>${esc(QUALITY_LABELS[k] || k)}: ${esc(typeof sc[k] === 'number' ? sc[k].toFixed(2) : sc[k])}</li>`).join('');
+    return `${head}<div class="ss-review-quality-flag ss-review-quality-control">
+      <strong>Control sample</strong>
+      <div class="ss-review-dup-meta">No flag was raised on this file.</div>
+      ${rows ? `<ul class="ss-review-quality-list">${rows}</ul>` : ''}</div>`;
+  }
+
   function evidenceHtml(ev, p) {
     if (Array.isArray(ev.scenes) && p) return dupEvidenceHtml(ev, p);
     if (Array.isArray(ev.cuts)) return splitEvidenceHtml(ev);
+    if (ev.quality !== undefined) return qualityEvidenceHtml(ev);
     const parts = [];
     if (ev.scene) {
       parts.push(`<div class="ss-review-ev-scene">Scene <a href="/scenes/${esc(ev.scene.id)}" target="_blank">#${esc(ev.scene.id)}</a> ${esc(ev.scene.title)}</div>`);
@@ -333,8 +423,11 @@
       const cur = p.option[c.field];
       if (c.kind === 'pick') {
         return `<div class="ss-review-choice"><label>${esc(c.label)}</label><select data-field="${esc(c.field)}">
-          ${c.values.map(v => `<option value="${esc(v.value)}" ${String(v.value) === String(cur) ? 'selected' : ''}>
-            ${esc(v.label)}${String(v.value) === String(p.default_option[c.field]) ? ' (suggested)' : ''}</option>`).join('')}
+          ${c.values.map(v0 => {
+            const v = (v0 !== null && typeof v0 === 'object') ? v0 : { value: v0, label: v0 };  // plain strings (quality yes/no) too
+            return `<option value="${esc(v.value)}" ${String(v.value) === String(cur) ? 'selected' : ''}>
+            ${esc(v.label)}${String(v.value) === String(p.default_option[c.field]) ? ' (suggested)' : ''}</option>`;
+          }).join('')}
         </select></div>`;
       }
       return `<div class="ss-review-choice"><label>${esc(c.label)}</label>

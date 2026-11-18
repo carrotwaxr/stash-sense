@@ -1117,6 +1117,8 @@ class StashClientUnified:
             scenes {
               id
               title
+              date
+              studio { id }
               files {
                 id path basename size duration format video_codec width height bit_rate frame_rate
                 fingerprints { type value }

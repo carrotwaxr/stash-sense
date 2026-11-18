@@ -350,3 +350,17 @@ _register(
     # Unfinished until #131's checklist is ticked.
     production_ready=False,
 )
+
+_register(
+    "scene_quality",
+    "Quality Flags",
+    "Flags broken files, tube rips, copies below the studio's release and disfavored formats",
+    ResourceType.CPU_HEAVY,
+    JobPriority.LOW,
+    supports_incremental=False,
+    schedulable=True,
+    default_interval_hours=168,
+    allowed_intervals=INTERVALS_INFREQUENT,
+    # Unfinished until #133's checklist is ticked.
+    production_ready=False,
+)

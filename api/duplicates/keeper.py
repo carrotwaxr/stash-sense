@@ -98,6 +98,11 @@ def _detail(f: FileFeatures) -> tuple[float, float]:
     return eff, (kb * 1000 / (px * fps) if px else 0.0)
 
 
+def effective_detail(f: FileFeatures) -> tuple[float, float]:
+    """Public name for `_detail`: (effective detail in pixels, bits per pixel per frame)."""
+    return _detail(f)
+
+
 def _describe(f: FileFeatures) -> str:
     rate = f"{f.bit_rate / 1e6:.1f} Mbps" if f.bit_rate else "unknown bitrate"
     return f"{f.width}x{f.height} at {rate}"
