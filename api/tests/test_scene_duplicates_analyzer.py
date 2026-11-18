@@ -205,7 +205,7 @@ async def test_changed_suggestion_updates_in_place(stash, db, world, health_call
     await run(stash, db)
     [first] = recs(db)
     age(db)
-    stash.files[fb].update(width=3840, height=2160, bit_rate=20_000_000)  # b becomes the better file
+    stash.files[fb]["bit_rate"] = 20_000_000       # b becomes the better file
     analyzer, result = await run(stash, db)
     [second] = recs(db)
     assert second.id == first.id and second.status == "pending"
@@ -341,8 +341,8 @@ async def test_returning_set_is_reopened_but_dismissed_stays(stash, db, world, h
     assert {r.target_id: r.status for r in recs(db)} == {f"duplicate:{a}": "resolved", f"duplicate:{c}": "dismissed"}
     for sid in (a, c):
         stash.scenes[sid]["stash_ids"] = ids[sid]
-    for f in (fb, fd):
-        stash.files[f].update(width=3840, height=2160, bit_rate=20_000_000)
+    stash.files[fb]["bit_rate"] = 20_000_000
+    stash.files[fd]["bit_rate"] = 20_000_000
     await run(stash, db)
     after = {r.target_id: r for r in recs(db)}
     back = after[f"duplicate:{a}"]

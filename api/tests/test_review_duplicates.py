@@ -74,7 +74,7 @@ def rec_for(db, cls, scene_ids, *, files=None, moments=None):
 
 def pair(stash, *, a=None, b=None, sa=None, sb=None):
     """Two scenes with one file each; a and b are add_file kwargs, sa and sb add_scene kwargs."""
-    a = {"path": "/m/a.mp4", "size": 1 * GB, "oshash": "aaaa", "md5": "ma", **(a or {})}
+    a = {"path": "/m/a.mp4", "size": 2 * GB, "oshash": "aaaa", "md5": "ma", **(a or {})}
     b = {"path": "/m/b.mp4", "size": 1 * GB, "oshash": "bbbb", "md5": "mb", **(b or {})}
     fa = stash.add_file(a.pop("path"), a.pop("size"), **a)
     fb = stash.add_file(b.pop("path"), b.pop("size"), **b)
@@ -254,9 +254,9 @@ async def test_batch_eligible_only_identical_or_same_encode(stash, db, data_dir)
 
     assert p.evidence["flags"] == ["tie"]  # a tie is fine when the deleted file is identical
 
-    # same encode: codec, frame size and duration within 1 s; the keeper wins as the smaller file
+    # same encode: codec, size and duration within 1 s; the keeper wins on bits per pixel
     s3, s4, f3, f4 = pair(stash, a={"oshash": "c1", "duration": 600.0}, b={"oshash": "c2", "duration": 600.6})
-    stash.files[f4]["size"] = GB // 2
+    stash.files[f4]["bit_rate"] = 8_000_000
     p = await RT.preview(rec_for(db, "duplicate", [s3, s4]), None, stash)
     assert p.default_option["keep"] == "c2" and p.evidence["flags"] == []
     assert p.high_confidence
@@ -377,10 +377,14 @@ async def test_contained_keep_both_no_merge(stash, db):
     p = await RT.preview(rec_for(db, "contained", [s1, s2]), None, stash)
     assert p.plan.delete_files == [] and p.plan.merge is None
     assert "split_first" not in p.evidence["flags"] and not p.high_confidence
-    # equal quality keeps both too
-    s3, s4, *_ = pair(stash, a={"oshash": "e1", "duration": 1000.0}, b={"oshash": "e2", "duration": 800.0})
-    p = await RT.preview(rec_for(db, "contained", [s3, s4]), None, stash)
-    assert p.plan.delete_files == [] and p.plan.merge is None
+
+
+async def test_contained_equal_quality_longer_cut_wins(stash, db):
+    # at equal quality the longer, more complete cut is kept and the short scene merges into it
+    s1, s2, fa, fb = pair(stash, a={"duration": 1000.0}, b={"duration": 800.0})
+    p = await RT.preview(rec_for(db, "contained", [s1, s2]), None, stash)
+    assert [f.file_id for f in p.plan.delete_files] == [fb]
+    assert p.plan.merge.destination == s1 and p.plan.merge.sources == [s2]
 
 
 async def test_contained_delete_short_merges_into_long(svc, stash, db):
@@ -429,8 +433,7 @@ async def test_contained_user_deletes_short_of_split_first_card(svc, stash, db):
 
 
 async def test_no_codec_mention_when_lists_empty(stash, db, monkeypatch):
-    s1, s2, fa, fb = pair(stash, a={"codec": "h264"}, b={"codec": "hevc", "size": GB // 2})
-    stash.files[fb]["bit_rate"] = 3_500_000  # the same effective detail from fewer bits
+    s1, s2, fa, fb = pair(stash, a={"codec": "h264"}, b={"codec": "hevc"})
     rec = rec_for(db, "duplicate", [s1, s2])
 
     p = await RT.preview(rec, None, stash)

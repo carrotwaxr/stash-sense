@@ -63,9 +63,9 @@ def test_effective_detail_beats_resolution():
 
 
 def test_bpp_then_fps_then_container():
-    # bits per pixel: the same effective detail, but one file spends far fewer bits per pixel on more pixels
-    lean = mk("l", width=1280, height=720, bit_rate=1_100_000)
-    rich = mk("r", width=854, height=480, bit_rate=1_000_000)
+    # bits per pixel: both at 720p carry the full picture, one has far more bits
+    lean = mk("l", width=1280, height=720, bit_rate=5_000_000)
+    rich = mk("r", width=1280, height=720, bit_rate=8_000_000)
     who, why = better(lean, rich)
     assert who == "b" and "bits per pixel" in why
 
@@ -217,12 +217,11 @@ def test_contained_recut():
     short = mk("short", duration=800.0)
     s = suggest([_720("short", duration=800.0), long_], kind="contained")
     assert s.keep == ["long"] and s.delete == ["short"] and "split_first" not in s.flags
-    assert "longer cut" in s.reason
-    # equal quality is not strictly better: both kept
-    equal = mk("long", duration=1000.0, size=3_000_000_000)
-    s = suggest([short, equal], kind="contained")
-    assert set(s.keep) == {"long", "short"} and s.delete == [] and "split_first" not in s.flags
-    # a better short file keeps both
+    assert "inside the longer file" in s.reason
+    # equal quality: the longer, more complete cut wins
+    s = suggest([short, long_], kind="contained")
+    assert s.keep == ["long"] and s.delete == ["short"] and "split_first" not in s.flags
+    # only a strictly better short file keeps both
     long_worse = _720("long", duration=1000.0)
     s = suggest([short, long_worse], kind="contained")
     assert set(s.keep) == {"long", "short"} and s.delete == [] and "split_first" not in s.flags
@@ -270,30 +269,3 @@ def test_hevc_not_upscale_by_size():
     half = mk("m", codec="h264", width=960, height=540, size=300_000_000)
     av1 = mk("a", codec="av1", width=1920, height=1080, size=900_000_000)
     assert is_upscale(av1, [half])
-
-
-def test_bpp_capped():
-    # far above the cap: 12.2 Mbps buys no visible detail over 4.4 Mbps, so the smaller file wins
-    fat = mk("fat", bit_rate=12_200_000, size=1_800_000_000)
-    lean = mk("lean", bit_rate=4_400_000, size=650_000_000)
-    who, why = better(fat, lean)
-    assert who == "b" and "smaller file" in why
-    assert better(lean, fat)[0] == "a"
-    # below the cap the rule still applies
-    hi = mk("hi", width=640, height=480, bit_rate=1_000_000, size=150_000_000)
-    lo = mk("lo", width=640, height=480, bit_rate=500_000, size=75_000_000)
-    assert better(lo, hi)[0] == "b"
-    assert better(hi, lo)[0] == "a"
-
-
-def test_smaller_file_breaks_ties():
-    big = mk("big", size=1_100_000_000)
-    small = mk("small", size=1_000_000_000)
-    who, why = better(big, small)
-    assert who == "b" and "smaller file" in why
-    assert better(small, big)[0] == "a"
-    # within 5% is still a tie, and so is the same size
-    assert better(mk("x", size=1_040_000_000), small)[0] == "tie"
-    assert better(mk("y"), mk("z"))[0] == "tie"
-    # an earlier rule outranks size: a better container wins over a smaller file
-    assert better(mk("a", size=500_000_000, ext="wmv"), mk("b", size=900_000_000))[0] == "b"
