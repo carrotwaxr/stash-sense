@@ -66,6 +66,10 @@ class JobContext:
             cmd = media_job_command(cmd)
         return await run_command(cmd, timeout=timeout)
 
+    def set_result(self, result: dict) -> None:
+        """Record a short summary of what the job did (the driver API's job result)."""
+        self._db.set_job_result(self._job_id, result)
+
     async def report_progress(self, items_processed: int, items_total: Optional[int] = None) -> None:
         """Report current progress without saving a resumption cursor."""
         self._db.update_job_progress(

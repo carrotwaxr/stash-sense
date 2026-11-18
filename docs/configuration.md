@@ -12,6 +12,7 @@ Set these when starting the Docker container:
 |----------|----------|-------------|
 | `STASH_URL` | Yes | URL to your Stash instance (e.g., `http://10.0.0.4:9999`) |
 | `STASH_API_KEY` | Yes | Stash API key from **Settings > Security > API Key** |
+| `STASH_SENSE_API_KEY` | No | Key that external tools such as stash-curator send in the `ApiKey` header to use the [driver API](driver-api.md). When it is empty, the driver API is open to your network. |
 
 ```bash
 -e STASH_URL=http://your-stash-host:9999 \

@@ -53,7 +53,7 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 ## Key Files
 
 - `api/recommendations_router.py` - All recommendation API endpoints
-- `api/recommendations_db.py` - SQLite database layer (schema version 10)
+- `api/recommendations_db.py` - SQLite database layer (schema version 11)
 - `api/queue_router.py` - Operation queue API endpoints
 - `api/queue_manager.py` - Queue execution engine with resource-aware scheduling
 - `api/settings_router.py` - Settings and system info API endpoints
@@ -62,6 +62,7 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/analyzers/upstream_scene.py` - Upstream scene change detection analyzer
 - `api/analyzers/base_upstream.py` - Base class for upstream analyzers with logic versioning
 - `api/curation_settings.py` - #125 exclusion list and disfavored formats, read from the plugin's settings in Stash; fail-closed guard used by jobs, review and scene endpoints
+- `api/driver_router.py` - Stable driver API v1 for external tools (#126) at `/api/v1/driver`; shapes pinned by `tests/test_driver_api.py`, documented in `docs/driver-api.md`. Breaking changes go to a v2 router
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client

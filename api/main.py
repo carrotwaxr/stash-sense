@@ -43,6 +43,7 @@ from queue_router import router as queue_router
 from model_manager import init_model_manager
 from model_router import router as model_router, init_model_router
 from review_router import router as review_router
+from driver_router import router as driver_router
 from resource_manager import ResourceManager, init_resource_manager, get_resource_manager
 
 logger = logging.getLogger(__name__)
@@ -422,6 +423,7 @@ app.include_router(settings_router)
 app.include_router(queue_router)
 app.include_router(model_router)
 app.include_router(review_router)
+app.include_router(driver_router)
 
 import curation_router  # noqa: E402
 
