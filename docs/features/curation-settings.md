@@ -40,7 +40,7 @@ The settings live in the `stash-sense` plugin's configuration in Stash. Any tool
 query { configuration { plugins } }
 ```
 
-`plugins["stash-sense"]` holds five comma-separated strings, empty by default:
+`plugins["stash-sense"]` holds these curation keys, empty by default unless noted:
 
 | Key | Contents |
 | --- | --- |
@@ -49,10 +49,13 @@ query { configuration { plugins } }
 | `excludeStudioIds` | Studio ids |
 | `disfavoredVideoCodecs` | Lowercase codec names |
 | `disfavoredContainers` | Lowercase container names |
+| `qualityReportOnly` | Boolean, on by default: [quality flag](quality-flags.md) cards record answers and change nothing |
+| `qualityGroupBroken`, `qualityGroupRip`, `qualityGroupBelowStudio`, `qualityGroupFormat` | One group id each: the work-queue group an accepted quality card adds the scene to |
+| `qualityPeerPercentile` | Number from 1 to 50, default 10: the below-studio percentile |
 
 To resolve the exclusion list to scenes, query `findScenes` with each list as a `tags`, `groups` or `studios` criterion, using `modifier: INCLUDES` and `depth: -1`, and take the union.
 
 !!! warning "Writing the settings"
     Stash's `configurePlugin` mutation replaces the plugin's entire settings map. Read the current map, change your keys, then write the whole map back. Sending only your keys erases the others, including the sidecar URL.
 
-The same five fields also appear under Stash's **Settings > Plugins > Stash Sense** as plain text.
+The same fields also appear under Stash's **Settings > Plugins > Stash Sense** as plain text.
