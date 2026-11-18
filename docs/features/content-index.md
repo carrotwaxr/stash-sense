@@ -19,7 +19,7 @@ Everything lives in `content_fp.db` in the data directory (about 1.8 GB for 28,0
 Run **Content Index** from **Operations**, or schedule it there. Each run:
 
 1. Reads the exclusion list (see [Curation Settings](curation-settings.md)). A file is skipped when any of its scenes is excluded. If Stash can't be reached, the run stops.
-2. Fingerprints every file that has no fingerprint yet, most recently added scenes first.
+2. Fingerprints every file that has no fingerprint yet. A run with up to 200 files to do takes the most recently added scenes first. A larger backlog, such as the first pass over a library, is taken in a scattered order so that parallel workers read from different disks.
 3. Rebuilds the lookup index if files were added, then looks up each new file and records its overlaps.
 
 The job is safe to stop or restart. A finished file is never fingerprinted again, so a stopped run carries on where it left off. It also gives way to higher-priority CPU work.
@@ -28,7 +28,9 @@ It reads files through the media mount (see [Configuration](../configuration.md)
 
 ### CPU use
 
-ffmpeg runs under the **Media Job Priority (nice)** and **Media Job Threads** settings in **Settings > Performance**. **Content Index Workers** (default 2) sets how many files are processed at once. Each file costs about one decode of its audio plus its keyframes, a few seconds of CPU for a 30-minute scene, so the first pass over a large library is limited by disk reads more than CPU.
+ffmpeg runs under the **Media Job Priority (nice)** and **Media Job Threads** settings in **Settings > Performance**. **Content Index Workers** (default 2) sets how many files are processed at once. Each file costs about one decode of its audio plus its keyframes, a few seconds of CPU for a 30-minute scene, so the first pass over a large library is limited by disk reads, not CPU: each ffmpeg uses about a tenth of one core.
+
+On an array of spinning disks (unRAID), each worker keeps one disk busy while it reads a file. Playback from a disk the job is reading can stutter; other disks are unaffected. Two workers on the same disk seek against each other and read slower than one, which is why a large backlog is taken in scattered order. More workers finish the first pass sooner but keep more disks busy at once.
 
 ## Importing a store built elsewhere
 
