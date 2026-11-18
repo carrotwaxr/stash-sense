@@ -718,6 +718,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../quality-flags/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality Flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../content-index/" class="md-nav__link">
         
   
@@ -1231,7 +1259,7 @@
 <p>The settings live in the <code>stash-sense</code> plugin's configuration in Stash. Any tool with a Stash API key can read them:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">query</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">configuration</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">plugins</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
-<p><code>plugins["stash-sense"]</code> holds five comma-separated strings, empty by default:</p>
+<p><code>plugins["stash-sense"]</code> holds these curation keys, empty by default unless noted:</p>
 <table>
 <thead>
 <tr>
@@ -1260,6 +1288,18 @@
 <td><code>disfavoredContainers</code></td>
 <td>Lowercase container names</td>
 </tr>
+<tr>
+<td><code>qualityReportOnly</code></td>
+<td>Boolean, on by default: <a href="../quality-flags/">quality flag</a> cards record answers and change nothing</td>
+</tr>
+<tr>
+<td><code>qualityGroupBroken</code>, <code>qualityGroupRip</code>, <code>qualityGroupBelowStudio</code>, <code>qualityGroupFormat</code></td>
+<td>One group id each: the work-queue group an accepted quality card adds the scene to</td>
+</tr>
+<tr>
+<td><code>qualityPeerPercentile</code></td>
+<td>Number from 1 to 50, default 10: the below-studio percentile</td>
+</tr>
 </tbody>
 </table>
 <p>To resolve the exclusion list to scenes, query <code>findScenes</code> with each list as a <code>tags</code>, <code>groups</code> or <code>studios</code> criterion, using <code>modifier: INCLUDES</code> and <code>depth: -1</code>, and take the union.</p>
@@ -1267,7 +1307,7 @@
 <p class="admonition-title">Writing the settings</p>
 <p>Stash's <code>configurePlugin</code> mutation replaces the plugin's entire settings map. Read the current map, change your keys, then write the whole map back. Sending only your keys erases the others, including the sidecar URL.</p>
 </div>
-<p>The same five fields also appear under Stash's <strong>Settings &gt; Plugins &gt; Stash Sense</strong> as plain text.</p>
+<p>The same fields also appear under Stash's <strong>Settings &gt; Plugins &gt; Stash Sense</strong> as plain text.</p>
 
 
 
