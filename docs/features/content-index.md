@@ -1,8 +1,8 @@
 # Content Index
 
-> Unfinished feature: the job is hidden until **Settings > Features > Show Unfinished Features** is on. It becomes visible once duplicate detection (#130) uses it.
+> Unfinished feature: the job is hidden until **Settings > Features > Show Unfinished Features** is on. It becomes visible when [duplicate detection](duplicate-detection.md) (#130) ships. That job reads this index, so run Content Index first.
 
-The content index answers one question for the whole library: does the content of one file appear inside another, and where? Stash's perceptual hash can't answer it. A trimmed intro, letterboxing or a watermark moves every frame it samples, and a clip inside a longer file never matches. Duplicate detection, split detection and the quality flags build on this index.
+The content index answers one question for the whole library: does the content of one file appear inside another, and where? Stash's perceptual hash can't answer it. A trimmed intro, letterboxing or a watermark moves every frame it samples, and a clip inside a longer file never matches. [Duplicate detection](duplicate-detection.md), split detection and the quality flags build on this index.
 
 ## What it stores
 

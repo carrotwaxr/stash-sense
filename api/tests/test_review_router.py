@@ -40,7 +40,7 @@ async def _seed(stash, db, *, identical=True):
 
 def test_types_hide_unfinished(world, monkeypatch):
     client, *_ = world
-    assert [t["type_id"] for t in client.get("/review/types").json()["types"]] == ["review_demo"]
+    assert [t["type_id"] for t in client.get("/review/types").json()["types"]] == ["review_demo", "scene_duplicates"]
     monkeypatch.setattr(features, "show_unfinished", lambda: False)
     assert client.get("/review/types").json()["types"] == []
 

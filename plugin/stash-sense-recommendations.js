@@ -409,12 +409,12 @@
           description: 'Performers sharing the same StashDB ID',
         },
         duplicate_scenes: {
-          title: 'Duplicate Scenes',
+          title: 'Duplicate Scenes (legacy)',
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zm-6-1l4-4-1.4-1.4-1.6 1.6V6h-2v6.2l-1.6-1.6L10 12l4 4z"/></svg>`,
           description: 'Scenes that may be duplicates based on stash-box ID, faces, or metadata',
         },
         duplicate_scene_files: {
-          title: 'Duplicate Scene Files',
+          title: 'Duplicate Scene Files (legacy)',
           icon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z"/></svg>`,
           description: 'Scenes with multiple files attached',
         },
@@ -782,8 +782,8 @@
   async function renderList(container) {
     const typeConfigs = {
       duplicate_performer: 'Duplicate Performers',
-      duplicate_scenes: 'Duplicate Scenes',
-      duplicate_scene_files: 'Duplicate Scene Files',
+      duplicate_scenes: 'Duplicate Scenes (legacy)',
+      duplicate_scene_files: 'Duplicate Scene Files (legacy)',
       upstream_performer_changes: 'Upstream Performer Changes',
       upstream_tag_changes: 'Upstream Tag Changes',
       upstream_studio_changes: 'Upstream Studio Changes',
@@ -1505,7 +1505,7 @@
 
     // Add info icon
     const dfInfoSlot = container.querySelector('#ss-info-dup-files');
-    if (dfInfoSlot) dfInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Duplicate Scene Files', HELP_DUP_SCENE_FILES)));
+    if (dfInfoSlot) dfInfoSlot.appendChild(createInfoIcon(() => showHelpModal('Duplicate Scene Files (legacy)', HELP_DUP_SCENE_FILES)));
 
     // Click anywhere on file card to select radio (except links)
     container.querySelectorAll('.ss-file-option').forEach(card => {
@@ -1661,7 +1661,7 @@
 
     container.innerHTML =
       '<div class="ss-detail-dup-scenes">' +
-        '<h2>Duplicate Scenes</h2>' +
+        '<h2>Duplicate Scenes (legacy)</h2>' +
         '<div class="ss-dup-confidence" style="color: ' + confColor + '">' +
           Math.round(conf) + '% confidence &mdash; ' + (reasoning[0] || '') +
         '</div>' +

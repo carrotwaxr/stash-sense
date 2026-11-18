@@ -46,6 +46,7 @@ class FakeStash:
         self.plugin_config: dict[str, dict] = {}
         self.trash_path = trash_path
         self.deleted: list[dict] = []  # {"path", "destination"}
+        self.phash_groups: list[list[str]] = []  # what find_duplicate_scenes returns
         self.writes = 0
         self.fail: dict[str, Exception] = {}  # method name -> error raised on next call
         self._next_id = 1
@@ -155,6 +156,25 @@ class FakeStash:
             "files": [{k: self.files[f][k] for k in ("id", "path", "size", "duration", "fingerprints")}
                       for f in s["file_ids"]],
         }) for s in chunk], len(ordered)
+
+    async def get_scenes_for_duplicates(self, page: int, per_page: int = 500) -> tuple[list[dict], int]:
+        """findScenes sorted by id, paged from 1, with the fields duplicate candidate generation reads."""
+        self._maybe_fail("get_scenes_for_duplicates")
+        ordered = sorted(self.scenes.values(), key=lambda s: int(s["id"]))
+        chunk = ordered[(page - 1) * per_page: page * per_page]
+        out = []
+        for s in chunk:
+            r = self._render(s)
+            out.append({
+                **{k: r[k] for k in ("id", "title", "date", "urls", "studio", "performers", "stash_ids")},
+                "files": [{k: f[k] for k in ("id", "path", "size", "duration", "fingerprints")} for f in r["files"]],
+            })
+        return out, len(ordered)
+
+    async def find_duplicate_scenes(self, distance: int = 10) -> list[list[str]]:
+        """Scene id groups; the fake returns the groups set on ``phash_groups``."""
+        self._maybe_fail("find_duplicate_scenes")
+        return [[str(i) for i in g] for g in self.phash_groups]
 
     async def get_plugin_configuration(self, plugin_id: str) -> dict:
         self._maybe_fail("get_plugin_configuration")

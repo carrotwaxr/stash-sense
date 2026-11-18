@@ -88,11 +88,14 @@ def test_info_lists_visible_types(world, monkeypatch):
     assert body["api_version"] == 1 and body["sidecar_version"] == "9.9.9" and body["auth_required"] is False
     job = next(j for j in body["job_types"] if j["type"] == "review_demo")
     assert set(job) == {"type", "name", "description", "default_priority", "params"}
-    assert body["review_types"] == [{"type": "review_demo", "name": "Review Demo",
-                                     "description": body["review_types"][0]["description"]}]
+    assert body["review_types"] == [
+        {"type": "review_demo", "name": "Review Demo", "description": body["review_types"][0]["description"]},
+        {"type": "scene_duplicates", "name": "Duplicate Scenes",
+         "description": "Scenes holding the same content: merge them and keep the best file"},
+    ]
     monkeypatch.setattr(features, "show_unfinished", lambda: False)
     body = client.get(BASE).json()
-    assert "review_demo" not in {j["type"] for j in body["job_types"]}
+    assert not {"review_demo", "scene_duplicates"} & {j["type"] for j in body["job_types"]}
     assert body["review_types"] == []
 
 

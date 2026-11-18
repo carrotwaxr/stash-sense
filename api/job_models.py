@@ -322,3 +322,17 @@ _register(
     # Never production-ready: it exists to exercise the review flow end to end (#127).
     production_ready=False,
 )
+
+_register(
+    "scene_duplicates",
+    "Duplicate Scenes",
+    "Finds duplicate scenes from content evidence and suggests which file to keep",
+    ResourceType.CPU_HEAVY,
+    JobPriority.LOW,
+    supports_incremental=False,
+    schedulable=True,
+    default_interval_hours=24,
+    allowed_intervals=INTERVALS_FREQUENT,
+    # Unfinished until #130's checklist is ticked.
+    production_ready=False,
+)

@@ -3839,6 +3839,24 @@ a.ss-upstream-endpoint-badge:hover {
   background: rgba(255, 255, 255, 0.1); color: #ccc; margin-left: 4px;
 }
 .ss-review-badge-ok { background: rgba(129, 199, 132, 0.2); color: #81c784; }
+.ss-review-badge-keep { background: rgba(129, 199, 132, 0.3); color: #a5d6a7; font-weight: 600; }
+.ss-review-badge-delete { background: rgba(229, 115, 115, 0.25); color: #ef9a9a; font-weight: 600; }
+.ss-review-badge-warn { background: rgba(255, 183, 77, 0.2); color: #ffb74d; }
+.ss-review-dup-scenes { display: flex; flex-wrap: wrap; gap: 12px; }
+.ss-review-dup-scene { flex: 1 1 260px; min-width: 0; }
+.ss-review-dup-meta { font-size: 0.8rem; color: #999; margin: 2px 0 6px; }
+.ss-review-dup-file { border-left: 3px solid transparent; padding: 4px 8px; margin-bottom: 6px; background: rgba(255, 255, 255, 0.03); border-radius: 4px; }
+.ss-review-dup-file.is-keep { border-left-color: #81c784; }
+.ss-review-dup-file.is-delete { border-left-color: #e57373; }
+.ss-review-dup-file .ss-review-badge:first-child { margin-left: 0; }
+.ss-review-dup-facts { font-size: 0.8rem; color: #ccc; }
+.ss-review-reason { margin: 10px 0; padding: 8px 12px; border-radius: 6px; font-weight: 600; background: rgba(100, 181, 246, 0.15); color: #90caf9; }
+.ss-review-flags { margin-top: 4px; }
+.ss-review-flags .ss-review-badge:first-child { margin-left: 0; }
+.ss-review-dup-pairs { margin-top: 8px; }
+.ss-review-merge { margin-bottom: 8px; font-weight: 600; }
+.ss-review-merge table { font-weight: normal; margin-top: 4px; }
+.ss-review-media-dup .ss-review-still { width: 200px; }
 .ss-review-media { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: flex-start; }
 .ss-review-still { margin: 0; width: 160px; }
 .ss-review-still img, .ss-review-still-ph {

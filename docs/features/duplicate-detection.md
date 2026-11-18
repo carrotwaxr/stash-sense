@@ -1,59 +1,147 @@
 # Duplicate Detection
 
 !!! note "Hidden as unfinished"
-    Duplicate Scene Detection, Duplicate Scene File Detection and the face Fingerprint Generation job that feeds them are hidden until they pass the production-ready checklist. Duplicate detection v2 ([#130](https://github.com/carrotwaxr/stash-sense/issues/130)) replaces them. To use them now, turn on **Settings > Features > Show Unfinished Features** and reload the page. Existing recommendations are kept and reappear when the setting is on.
+    Duplicate Scenes is hidden until it passes the production-ready checklist. It replaces the legacy **Duplicate Scenes (legacy)** and **Duplicate Scene Files (legacy)** types ([#130](https://github.com/carrotwaxr/stash-sense/issues/130)), which are hidden too. To use it now, turn on **Settings > Features > Show Unfinished Features** and reload the page. Existing recommendations are kept and reappear when the setting is on.
 
-Stash Sense finds duplicate scenes that Stash's built-in phash matching misses — different intros/outros, trimming, aspect ratio changes, or watermarks.
+Stash Sense finds copies of the same scene that Stash's phash matching misses, and helps you merge them and keep the best file. For each set of duplicates you see a review card. It shows both scenes, the file Stash Sense would keep and why, and stills from the matching moments. Nothing changes until you accept.
 
-## Prerequisites
+## What it finds
 
-- **Face recognition results** for scenes (run performer identification first, which requires sprite sheets)
-- More face recognition coverage across your library means better duplicate detection accuracy
+Phash compares a few frames. A trimmed intro, black bars, a re-encode, an upscale or a watermark moves them, and a scene inside a longer file never matches. Duplicate detection compares the sound and the picture instead, so it finds:
 
-Duplicate detection relies on face fingerprints — per-scene records of which performers appeared, how often, and in what proportions. Scenes without face recognition results can still be detected as duplicates via Stash-Box ID matching or metadata overlap, but face fingerprints are the strongest non-authoritative signal.
+- trims and different intros or outros
+- letterboxed, cropped or watermarked copies
+- re-encodes and upscales
+- a scene that sits inside a longer file, such as a DVD rip
+- the same scene with another soundtrack, such as a dub
 
----
+## What it needs
 
-## Detection Signals
+- **The [Content Index](content-index.md) job**, for the best results. Run it first. It has already fingerprinted the audio and keyframes of your files, so this job reads them from the index instead of decoding the files again. Without the index, the job fingerprints the audio of each file it checks, which is slower.
+- **Sprites in Stash.** Stash's generated sprite sheets give the job a way to compare pictures. Generate them for your scenes in Stash (**Settings > Tasks > Generate**). A scene without a sprite sheet is still checked by audio and keyframes.
+- **The media mount**, so the job can read the files. See [Configuration](../configuration.md).
 
-Stash Sense uses multiple signals to identify duplicates, each with a confidence cap:
+## Running it
 
-| Signal | Max Confidence | How It Works |
-|--------|---------------|--------------|
-| Stash-Box ID match | 100% | Authoritative — same scene on a Stash-Box endpoint |
-| Face fingerprint similarity | 85% | Same performers in same ratios (robust to trimming) |
-| Metadata overlap | 60% | Same studio + same performers |
+Run **Duplicate Scenes** from **Operations**, or schedule it there. The job:
 
-Signals combine with diminishing returns (`primary + secondary × 0.3`) to prevent false confidence inflation. No single signal other than Stash-Box ID reaches 100%.
+1. Reads the exclusion list (see [Curation Settings](curation-settings.md)). If Stash can't be reached, the run stops.
+2. Finds candidate pairs.
+3. Checks each pair against the evidence.
+4. Groups the pairs that hold up into sets and writes one recommendation per set.
+5. Health checks the file it would keep in each set that would delete anything.
 
----
+Then open the dashboard and look for the **Duplicate Scenes** tile. Each card is one set. See [Reviewing Recommendations](review.md) for how cards work.
 
-## How It Works
+## How candidates are found and checked
 
-### Candidate Generation
+Comparing every scene with every other would take too long. The job first collects pairs from cheap sources:
 
-Direct comparison of every scene pair would be O(n²) — impossible for large libraries. Instead, Stash Sense uses a two-phase approach:
+- the same Stash-Box ID
+- the same studio and title
+- the same studio, date and performers
+- a close phash
+- a shared URL
+- two files in one scene
+- an overlap the Content Index found in the audio
 
-1. **Candidate generation** — SQL joins and inverted indices produce O(n) candidate pairs from three sources:
-    - Stash-Box ID grouping (same scene on endpoint)
-    - Face fingerprint self-join (shared performers)
-    - Metadata intersection (same studio AND performer)
-2. **Scoring** — Each candidate pair is scored using the signal hierarchy above
+Each pair is then checked, in this order:
 
-This handles libraries with 15,000+ scenes efficiently.
+1. **Audio fingerprint.** The job compares the soundtracks. A low error rate means the same recording, and it also gives the offset between the two files.
+2. **Keyframes.** The job compares the stored keyframe signatures of both files. This catches the same picture with a different soundtrack.
+3. **Sprite tiles.** The job compares the tiles of the two sprite sheets. It only does this when audio and keyframes can't settle the pair. Tiles that recur across many scenes of a studio, such as logos and intro cards, are ignored.
 
-### Face Fingerprints
+A match on sprites is good evidence. A miss proves nothing. Sprites sample only 81 moments, and a trimmed copy lands on different ones. So a pair with no sprite match is never called different on that alone.
 
-A face fingerprint records which performers appeared in a scene, how many times each was detected, and what proportion of total faces they represent. Two scenes with the same performers appearing in the same ratios are likely the same scene, even if one is trimmed, has different resolution, or has a watermark.
+A pair that shows no evidence at all, because none of the three could be computed, is dropped. There is nothing for you to judge.
 
----
+## The classes
 
-## Reviewing Duplicates
+Every card has a class. The class decides what the card offers and what accept does.
 
-Duplicate candidates appear on the recommendations dashboard with:
+| Class | What it means | What the card offers |
+| --- | --- | --- |
+| **Duplicate** | The same content in both scenes. | Merge the scenes, keep the best file, delete the rest. You can pick another file, or a second file to keep. |
+| **Contained** | One scene sits inside a longer file. | As a duplicate, but the longer file is never deleted. The shorter file goes only when the longer one is as good or better. |
+| **Partial** | A long stretch is shared, but each side has more. | Nothing changes. Accept only marks it resolved. |
+| **Language variant** | The same picture with another soundtrack. | Merge the scenes and keep every file. |
+| **Mislabel** | The files match, but the metadata disagrees: different Stash-Box IDs, studios, or no performer in common. | Choose which scene has the right metadata. The scenes merge into it. |
+| **Review** | The evidence is unclear. | Nothing changes. Look at the pair, then resolve it. |
 
-- **Confidence score** — Combined signal strength
-- **Signal breakdown** — Which signals contributed and how much
-- **Scene details** — Thumbnails, titles, studios for both scenes
+A shared music bed or an intro sting is not enough for any class. Pairs that share only that are left out.
 
-You can dismiss false positives (soft or permanent dismiss) or take action on confirmed duplicates.
+## How the keeper is chosen
+
+The card suggests one file to keep and says why in a sentence. The rules run in this order, and the first one that separates the files decides:
+
+1. A rip loses to a clean file. (Rips are not flagged yet, so this rule rarely fires.)
+2. An AI upscale loses to its original.
+3. The file with more real detail wins. This weighs the pixels against the bit rate, and counts hevc and av1 as more efficient than h264.
+4. A codec or container you disfavored loses, but only when the detail is about equal.
+5. More bits per pixel wins, since that is a cleaner picture with fewer blocks.
+6. A clearly higher frame rate wins.
+7. For duplicates, a file more than a minute longer wins, since it is more complete.
+8. A better container (mp4, m4v, mkv) wins.
+
+If nothing separates the files, the card says they are practically equal and keeps one. Either is fine.
+
+A few cases keep two files:
+
+- **An upscale pair.** If a set holds both an original and an upscale, Stash Sense keeps the best of each and deletes the other copies.
+- **A longer file that is worse.** If the best file is much shorter than another copy, the longest file is kept too, because it may hold extra content, such as a supercut. You decide.
+- **A contained scene that is better.** If the short file is better quality than the long one that holds it, both stay.
+
+The disfavored codecs and containers come from the exclusion and format settings in [Curation Settings](curation-settings.md). They only break near ties. They never override a clear difference in quality.
+
+### Health check
+
+Before a card offers to delete anything, the job probes the file it would keep and decodes a few short windows spread through it. A truncated or damaged file fails. A file that fails is never the keeper while a healthy one exists. If no file in the set passes, the card keeps every file and deletes nothing.
+
+### How well it agrees with you
+
+On the owner's library, the suggestion matched the recorded pick in 90.3% of 680 decided pairs, with practical ties left out. The pairs and every disagreement are listed in [the keeper regression](../research/dupes-keeper-regression.md).
+
+## What accept does
+
+Accept runs the outcome the card shows, in this order:
+
+1. **Merge the scenes in Stash.** The scene with the most history stays. Scenes with a play count, an O count, a rating, the organized flag or groups rank first. Empty fields on it are filled from the others. Performers, tags, URLs, groups and galleries are unioned. Play and O history moves to the scene that stays.
+2. **Delete the files not kept.** A confirm names each file by path and size first. If Stash has a trash folder (**Settings > System > Trash path**), the files go there. If not, they are **permanently deleted**.
+
+If a scene changed after the card loaded, accept is refused and the card reloads. Every accept is logged, and metadata can be reverted from the [apply log](review.md#the-apply-log). Deleted files cannot be brought back.
+
+### Mislabel cards
+
+A mislabel card never unions metadata. The scene you pick as having the right metadata keeps its fields exactly as they are, and nothing is copied in from the other scene.
+
+### Your pick is remembered
+
+Files are picked by file hash, not by position on the card. If you keep a different file than the suggestion, the choice and the evidence are saved as a labeled example, and it means the same file however the card is ordered.
+
+## Accept all high-confidence
+
+Batch accept is limited to the plain case. A card qualifies only when all of these hold:
+
+- the class is **duplicate**
+- you have not changed the suggestion
+- exactly one file is kept, and at least one is deleted
+- the keeper raised no flag
+- every deleted file is identical to the kept file (same md5 or oshash) or is the same encode (same codec and frame size, duration within a second)
+
+Everything else is left for you to review one card at a time. See [Accept all high-confidence](review.md#accept-all-high-confidence).
+
+## Exclusions
+
+The exclusion list is honored. A scene on it is never a candidate, and an existing card that names an excluded scene is hidden. If Stash can't be reached to read the list, the run stops instead of guessing.
+
+## Cards update in place
+
+Each set has one recommendation. When you run the job again:
+
+- A set whose evidence or keeper suggestion changed is rewritten in place.
+- A set that gains a scene stays one card.
+- A set that is no longer found is marked stale, but only when the run finished.
+- A card you resolved returns if its details change.
+- A card you dismissed stays dismissed.
+
+Tools that read the [driver API](../driver-api.md) follow these changes. A card is never deleted, so a tool never misses that a set went away.

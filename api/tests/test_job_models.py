@@ -354,6 +354,7 @@ class TestJobRegistry:
             "database_update",
             "review_demo",
             "content_fingerprint",
+            "scene_duplicates",
         }
         assert set(JOB_REGISTRY.keys()) == expected
 

@@ -590,6 +590,71 @@ class RecommendationsDB:
                 # Already exists
                 return None
 
+    def upsert_recommendation(
+        self,
+        type: str,
+        target_type: str,
+        target_id: str,
+        details: dict,
+        confidence: Optional[float] = None,
+        source_analysis_id: Optional[int] = None,
+    ) -> tuple[Optional[int], str]:
+        """Create or update a recommendation in place; returns (id, "created" | "updated" | "unchanged" | "reopened" |
+        "skipped").
+
+        A pending row is rewritten (updated_at bumped, so the driver feed shows it) only when its details or
+        confidence differ; details compare as canonical JSON. A resolved row whose key comes back with different
+        details or confidence is reopened (pending again, resolution fields cleared); with the same ones it is
+        skipped. A dismissed row is never touched.
+        Rows are never deleted, because the change feed cannot report a deletion.
+        """
+        new_details = json.dumps(details, sort_keys=True)
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT id, status, details, confidence FROM recommendations "
+                "WHERE type = ? AND target_type = ? AND target_id = ?",
+                (type, target_type, target_id),
+            ).fetchone()
+            if row is None:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO recommendations (
+                        type, target_type, target_id, details, confidence, source_analysis_id
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (type, target_type, target_id, new_details, confidence, source_analysis_id),
+                )
+                return cursor.lastrowid, "created"
+            if row["status"] == "dismissed":
+                return row["id"], "skipped"
+            old_details = json.dumps(json.loads(row["details"]), sort_keys=True)
+            same = old_details == new_details and row["confidence"] == confidence
+            if row["status"] != "pending":     # resolved: a set that comes back differently goes back to review
+                if same:
+                    return row["id"], "skipped"
+                conn.execute(
+                    """
+                    UPDATE recommendations
+                    SET status = 'pending', details = ?, confidence = ?, source_analysis_id = ?,
+                        resolution_action = NULL, resolution_details = NULL, resolved_at = NULL,
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                    """,
+                    (new_details, confidence, source_analysis_id, row["id"]),
+                )
+                return row["id"], "reopened"
+            if same:
+                return row["id"], "unchanged"
+            conn.execute(
+                """
+                UPDATE recommendations
+                SET details = ?, confidence = ?, source_analysis_id = ?, updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (new_details, confidence, source_analysis_id, row["id"]),
+            )
+            return row["id"], "updated"
+
     def get_recommendation(self, rec_id: int) -> Optional[Recommendation]:
         """Get a recommendation by ID."""
         with self._connection() as conn:

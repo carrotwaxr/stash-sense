@@ -33,7 +33,8 @@ B = scene("1", ["p1"], [(SDB, "x")])
     (PairEvidence(ber=0.35, sprite=(1, 2)), "REVIEW", "review"),
     (PairEvidence(ber=0.5), "DIFFERENT", "different"),
     (PairEvidence(sprite=STRONG), "SAME", "duplicate"),
-    (PairEvidence(), "REVIEW", "review"),
+    (PairEvidence(), "REVIEW", "unverified"),
+    (PairEvidence(sprite=(0, 0)), "REVIEW", "review"),
 ])
 def test_table(ev, want_verdict, want_class):
     assert verdict(ev) == want_verdict
