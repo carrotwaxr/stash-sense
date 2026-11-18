@@ -72,6 +72,10 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/analyzers/scene_splits.py` - The `scene_splits` job: extracts signals once per file, plans every candidate from the cache, upserts in place. User docs: `docs/features/split-detection.md`
 - `api/review/splits.py` - The `scene_splits` review type: cut/trim text choices, snapping to black starts, redundant card, `resolution.details.split` hand-off to stash-curator
 - `docs/research/split-regression.md` - The planner vs the owner's labelled cuts (118 titles); rerun when `splits/planner.py` or `splits/detect.py` changes
+- `api/quality/` - Quality flags (#133): pure package for container index check, cheap pass and tier decision, peer percentiles, rip file clues, sharpness, plus `QualityStore` (`DATA_DIR/quality.db`: cheap and sharpness results by (oshash, size))
+- `api/analyzers/scene_quality.py` - The `scene_quality` job: cheap pass for every primary file, 24-window deep check for suspects only (cached in the content store), studio+year peers, one card per flagged scene upserted in place, up to 20 control cards while report-only. User docs: `docs/features/quality-flags.md`
+- `api/review/quality.py` - The `scene_quality` review type: yes/no per raised flag, report-only accept changes nothing, otherwise adds the scene to the flag's work-queue group
+- `scripts/quality_calibration.py` - Precision per flag and a recall estimate from the reviewed control cards
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client
