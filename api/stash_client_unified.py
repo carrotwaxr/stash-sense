@@ -55,6 +55,7 @@ class StashClientUnified:
         variables: dict | None = None,
         priority: Priority = Priority.NORMAL,
         skip_rate_limit: bool = False,
+        timeout: float = 60.0,
     ) -> dict:
         """
         Execute a GraphQL query asynchronously.
@@ -64,6 +65,7 @@ class StashClientUnified:
             variables: Query variables
             priority: Request priority for rate limiting (default: NORMAL)
             skip_rate_limit: Skip rate limiting (for health checks, etc.)
+            timeout: HTTP timeout in seconds for this call
         """
         payload = {"query": query}
         if variables:
@@ -73,13 +75,13 @@ class StashClientUnified:
         if not skip_rate_limit:
             limiter = await RateLimiter.get_instance()
             async with limiter.acquire(priority):
-                return await self._do_request(payload)
+                return await self._do_request(payload, timeout)
         else:
-            return await self._do_request(payload)
+            return await self._do_request(payload, timeout)
 
-    async def _do_request(self, payload: dict) -> dict:
+    async def _do_request(self, payload: dict, timeout: float = 60.0) -> dict:
         """Execute the actual HTTP request."""
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(self.graphql_url, json=payload, headers=self.headers)
 
             if not response.is_success:
@@ -1074,6 +1076,46 @@ class StashClientUnified:
             query, {"filter": {"page": page, "per_page": per_page, "sort": "id", "direction": "ASC"}}
         )
         return data["findScenes"]["scenes"], data["findScenes"]["count"]
+
+    async def get_scenes_for_duplicates(self, page: int, per_page: int = 500) -> tuple[list[dict], int]:
+        """One page of scenes (id ASC) with what duplicate candidate generation reads (#130).
+
+        Returns (scenes, total_count).
+        """
+        query = """
+        query ScenesForDuplicates($filter: FindFilterType) {
+          findScenes(filter: $filter) {
+            count
+            scenes {
+              id
+              title
+              date
+              urls
+              studio { id }
+              performers { id }
+              stash_ids { endpoint stash_id }
+              files { id path size duration fingerprints { type value } }
+            }
+          }
+        }
+        """
+        data = await self._execute(
+            query, {"filter": {"page": page, "per_page": per_page, "sort": "id", "direction": "ASC"}}
+        )
+        return data["findScenes"]["scenes"], data["findScenes"]["count"]
+
+    async def find_duplicate_scenes(self, distance: int = 10) -> list[list[str]]:
+        """Groups of scene ids whose phashes are within ``distance`` (Stash's findDuplicateScenes).
+
+        Compares every scene's phash, which is slow on a big library, so the call gets a long timeout.
+        """
+        query = """
+        query DuplicateScenes($distance: Int) {
+          findDuplicateScenes(distance: $distance) { id }
+        }
+        """
+        data = await self._execute(query, {"distance": distance}, timeout=1800.0)
+        return [[str(s["id"]) for s in group] for group in data["findDuplicateScenes"]]
 
     async def get_scene_stream_url(self, scene_id: str) -> Optional[str]:
         """Get the stream URL for a scene."""
