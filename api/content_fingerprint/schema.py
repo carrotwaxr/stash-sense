@@ -6,7 +6,7 @@ must not contend with the sidecar's database. stash-sense ATTACHes this file whe
 
 import sqlite3
 
-CONTENT_FP_SCHEMA_VERSION = 3
+CONTENT_FP_SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS content_fp_schema_version (version INTEGER NOT NULL);
@@ -81,6 +81,16 @@ CREATE TABLE IF NOT EXISTS audio_match_state (
     algo_version INTEGER NOT NULL,
     queried_at   TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (file_id, algo_version)
+);
+
+-- v4: the last health check of a file (stream sanity plus sampled decode windows). A check decodes many windows of the
+-- file, so the result is kept per content; params records how it was made (sample points, ffmpeg version).
+CREATE TABLE IF NOT EXISTS file_health (
+    file_id    INTEGER PRIMARY KEY REFERENCES content_files (id) ON DELETE CASCADE,
+    status     TEXT NOT NULL,          -- ok | warn | suspect | missing
+    reasons    TEXT NOT NULL,          -- JSON list
+    params     TEXT NOT NULL,          -- JSON: points, ffmpeg version
+    checked_at TEXT DEFAULT (datetime('now'))
 );
 """
 
