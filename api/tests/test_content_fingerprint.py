@@ -172,3 +172,42 @@ def test_worker_limit(tmp_path):
     assert (st["done"], st["skipped"]) == (2, 0)              # held back by --limit is not "already fingerprinted"
     st = worker.run(_recs(5), s, fingerprint_fn=lambda p: ("ok", np.array([1], dtype=np.uint32), None), params={})
     assert (st["done"], st["skipped"]) == (3, 2)
+
+
+# -- file health cache (schema v4) -------------------------------------------------------------------------------
+
+def test_health_roundtrip(tmp_path):
+    s = ContentFpStore(str(tmp_path / "fp.db"))
+    fid = s.upsert_file("abc", 100)
+    assert s.get_health(fid) is None
+    assert s.get_health(9999) is None
+    s.put_health(fid, "warn", ["decode errors at 12s"], {"points": 24, "ffmpeg": "6.1.1"})
+    h = s.get_health(fid)
+    assert h["status"] == "warn"
+    assert h["reasons"] == ["decode errors at 12s"] and isinstance(h["reasons"], list)
+    assert h["params"] == {"points": 24, "ffmpeg": "6.1.1"}
+    assert h["checked_at"]
+    s.put_health(fid, "ok", [], {"points": 24})
+    h = s.get_health(fid)
+    assert h["status"] == "ok" and h["reasons"] == [] and h["params"] == {"points": 24}
+    s.close()
+
+
+def test_schema_v3_store_upgrades(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "fp.db")
+    s = ContentFpStore(db)
+    fid = s.upsert_file("abc", 100)
+    s.close()
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TABLE file_health")
+    conn.execute("UPDATE content_fp_schema_version SET version = 3")
+    conn.commit()
+    conn.close()
+    s = ContentFpStore(db)
+    tables = {r[0] for r in s._conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "file_health" in tables
+    assert s._conn.execute("SELECT version FROM content_fp_schema_version").fetchone()[0] == 4
+    s.put_health(fid, "ok", [], {})
+    assert s.get_health(fid)["status"] == "ok"
+    s.close()

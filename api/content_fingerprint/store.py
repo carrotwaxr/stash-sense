@@ -196,6 +196,21 @@ class ContentFpStore:
             return None
         return np.frombuffer(row[0], dtype="<u4"), np.frombuffer(row[1], dtype="<u8")
 
+    def put_health(self, file_id, status, reasons, params):
+        """Record (replacing any earlier) the health check result of a file."""
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO file_health (file_id, status, reasons, params) VALUES (?, ?, ?, ?)""",
+                (file_id, status, json.dumps(list(reasons)), json.dumps(params, sort_keys=True)))
+            self._conn.commit()
+
+    def get_health(self, file_id):
+        """{status, reasons, params, checked_at} of the file's last health check, or None."""
+        row = self._one("SELECT status, reasons, params, checked_at FROM file_health WHERE file_id = ?", (file_id,))
+        if row is None:
+            return None
+        return {"status": row[0], "reasons": json.loads(row[1]), "params": json.loads(row[2]), "checked_at": row[3]}
+
     def unqueried(self, algo, algo_version):
         """Ok audio fingerprints not yet looked up in the index at this version."""
         with self._lock:
