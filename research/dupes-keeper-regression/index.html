@@ -1,0 +1,2419 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ML-powered performer identification for Stash">
+      
+      
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Duplicate keeper regression (#130) - Stash Sense</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#duplicate-keeper-regression-130" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Stash Sense" class="md-header__button md-logo" aria-label="Stash Sense" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stash Sense
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Duplicate keeper regression (#130)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="purple"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/carrotwaxr/stash-sense" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    stash-sense
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Stash Sense" class="md-nav__button md-logo" aria-label="Stash Sense" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stash Sense
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/carrotwaxr/stash-sense" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    stash-sense
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reviewing Recommendations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/curation-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Curation Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/performer-identification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performer Identification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/scene-tagger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Tagger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/upstream-changes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upstream Changes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/duplicate-detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Duplicate Detection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/content-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database & Updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../settings-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unraid
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Unraid
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../unraid/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../unraid/gpu-passthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Passthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#totals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Totals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#disagreements-66" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disagreements (66)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#superset-62" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Superset (62)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ties
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="duplicate-keeper-regression-130">Duplicate keeper regression (#130)</h1>
+<p>This is the keeper suggestion (<code>api/duplicates/keeper.py</code>) scored against the owner's recorded picks. The set is <code>api/tests/fixtures/dupes_keeper_regression.jsonl</code>: one record per decided pair, anonymized to codec, resolution, bit rate, frame rate, duration, size, container and the two upscale flags (no names, paths or hashes). The two files of each record are keyed <code>a</code> and <code>b</code>.</p>
+<p>Outcomes:</p>
+<ul>
+<li><strong>agree</strong>: duplicate pairs: the suggestion keeps exactly the file the owner kept. Contained pairs: the suggestion keeps the short file only when the owner did (<code>keep_short</code>), and drops it when the owner chose <code>long_better</code>.</li>
+<li><strong>superset</strong>: duplicate pairs only: the suggestion keeps the owner's file plus the other one (an upscale pair or a longer cut). Nothing the owner wanted is deleted, so this counts as agreement.</li>
+<li><strong>tie</strong>: the suggestion flagged the pair as practically equal and kept the other file. Either is right, so ties are left out of the agreement rate.</li>
+<li><strong>disagree</strong>: everything else. Every one is listed below with the suggestion's reason.</li>
+</ul>
+<p>For contained pairs the short side is the one with the larger cover. The keeper decides by duration; where the two differ the reason is marked "short side by duration differs from cover".</p>
+<p>Agreement is (agree + superset) / (records - tie).</p>
+<h2 id="totals">Totals</h2>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Records</th>
+<th>agree</th>
+<th>superset</th>
+<th>tie</th>
+<th>disagree</th>
+<th>Agreement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>duplicate</td>
+<td>385</td>
+<td>271</td>
+<td>62</td>
+<td>16</td>
+<td>36</td>
+<td>333/369 (90.2%)</td>
+</tr>
+<tr>
+<td>contained</td>
+<td>311</td>
+<td>281</td>
+<td>0</td>
+<td>0</td>
+<td>30</td>
+<td>281/311 (90.4%)</td>
+</tr>
+<tr>
+<td>all</td>
+<td>696</td>
+<td>552</td>
+<td>62</td>
+<td>16</td>
+<td>66</td>
+<td>614/680 (90.3%)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="disagreements-66">Disagreements (66)</h2>
+<table>
+<thead>
+<tr>
+<th>Record</th>
+<th>Kind</th>
+<th>Side A</th>
+<th>Side B</th>
+<th>Human</th>
+<th>Suggestion</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>014e10f30133</td>
+<td>contained</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 20.4 min mp4</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 31.5 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>0dcd070e94a6</td>
+<td>contained</td>
+<td>hevc 1920x1080 2.2 Mbps 23.98 fps 114.4 min mp4</td>
+<td>h264 720x406 1.2 Mbps 29.97 fps 19.3 min mp4</td>
+<td>delete short (B)</td>
+<td>keep short (B) too</td>
+<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
+</tr>
+<tr>
+<td>0fa8965bfcaa</td>
+<td>contained</td>
+<td>mpeg4 576x320 0.8 Mbps 29.97 fps 18.3 min avi</td>
+<td>mpeg4 512x384 1.0 Mbps 29.97 fps 67.0 min avi</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>194a5b4748eb</td>
+<td>contained</td>
+<td>h264 762x576 2.7 Mbps 25 fps 14.0 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>1dc9856838f5</td>
+<td>contained</td>
+<td>h264 720x540 2.8 Mbps 59.94 fps 25.4 min mkv</td>
+<td>hevc 1444x1080 5.5 Mbps 59.94 fps 38.5 min mkv</td>
+<td>delete short (A)</td>
+<td>keep short (A) too</td>
+<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
+</tr>
+<tr>
+<td>2f3e24ac1325</td>
+<td>contained</td>
+<td>h264 762x576 2.4 Mbps 25 fps 15.0 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>3e8be0f91995</td>
+<td>contained</td>
+<td>av1 1920x1080 9.5 Mbps 30 fps 27.9 min mp4</td>
+<td>h264 360x134 0.5 Mbps 30 fps 136.9 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>41b86ac863e7</td>
+<td>contained</td>
+<td>h264 854x354 1.5 Mbps 30 fps 18.2 min mp4</td>
+<td>mpeg4 576x320 1.4 Mbps 29.97 fps 71.7 min avi</td>
+<td>delete short (A)</td>
+<td>keep short (A) too</td>
+<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
+</tr>
+<tr>
+<td>453a26f7b29a</td>
+<td>contained</td>
+<td>h264 762x576 2.4 Mbps 25 fps 8.2 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>5b24f886a73f</td>
+<td>contained</td>
+<td>h264 762x576 2.5 Mbps 25 fps 17.5 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>62788e79b95f</td>
+<td>contained</td>
+<td>msmpeg4v3 512x384 0.9 Mbps 29.97 fps 23.7 min avi</td>
+<td>msmpeg4v3 512x384 1.0 Mbps 29.97 fps 95.0 min avi</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>64d15510fa2d</td>
+<td>contained</td>
+<td>mpeg4 720x416 2.0 Mbps 29.97 fps 8.1 min avi</td>
+<td>mpeg4 720x416 2.3 Mbps 29.97 fps 86.8 min avi</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>6dbf3af76a1d</td>
+<td>contained</td>
+<td>h264 640x480 1.5 Mbps 30 fps 12.9 min mp4</td>
+<td>h264 640x480 1.5 Mbps 30 fps 16.9 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>849a9e36c4b2</td>
+<td>contained</td>
+<td>h264 762x576 2.6 Mbps 25 fps 13.4 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>883f88e53bfa</td>
+<td>contained</td>
+<td>h264 554x416 0.4 Mbps 29.97 fps 17.6 min mp4</td>
+<td>h264 640x360 0.4 Mbps 30 fps 80.1 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>8a299c91ad06</td>
+<td>contained</td>
+<td>av1 1312x960 2.0 Mbps 30 fps 15.6 min mp4</td>
+<td>h264 540x360 0.7 Mbps 30 fps 22.3 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>8ec03211fdf0</td>
+<td>contained</td>
+<td>mpeg4 608x352 1.5 Mbps 29.97 fps 28.0 min avi</td>
+<td>av1 1920x1080 11.7 Mbps 29.97 fps 37.5 min mp4</td>
+<td>delete short (A)</td>
+<td>keep short (A) too</td>
+<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
+</tr>
+<tr>
+<td>8ee6148c93f6</td>
+<td>contained</td>
+<td>h264 640x360 1.1 Mbps 25 fps 22.4 min mp4</td>
+<td>h264 640x360 1.1 Mbps 25 fps 53.4 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>96e52fdef3c7</td>
+<td>contained</td>
+<td>mpeg4 480x360 1.6 Mbps 29.97 fps 12.8 min mkv</td>
+<td>h264 480x360 1.0 Mbps 29.97 fps 16.4 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>a5573d8ce9bd</td>
+<td>contained</td>
+<td>mpeg4 512x384 1.0 Mbps 29.97 fps 93.0 min avi</td>
+<td>av1 1280x960 1.2 Mbps 30 fps 51.2 min mp4</td>
+<td>keep short (B) too</td>
+<td>delete short (B)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>a98e625ed674</td>
+<td>contained</td>
+<td>h264 762x576 2.4 Mbps 25 fps 7.8 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>af2cc13eba39</td>
+<td>contained</td>
+<td>mpeg4 512x288 0.9 Mbps 29.97 fps 11.1 min avi</td>
+<td>mpeg4 512x288 1.0 Mbps 29.97 fps 28.6 min avi</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>af686b3ed00b</td>
+<td>contained</td>
+<td>mpeg4 512x384 1.1 Mbps 29.97 fps 14.7 min avi</td>
+<td>mpeg4 512x384 1.2 Mbps 29.97 fps 82.3 min avi</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>b9fbd765afd5</td>
+<td>contained</td>
+<td>h264 720x480 1.5 Mbps 29.97 fps 24.7 min mp4</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 45.3 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>be37fb664ea0</td>
+<td>contained</td>
+<td>mpeg4 576x320 1.0 Mbps 29.97 fps 48.7 min avi</td>
+<td>mpeg4 512x384 1.0 Mbps 29.97 fps 67.0 min avi</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>d1c4e69498ba</td>
+<td>contained</td>
+<td>h264 720x480 1.5 Mbps 29.97 fps 29.6 min mp4</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 56.9 min mp4</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>e0f672f94017</td>
+<td>contained</td>
+<td>h264 706x480 2.2 Mbps 23.98 fps 74.0 min mkv</td>
+<td>h264 706x480 2.3 Mbps 23.98 fps 6.3 min mkv</td>
+<td>keep short (B) too</td>
+<td>delete short (B)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>e1ce79d0a718</td>
+<td>contained</td>
+<td>h264 706x480 2.2 Mbps 23.98 fps 74.0 min mkv</td>
+<td>h264 706x480 2.3 Mbps 23.98 fps 11.7 min mkv</td>
+<td>keep short (B) too</td>
+<td>delete short (B)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>ecd063c373e9</td>
+<td>contained</td>
+<td>av1 1920x1080 5.1 Mbps 30 fps 4.2 min mp4</td>
+<td>av1 1920x1080 4.6 Mbps 25 fps 13.7 min mp4</td>
+<td>delete short (A)</td>
+<td>keep short (A) too</td>
+<td>The shorter file is better quality and the longer one holds extra content, so both are kept.</td>
+</tr>
+<tr>
+<td>f3bc79692825</td>
+<td>contained</td>
+<td>h264 762x576 2.4 Mbps 25 fps 9.2 min mkv</td>
+<td>h264 762x576 2.9 Mbps 25 fps 87.2 min mkv</td>
+<td>keep short (A) too</td>
+<td>delete short (A)</td>
+<td>Its content is inside the longer file at equal or better quality.</td>
+</tr>
+<tr>
+<td>068f08177620</td>
+<td>duplicate</td>
+<td>h264 640x368 1.2 Mbps 29.97 fps 49.5 min mp4</td>
+<td>h264 640x480 0.7 Mbps 25 fps 49.5 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (640x480 at 0.7 Mbps beats 640x368 at 1.2 Mbps)</td>
+</tr>
+<tr>
+<td>0eecb3c853bc</td>
+<td>duplicate</td>
+<td>h264 1920x1080 12.3 Mbps 29.97 fps 30.6 min mp4</td>
+<td>hevc 1920x1080 5.0 Mbps 29.97 fps 30.8 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>16511487bec1</td>
+<td>duplicate</td>
+<td>h264 720x540 1.8 Mbps 25 fps 9.0 min mp4</td>
+<td>h264 720x576 1.4 Mbps 25 fps 8.7 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>177e1d6e9d87</td>
+<td>duplicate</td>
+<td>h264 852x480 1.1 Mbps 30 fps 63.1 min mp4</td>
+<td>wmv3 320x240 0.9 Mbps 29.97 fps 64.8 min wmv</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more effective detail (852x480 at 1.1 Mbps beats 320x240 at 0.9 Mbps)</td>
+</tr>
+<tr>
+<td>18b3616f6e8e</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 21.8 min mp4</td>
+<td>h264 1828x1080 5.1 Mbps 30 fps 23.8 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (1828x1080 at 5.1 Mbps beats 720x540 at 1.9 Mbps)</td>
+</tr>
+<tr>
+<td>18f9cce95386</td>
+<td>duplicate</td>
+<td>h264 768x432 1.6 Mbps 23.98 fps 40.3 min mp4</td>
+<td>h264 720x576 2.1 Mbps 30 fps 39.4 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (720x576 at 2.1 Mbps beats 768x432 at 1.6 Mbps)</td>
+</tr>
+<tr>
+<td>1e0eac060e69</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 23.3 min mp4</td>
+<td>h264 1440x1080 8.1 Mbps 59.94 fps 25.8 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (1440x1080 at 8.1 Mbps beats 720x540 at 1.9 Mbps)</td>
+</tr>
+<tr>
+<td>211b05c5ae96</td>
+<td>duplicate</td>
+<td>h264 640x480 1.2 Mbps 29.96 fps 21.2 min mp4</td>
+<td>wmv2 720x480 2.5 Mbps 29.97 fps 21.1 min wmv</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: same picture; the better container</td>
+</tr>
+<tr>
+<td>2e2e9fe4590f</td>
+<td>duplicate</td>
+<td>h264 852x480 1.5 Mbps 30 fps 27.7 min mp4</td>
+<td>mpeg4 544x304 1.8 Mbps 29.97 fps 27.8 min avi</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more effective detail (852x480 at 1.5 Mbps beats 544x304 at 1.8 Mbps)</td>
+</tr>
+<tr>
+<td>339ac1d59795</td>
+<td>duplicate</td>
+<td>h264 896x672 6.2 Mbps 29.97 fps 19.9 min mp4</td>
+<td>h264 1280x720 6.3 Mbps 29.97 fps 19.7 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (1280x720 at 6.3 Mbps beats 896x672 at 6.2 Mbps)</td>
+</tr>
+<tr>
+<td>36e8583a0c5a</td>
+<td>duplicate</td>
+<td>h264 640x368 1.2 Mbps 29.97 fps 33.5 min mp4</td>
+<td>h264 1920x1080 3.0 Mbps 29.97 fps 33.6 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (1920x1080 at 3.0 Mbps beats 640x368 at 1.2 Mbps)</td>
+</tr>
+<tr>
+<td>3f3518cc0fd2</td>
+<td>duplicate</td>
+<td>h264 720x540 1.8 Mbps 25 fps 18.3 min mp4</td>
+<td>h264 720x576 1.4 Mbps 25 fps 18.0 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>42bd7131a5fe</td>
+<td>duplicate</td>
+<td>h264 640x480 2.1 Mbps 29.97 fps 39.7 min mp4</td>
+<td>mpeg4 512x384 1.4 Mbps 29.97 fps 39.7 min avi</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more effective detail (640x480 at 2.1 Mbps beats 512x384 at 1.4 Mbps)</td>
+</tr>
+<tr>
+<td>46d5cbbeaba0</td>
+<td>duplicate</td>
+<td>h264 640x480 2.1 Mbps 29.97 fps 19.0 min mp4</td>
+<td>wmv2 720x480 2.5 Mbps 29.97 fps 18.8 min wmv</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>478f715d7a12</td>
+<td>duplicate</td>
+<td>h264 656x480 1.2 Mbps 29.97 fps 20.9 min mp4</td>
+<td>wmv2 640x480 2.1 Mbps 23.98 fps 21.6 min wmv</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: same picture at a higher frame rate (29.97 fps)</td>
+</tr>
+<tr>
+<td>4af72f7431fb</td>
+<td>duplicate</td>
+<td>h264 640x480 1.3 Mbps 30 fps 27.4 min mp4</td>
+<td>h264 640x480 0.8 Mbps 29.97 fps 27.6 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>4dc1f94bf193</td>
+<td>duplicate</td>
+<td>h264 1920x1080 12.2 Mbps 29.97 fps 41.0 min mp4</td>
+<td>h264 1920x1080 4.4 Mbps 29.97 fps 41.1 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>6dc04b3b9a2c</td>
+<td>duplicate</td>
+<td>h264 1280x720 4.1 Mbps 29.97 fps 39.6 min mp4</td>
+<td>h264 1120x832 10.3 Mbps 29.97 fps 39.4 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>6e0587ac3351</td>
+<td>duplicate</td>
+<td>mpeg4 512x384 1.3 Mbps 25 fps 19.2 min avi</td>
+<td>h264 640x480 0.9 Mbps 24 fps 19.2 min mkv</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (640x480 at 0.9 Mbps beats 512x384 at 1.3 Mbps)</td>
+</tr>
+<tr>
+<td>778d66b519a4</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 25.4 min mp4</td>
+<td>h264 720x404 1.9 Mbps 25 fps 26.1 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more effective detail (720x540 at 1.9 Mbps beats 720x404 at 1.9 Mbps)</td>
+</tr>
+<tr>
+<td>881ff6292c03</td>
+<td>duplicate</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 12.6 min mp4</td>
+<td>h264 656x480 1.7 Mbps 30 fps 12.0 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>941530bf6f82</td>
+<td>duplicate</td>
+<td>wmv3 640x480 1.6 Mbps 0 fps 19.9 min wmv</td>
+<td>mpeg4 640x480 2.6 Mbps 29.97 fps 19.1 min avi</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>98f9a13e664b</td>
+<td>duplicate</td>
+<td>h264 720x540 2.1 Mbps 29.97 fps 28.1 min mp4</td>
+<td>mpeg2video 720x480 5.5 Mbps 29.97 fps 28.1 min mpg</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>a46a478c7fb0</td>
+<td>duplicate</td>
+<td>h264 640x480 1.2 Mbps 29.97 fps 40.1 min mp4</td>
+<td>mpeg4 640x480 2.3 Mbps 29.97 fps 40.2 min avi</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: same picture; the better container</td>
+</tr>
+<tr>
+<td>a5ba237a548a</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 25.8 min mp4</td>
+<td>h264 720x576 1.4 Mbps 25 fps 24.4 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>aa5cf486bb40</td>
+<td>duplicate</td>
+<td>mpeg4 512x288 0.9 Mbps 29.97 fps 19.3 min avi</td>
+<td>wmv2 720x480 2.6 Mbps 0 fps 19.3 min wmv</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (720x480 at 2.6 Mbps beats 512x288 at 0.9 Mbps)</td>
+</tr>
+<tr>
+<td>be2788993325</td>
+<td>duplicate</td>
+<td>h264 640x480 0.8 Mbps 29.97 fps 35.5 min mp4</td>
+<td>h264 640x480 1.2 Mbps 29.97 fps 35.2 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>bf521fc12287</td>
+<td>duplicate</td>
+<td>h264 640x480 1.2 Mbps 29.96 fps 27.6 min mp4</td>
+<td>h264 720x480 0.8 Mbps 29.97 fps 27.7 min mp4</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>c0a150324e69</td>
+<td>duplicate</td>
+<td>h264 720x576 1.4 Mbps 25 fps 10.3 min mp4</td>
+<td>h264 720x540 1.9 Mbps 25 fps 10.1 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>c8f7048f6d07</td>
+<td>duplicate</td>
+<td>h264 720x528 1.3 Mbps 29.97 fps 20.3 min mp4</td>
+<td>h264 720x480 1.5 Mbps 29.97 fps 19.9 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>cfae2a38816e</td>
+<td>duplicate</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 13.8 min mp4</td>
+<td>h264 656x480 1.7 Mbps 30 fps 13.7 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>e4926beb4d90</td>
+<td>duplicate</td>
+<td>h264 640x480 1.2 Mbps 29.97 fps 29.9 min mp4</td>
+<td>wmv3 480x360 0.5 Mbps 29.97 fps 29.9 min wmv</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: more effective detail (640x480 at 1.2 Mbps beats 480x360 at 0.5 Mbps)</td>
+</tr>
+<tr>
+<td>e4e8aceee29e</td>
+<td>duplicate</td>
+<td>h264 720x576 1.4 Mbps 25 fps 11.0 min mp4</td>
+<td>h264 720x540 1.9 Mbps 25 fps 11.1 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks)</td>
+</tr>
+<tr>
+<td>eb96b1898c90</td>
+<td>duplicate</td>
+<td>h264 640x480 1.5 Mbps 30 fps 20.8 min mp4</td>
+<td>wmv2 720x480 2.8 Mbps 23.98 fps 20.8 min wmv</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: same picture at a higher frame rate (30 fps)</td>
+</tr>
+<tr>
+<td>ef1f5476f39a</td>
+<td>duplicate</td>
+<td>h264 640x480 1.2 Mbps 29.97 fps 42.2 min mp4</td>
+<td>mpeg4 640x480 2.3 Mbps 29.97 fps 42.3 min avi</td>
+<td>keep B</td>
+<td>keep A</td>
+<td>Keeps the best copy: same picture; the better container</td>
+</tr>
+<tr>
+<td>f3109b4681da</td>
+<td>duplicate</td>
+<td>h264 624x480 1.2 Mbps 29.96 fps 19.4 min mp4</td>
+<td>h264 720x540 2.4 Mbps 30 fps 19.1 min mp4</td>
+<td>keep A</td>
+<td>keep B</td>
+<td>Keeps the best copy: more effective detail (720x540 at 2.4 Mbps beats 624x480 at 1.2 Mbps)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="superset-62">Superset (62)</h2>
+<p>The suggestion keeps the owner's file and one more.</p>
+<table>
+<thead>
+<tr>
+<th>Record</th>
+<th>Kind</th>
+<th>Side A</th>
+<th>Side B</th>
+<th>Human</th>
+<th>Suggestion</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0b6def430012</td>
+<td>duplicate</td>
+<td>av1 1440x1080 1.7 Mbps 30 fps 16.1 min mp4</td>
+<td>h264 720x540 1.8 Mbps 30 fps 16.1 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>0b952598847d</td>
+<td>duplicate</td>
+<td>mpeg4 592x320 1.8 Mbps 29.97 fps 20.3 min avi</td>
+<td>h264 720x540 1.4 Mbps 25 fps 17.4 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (720x540 at 1.4 Mbps beats 592x320 at 1.8 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>0be85a06ecb0</td>
+<td>duplicate</td>
+<td>hevc 1536x1152 9.8 Mbps 29.97 fps 30.1 min mp4</td>
+<td>hevc 1728x1296 19.2 Mbps 29.97 fps 25.2 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (1728x1296 at 19.2 Mbps beats 1536x1152 at 9.8 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>10538f776b20</td>
+<td>duplicate</td>
+<td>h264 720x540 2.6 Mbps 30 fps 13.1 min mp4</td>
+<td>h264 640x496 1.2 Mbps 24.99 fps 15.2 min mp4</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x540 at 2.6 Mbps beats 640x496 at 1.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>12c5654da8c7</td>
+<td>duplicate</td>
+<td>h264 716x476 0.5 Mbps 29.97 fps 10.9 min mp4</td>
+<td>h264 640x480 0.9 Mbps 29.97 fps 9.3 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (640x480 at 0.9 Mbps beats 716x476 at 0.5 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>14e2fd5180fa</td>
+<td>duplicate</td>
+<td>h264 640x480 1.5 Mbps 30 fps 19.8 min mp4</td>
+<td>wmv2 720x480 2.3 Mbps 23.98 fps 21.8 min wmv</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: same picture at a higher frame rate (30 fps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>168cb05de85b</td>
+<td>duplicate</td>
+<td>mpeg4 576x320 1.3 Mbps 29.97 fps 28.3 min avi</td>
+<td>av1 1934x1088 10.0 Mbps 29.97 fps 23.8 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>1ac6cef37f2b</td>
+<td>duplicate</td>
+<td>wmv3 640x480 2.0 Mbps 29.97 fps 19.0 min wmv</td>
+<td>mpeg4 576x432 1.2 Mbps 23.98 fps 20.4 min avi</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (640x480 at 2.0 Mbps beats 576x432 at 1.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>1bba436eae71</td>
+<td>duplicate</td>
+<td>av1 1920x1080 7.9 Mbps 29.97 fps 29.8 min mp4</td>
+<td>mpeg4 576x320 1.2 Mbps 29.97 fps 29.8 min avi</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>233eefd96392</td>
+<td>duplicate</td>
+<td>av1 1920x1080 10.4 Mbps 29.97 fps 37.4 min mp4</td>
+<td>h264 352x240 0.7 Mbps 29.97 fps 37.2 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>2643cc6266fd</td>
+<td>duplicate</td>
+<td>h264 646x364 0.5 Mbps 25 fps 24.8 min mp4</td>
+<td>h264 960x540 2.0 Mbps 23.98 fps 23.0 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (960x540 at 2.0 Mbps beats 646x364 at 0.5 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>26a21eb40654</td>
+<td>duplicate</td>
+<td>av1 956x724 2.9 Mbps 24 fps 62.5 min mp4</td>
+<td>h264 640x482 0.9 Mbps 24 fps 62.8 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>2a18147671b3</td>
+<td>duplicate</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 16.0 min mp4</td>
+<td>mpeg4 480x360 1.6 Mbps 23.98 fps 17.9 min avi</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x480 at 1.3 Mbps beats 480x360 at 1.6 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>2d5cadcb6fb1</td>
+<td>duplicate</td>
+<td>hevc 1280x960 9.8 Mbps 29.97 fps 32.8 min mp4</td>
+<td>h264 640x480 1.5 Mbps 30 fps 32.8 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>2dfcfdfa1b97</td>
+<td>duplicate</td>
+<td>av1 1920x1080 4.4 Mbps 23.98 fps 31.6 min mp4</td>
+<td>h264 640x480 1.3 Mbps 29.97 fps 31.6 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>300627ce29fd</td>
+<td>duplicate</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 15.1 min mp4</td>
+<td>h264 656x480 1.9 Mbps 30 fps 13.1 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>303fcde79ae4</td>
+<td>duplicate</td>
+<td>h264 960x544 2.3 Mbps 29.97 fps 28.6 min mp4</td>
+<td>h264 768x432 1.6 Mbps 29.97 fps 32.6 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (960x544 at 2.3 Mbps beats 768x432 at 1.6 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>3a368abaaf63</td>
+<td>duplicate</td>
+<td>av1 1920x1080 5.4 Mbps 29.97 fps 29.2 min mp4</td>
+<td>h264 640x480 1.2 Mbps 25 fps 29.2 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>3c58133b2a6e</td>
+<td>duplicate</td>
+<td>h264 720x528 1.3 Mbps 29.97 fps 19.9 min mp4</td>
+<td>h264 720x480 1.5 Mbps 27.25 fps 18.6 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>3cd87626ff3f</td>
+<td>duplicate</td>
+<td>h264 1280x720 1.7 Mbps 30 fps 18.6 min mp4</td>
+<td>h264 1920x1440 10.1 Mbps 30 fps 16.8 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (1920x1440 at 10.1 Mbps beats 1280x720 at 1.7 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>4281151b7b66</td>
+<td>duplicate</td>
+<td>h264 1280x720 3.4 Mbps 29.98 fps 25.3 min mp4</td>
+<td>wmv3 852x480 1.6 Mbps 0 fps 29.4 min wmv</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (1280x720 at 3.4 Mbps beats 852x480 at 1.6 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>4437ae16a4b5</td>
+<td>duplicate</td>
+<td>av1 1920x1080 5.9 Mbps 29.97 fps 33.7 min mp4</td>
+<td>h264 852x480 1.0 Mbps 30 fps 32.7 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>44451abe6378</td>
+<td>duplicate</td>
+<td>h264 720x480 1.5 Mbps 29.97 fps 17.4 min mp4</td>
+<td>h264 720x528 1.3 Mbps 29.97 fps 19.1 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>46a39544b4c3</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 13.4 min mp4</td>
+<td>h264 640x496 1.2 Mbps 24.99 fps 15.5 min mp4</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x540 at 1.9 Mbps beats 640x496 at 1.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>5c1ff1509f2d</td>
+<td>duplicate</td>
+<td>h264 852x480 1.5 Mbps 30 fps 19.6 min mkv</td>
+<td>mpeg4 512x288 1.0 Mbps 23.98 fps 21.0 min avi</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (852x480 at 1.5 Mbps beats 512x288 at 1.0 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>5df856912e7f</td>
+<td>duplicate</td>
+<td>av1 1920x1080 2.8 Mbps 25 fps 40.9 min mp4</td>
+<td>h264 1280x720 3.1 Mbps 30 fps 40.9 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>60462ddd355b</td>
+<td>duplicate</td>
+<td>av1 1920x1080 4.4 Mbps 23.98 fps 20.4 min mp4</td>
+<td>h264 640x480 1.3 Mbps 29.97 fps 20.4 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>60f56cc69f19</td>
+<td>duplicate</td>
+<td>h264 624x480 1.1 Mbps 30 fps 43.2 min mp4</td>
+<td>hevc 1408x1080 8.3 Mbps 59.94 fps 43.3 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>621e932c5570</td>
+<td>duplicate</td>
+<td>h264 640x480 1.0 Mbps 25 fps 12.7 min mp4</td>
+<td>av1 3840x2160 10.1 Mbps 50 fps 12.7 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>672ee32d70cf</td>
+<td>duplicate</td>
+<td>h264 1920x1080 3.1 Mbps 30 fps 26.2 min mp4</td>
+<td>h264 1920x1080 8.2 Mbps 30 fps 24.8 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (1920x1080 at 8.2 Mbps beats 1920x1080 at 3.1 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>6a6f041ae18e</td>
+<td>duplicate</td>
+<td>h264 720x540 1.4 Mbps 25 fps 17.4 min mp4</td>
+<td>mpeg4 576x320 1.9 Mbps 29.97 fps 19.0 min avi</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x540 at 1.4 Mbps beats 576x320 at 1.9 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>7785e75c60ee</td>
+<td>duplicate</td>
+<td>av1 1444x1080 2.1 Mbps 60 fps 19.2 min mp4</td>
+<td>mpeg4 352x240 0.9 Mbps 29.97 fps 19.1 min avi</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>78cf88df3407</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 17.1 min mp4</td>
+<td>h264 640x480 1.2 Mbps 25 fps 18.4 min mp4</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x540 at 1.9 Mbps beats 640x480 at 1.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>7eb391c890e4</td>
+<td>duplicate</td>
+<td>av1 1920x1080 3.8 Mbps 30 fps 36.3 min mp4</td>
+<td>h264 480x360 0.7 Mbps 20 fps 36.3 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>8338e2278936</td>
+<td>duplicate</td>
+<td>h264 352x240 0.9 Mbps 29.97 fps 23.6 min mp4</td>
+<td>h264 1280x720 4.0 Mbps 29.97 fps 21.9 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (1280x720 at 4.0 Mbps beats 352x240 at 0.9 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>874e2f867294</td>
+<td>duplicate</td>
+<td>mpeg4 512x384 1.5 Mbps 29.97 fps 28.3 min avi</td>
+<td>wmv1 480x360 0.5 Mbps 0 fps 32.8 min wmv</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (512x384 at 1.5 Mbps beats 480x360 at 0.5 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>9686c36840a7</td>
+<td>duplicate</td>
+<td>h264 720x540 2.1 Mbps 25 fps 25.2 min mp4</td>
+<td>mpeg4 720x480 2.3 Mbps 29.97 fps 26.7 min avi</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>96feee8862ef</td>
+<td>duplicate</td>
+<td>h264 1920x1080 10.2 Mbps 25 fps 2.7 min mp4</td>
+<td>av1 1920x1080 2.2 Mbps 30 fps 8.3 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (1920x1080 at 10.2 Mbps beats 1920x1080 at 2.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>9a09a9296002</td>
+<td>duplicate</td>
+<td>h264 720x540 1.9 Mbps 25 fps 15.7 min mp4</td>
+<td>h264 624x480 1.2 Mbps 29.96 fps 21.1 min mp4</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x540 at 1.9 Mbps beats 624x480 at 1.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>9affc4abd08e</td>
+<td>duplicate</td>
+<td>h264 640x480 1.2 Mbps 29.96 fps 20.5 min mp4</td>
+<td>mpeg4 576x432 2.3 Mbps 29.97 fps 21.9 min avi</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (640x480 at 1.2 Mbps beats 576x432 at 2.3 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>a2c30c373cee</td>
+<td>duplicate</td>
+<td>h264 656x480 1.9 Mbps 30 fps 13.1 min mp4</td>
+<td>mpeg4 480x360 1.6 Mbps 23.98 fps 16.0 min avi</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (656x480 at 1.9 Mbps beats 480x360 at 1.6 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>a490d3742343</td>
+<td>duplicate</td>
+<td>av1 1920x1080 5.4 Mbps 29.97 fps 31.4 min mp4</td>
+<td>wmv2 480x352 0.9 Mbps 23.98 fps 31.3 min wmv</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>aaecbf694b6b</td>
+<td>duplicate</td>
+<td>av1 1280x960 2.5 Mbps 29.97 fps 28.4 min mp4</td>
+<td>h264 720x480 1.4 Mbps 26.72 fps 30.4 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>abf72d1b8c3c</td>
+<td>duplicate</td>
+<td>h264 720x480 1.3 Mbps 29.97 fps 54.1 min mp4</td>
+<td>mpeg4 512x384 1.5 Mbps 29.97 fps 67.2 min avi</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x480 at 1.3 Mbps beats 512x384 at 1.5 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>ade603b58a39</td>
+<td>duplicate</td>
+<td>h264 720x576 1.4 Mbps 25 fps 19.2 min mp4</td>
+<td>h264 720x404 1.9 Mbps 25 fps 20.5 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (720x576 at 1.4 Mbps beats 720x404 at 1.9 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>b0a48a610e20</td>
+<td>duplicate</td>
+<td>h264 512x384 1.1 Mbps 29.97 fps 24.0 min mp4</td>
+<td>av1 1920x1080 5.2 Mbps 29.97 fps 22.5 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>b4fa9e49b1af</td>
+<td>duplicate</td>
+<td>av1 1920x1080 5.4 Mbps 29.97 fps 29.2 min mp4</td>
+<td>h264 640x480 1.6 Mbps 30 fps 29.2 min mp4</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>ba69665cfd72</td>
+<td>duplicate</td>
+<td>h264 1920x1080 24.1 Mbps 59.94 fps 29.4 min mp4</td>
+<td>h264 1440x1080 3.1 Mbps 30 fps 33.6 min mp4</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (1920x1080 at 24.1 Mbps beats 1440x1080 at 3.1 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>bec980ac1454</td>
+<td>duplicate</td>
+<td>h264 1280x720 3.1 Mbps 24 fps 19.3 min mp4</td>
+<td>av1 1920x1080 7.2 Mbps 23.98 fps 19.3 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>c1522804f3b5</td>
+<td>duplicate</td>
+<td>hevc 1280x720 2.0 Mbps 29.97 fps 90.9 min mkv</td>
+<td>mpeg4 608x336 1.0 Mbps 23.98 fps 93.3 min avi</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>c18cb1f3c046</td>
+<td>duplicate</td>
+<td>av1 1920x1080 2.5 Mbps 30 fps 16.6 min mp4</td>
+<td>h264 1920x1080 1.9 Mbps 29.97 fps 19.8 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>c2d194046482</td>
+<td>duplicate</td>
+<td>h264 632x480 1.2 Mbps 60 fps 26.1 min mp4</td>
+<td>h264 720x480 2.0 Mbps 59.94 fps 26.1 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>c2e9f6ad295b</td>
+<td>duplicate</td>
+<td>mpeg4 512x384 1.2 Mbps 29.97 fps 32.0 min avi</td>
+<td>hevc 1400x1080 5.2 Mbps 59.94 fps 32.1 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>c6f32c77cdf3</td>
+<td>duplicate</td>
+<td>h264 720x480 1.5 Mbps 29.97 fps 17.8 min mp4</td>
+<td>h264 720x528 1.3 Mbps 29.97 fps 19.4 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more bits per pixel at about the same detail (cleaner, fewer blocks) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>cad5fbdf6e3a</td>
+<td>duplicate</td>
+<td>h264 720x480 2.6 Mbps 29.97 fps 23.6 min mp4</td>
+<td>av1 1920x1080 5.0 Mbps 29.97 fps 24.0 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>cf477b6e633a</td>
+<td>duplicate</td>
+<td>h264 720x404 1.7 Mbps 23.97 fps 55.6 min mp4</td>
+<td>h264 1920x1080 12.6 Mbps 29.97 fps 50.1 min mp4</td>
+<td>keep B</td>
+<td>keep B + A</td>
+<td>Keeps the best copy: more effective detail (1920x1080 at 12.6 Mbps beats 720x404 at 1.7 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>d72c1185a129</td>
+<td>duplicate</td>
+<td>h264 1920x1080 8.0 Mbps 29.97 fps 40.9 min mp4</td>
+<td>h264 576x320 0.8 Mbps 25 fps 45.5 min mp4</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (1920x1080 at 8.0 Mbps beats 576x320 at 0.8 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>d91ffc2c2296</td>
+<td>duplicate</td>
+<td>hevc 1420x1080 4.6 Mbps 59.94 fps 28.9 min mp4</td>
+<td>h264 720x480 2.0 Mbps 59.94 fps 28.9 min mkv</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>e4f1eb173982</td>
+<td>duplicate</td>
+<td>h264 1280x720 1.4 Mbps 24 fps 20.4 min mp4</td>
+<td>h264 1280x720 1.3 Mbps 30 fps 23.7 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (1280x720 at 1.4 Mbps beats 1280x720 at 1.3 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>f6d20ef52e19</td>
+<td>duplicate</td>
+<td>mpeg4 512x400 1.2 Mbps 29.97 fps 32.1 min avi</td>
+<td>hevc 1400x1080 5.2 Mbps 59.94 fps 32.1 min mp4</td>
+<td>keep B</td>
+<td>keep A + B</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+<tr>
+<td>fc5082343b1c</td>
+<td>duplicate</td>
+<td>h264 1280x720 2.4 Mbps 29.97 fps 10.2 min mp4</td>
+<td>h264 720x480 2.2 Mbps 30 fps 11.8 min mkv</td>
+<td>keep A</td>
+<td>keep A + B</td>
+<td>Keeps the best copy: more effective detail (1280x720 at 2.4 Mbps beats 720x480 at 2.2 Mbps) The longest file is kept too because it may hold extra content.</td>
+</tr>
+<tr>
+<td>feb6dc7f9e33</td>
+<td>duplicate</td>
+<td>hevc 1420x1080 4.7 Mbps 59.94 fps 30.1 min mp4</td>
+<td>h264 720x480 2.0 Mbps 59.94 fps 31.2 min mkv</td>
+<td>keep A</td>
+<td>keep B + A</td>
+<td>Keeps the best original and the best AI upscale; the other copies are worse.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ties">Ties</h2>
+<p>16 records were practically equal files.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/carrotwaxr/stash-sense" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

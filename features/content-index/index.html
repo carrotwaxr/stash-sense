@@ -1256,9 +1256,9 @@
 
 <h1 id="content-index">Content Index</h1>
 <blockquote>
-<p>Unfinished feature: the job is hidden until <strong>Settings &gt; Features &gt; Show Unfinished Features</strong> is on. It becomes visible once duplicate detection (#130) uses it.</p>
+<p>Unfinished feature: the job is hidden until <strong>Settings &gt; Features &gt; Show Unfinished Features</strong> is on. It becomes visible when <a href="../duplicate-detection/">duplicate detection</a> (#130) ships. That job reads this index, so run Content Index first.</p>
 </blockquote>
-<p>The content index answers one question for the whole library: does the content of one file appear inside another, and where? Stash's perceptual hash can't answer it. A trimmed intro, letterboxing or a watermark moves every frame it samples, and a clip inside a longer file never matches. Duplicate detection, split detection and the quality flags build on this index.</p>
+<p>The content index answers one question for the whole library: does the content of one file appear inside another, and where? Stash's perceptual hash can't answer it. A trimmed intro, letterboxing or a watermark moves every frame it samples, and a clip inside a longer file never matches. <a href="../duplicate-detection/">Duplicate detection</a>, split detection and the quality flags build on this index.</p>
 <h2 id="what-it-stores">What it stores</h2>
 <p>For every file, once per content (the same bytes in two places count once):</p>
 <ul>
