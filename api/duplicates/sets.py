@@ -32,9 +32,21 @@ def _num(scene_id: str):
 
 
 def _moment(ev: PairEvidence) -> dict:
-    offset = ev.ber_offset_s if ev.ber_offset_s is not None else ev.keyframe_offset_s
+    """Matching times in A and B for stills; audio is preferred, both stay >= 0 by shifting.
+
+    audio_ber: a positive offset means a[off:] lines up with b, so t_b = t_a - offset.
+    content index video match: offset_s = b time - a time, so t_b = t_a + offset.
+    """
     t_a = MOMENT_START_S
-    return {"t_a": t_a, "t_b": max(0, t_a + (offset or 0))}
+    if ev.ber_offset_s is not None:
+        t_b = t_a - ev.ber_offset_s
+    elif ev.keyframe_offset_s is not None:
+        t_b = t_a + ev.keyframe_offset_s
+    else:
+        t_b = t_a
+    if t_b < 0:
+        t_a, t_b = t_a - t_b, 0
+    return {"t_a": t_a, "t_b": t_b}
 
 
 def _pair(cand: Candidate, ev: PairEvidence, cls: str) -> dict:

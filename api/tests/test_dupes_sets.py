@@ -93,17 +93,31 @@ def test_pair_payload_and_moment():
     assert p["sources"] == ["phash", "stash_id"]
     assert p["cls"] == "duplicate"
     assert p["evidence"] == ev.to_dict()
-    assert p["moment"] == {"t_a": 60, "t_b": 72.5}
+    assert p["moment"] == {"t_a": 60, "t_b": 47.5}
 
 
-def test_moment_keyframe_zero_and_clamp():
-    items, _ = build_items([
-        v("1", "2", "duplicate", PairEvidence(keyframe_offset_s=-100.0)),
-        v("3", "4", "duplicate", PairEvidence()),
-    ])
-    d = by_key(items)
-    assert d["duplicate:1"].pairs[0]["moment"] == {"t_a": 60, "t_b": 0}
-    assert d["duplicate:3"].pairs[0]["moment"] == {"t_a": 60, "t_b": 60}
+def moment(**kw):
+    items, _ = build_items([v("1", "2", "duplicate", PairEvidence(**kw))])
+    return items[0].pairs[0]["moment"]
+
+
+def test_moment_audio_sign():
+    assert moment(ber_offset_s=30) == {"t_a": 60, "t_b": 30}       # a[30:] lines up with b
+    assert moment(ber_offset_s=-90) == {"t_a": 60, "t_b": 150}
+
+
+def test_moment_audio_shifts_instead_of_clamping():
+    assert moment(ber_offset_s=90) == {"t_a": 90, "t_b": 0}
+
+
+def test_moment_keyframe_sign():
+    assert moment(keyframe_offset_s=30) == {"t_a": 60, "t_b": 90}  # offset = b time - a time
+    assert moment(keyframe_offset_s=-100) == {"t_a": 100, "t_b": 0}
+
+
+def test_moment_audio_preferred_and_default():
+    assert moment(ber_offset_s=10, keyframe_offset_s=30) == {"t_a": 60, "t_b": 50}
+    assert moment() == {"t_a": 60, "t_b": 60}
 
 
 def test_to_details_json_safe():
