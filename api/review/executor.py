@@ -180,6 +180,11 @@ async def apply_plan(
                 "step": "delete_files", "file_ids": ids,
                 "destination": f"trash: {trash_path}" if trash_path else "permanently deleted",
             })
+
+        if plan.split:  # nothing to write: the accept itself is the hand-off
+            sp = plan.split
+            steps.append({"step": "split_handoff", "scene_id": str(sp.scene_id), "file_id": str(sp.file_id),
+                          "cuts": len(sp.cuts), "ranges": len(sp.ranges)})
     except Exception as e:
         logger.warning("Apply %d (%s rec %s) failed after %d steps: %s",
                        entry_id, plan.rec_type, plan.rec_id, len(steps), e)

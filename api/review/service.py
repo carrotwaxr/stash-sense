@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import asdict
 from typing import Optional
 
 import curation_settings
@@ -215,7 +216,8 @@ class ReviewService:
         try:
             self.rec_db.resolve_recommendation(
                 rec.id, action="applied",
-                details={"apply_log_id": entry["id"], "option": plan.option},
+                details={"apply_log_id": entry["id"], "option": plan.option,
+                         **({"split": asdict(plan.split)} if plan.split else {})},
             )
         except Exception as e:
             logger.warning("Applied %s (log %d) but could not resolve rec %d: %s",
