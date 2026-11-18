@@ -336,3 +336,17 @@ _register(
     # Unfinished until #130's checklist is ticked.
     production_ready=False,
 )
+
+_register(
+    "scene_splits",
+    "Split Multi-Scene Files",
+    "Finds the scene boundaries inside long and multi-scene files and proposes split points",
+    ResourceType.CPU_HEAVY,
+    JobPriority.LOW,
+    supports_incremental=False,
+    schedulable=True,
+    default_interval_hours=168,
+    allowed_intervals=INTERVALS_INFREQUENT,
+    # Unfinished until #131's checklist is ticked.
+    production_ready=False,
+)

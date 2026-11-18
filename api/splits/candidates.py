@@ -33,6 +33,7 @@ class SplitCandidate:
     coverage: list[tuple[float, float]] = field(default_factory=list)   # merged, in the file's time
     covering: list[dict] = field(default_factory=list)                  # [{scene_id, file_id, start, end}]
     redundant: bool = False
+    title: str = ""                              # the scene's title, for the series key
 
 
 def _oshash(f: dict) -> Optional[str]:
@@ -156,12 +157,14 @@ async def generate(stash, store, excluded: set[str]) -> list[SplitCandidate]:
     for s in await _load_scenes(stash, MIN_DURATION_S):
         sid, files = str(s["id"]), s.get("files") or []
         if sid not in skip and files and (files[0].get("duration") or 0) > MIN_DURATION_S:
-            out[sid] = SplitCandidate(sid, files[0])
+            out[sid] = SplitCandidate(sid, files[0], title=s.get("title") or "")
     if store is not None:
-        for sid, held in _index_coverage(store, await _load_scenes(stash), skip).items():
+        everyone = await _load_scenes(stash)
+        titles = {str(s["id"]): s.get("title") or "" for s in everyone}
+        for sid, held in _index_coverage(store, everyone, skip).items():
             if not held["covering"]:
                 continue
-            c = out.setdefault(sid, SplitCandidate(sid, held["file"]))
+            c = out.setdefault(sid, SplitCandidate(sid, held["file"], title=titles.get(sid, "")))
             c.covering = sorted(held["covering"], key=lambda x: (x["start"], int(x["scene_id"])))
             c.coverage = _merge(held["ranges"])
             c.redundant = _redundant(c.file, c.coverage, c.covering, held["files"])

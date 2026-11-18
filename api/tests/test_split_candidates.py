@@ -37,7 +37,7 @@ async def test_long_scenes(stash):
     cands = await candidates.generate(stash, None, set())
     assert [c.scene_id for c in cands] == [long_id]
     c = cands[0]
-    assert c.file["id"] == long_fid
+    assert c.file["id"] == long_fid and c.title == "long"
     assert (c.coverage, c.covering, c.redundant) == ([], [], False)
 
 
