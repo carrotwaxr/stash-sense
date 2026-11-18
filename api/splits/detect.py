@@ -213,8 +213,11 @@ def is_strong(c, profile=None):
       need either.
     - No per-series "silence required" rule (9140: 3 of 4 true cuts have no silence).
 
-    `profile` is the per-series profile; the generic rules do not read it.
+    `profile` is the per-series profile; the generic rules do not read it. A static-snow pair
+    (`static.static_candidates`) is strong when it carries silence, as that module decided.
     """
+    if c.get("kind") == "static":
+        return bool(c.get("strong"))
     if c["len"] < MIN_BLACK_S:
         return False
     dr = c.get("dip_ratio")
