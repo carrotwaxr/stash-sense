@@ -37,6 +37,14 @@ class JobContext:
         """Check whether a stop has been requested."""
         return self._stop_requested
 
+    def is_shutting_down(self) -> bool:
+        """True when the stop comes from the sidecar shutting down rather than from the user.
+
+        A job that returns a cursor then is re-queued and resumes on the next start; one that
+        returns None is marked completed.
+        """
+        return bool(getattr(self._queue_manager, "is_shutting_down", False))
+
     async def should_yield(self) -> bool:
         """Check whether this job should yield to a higher-priority job.
 

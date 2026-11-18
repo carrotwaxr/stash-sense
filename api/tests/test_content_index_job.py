@@ -347,6 +347,29 @@ async def test_stop_and_restart_repeats_no_finished_file(tmp_path, monkeypatch):
     assert db.result["audio"] == {"ok": 10}
 
 
+class _ShuttingDownQueue:
+    is_shutting_down = True
+
+    async def should_job_yield(self, job_id):
+        return False
+
+
+async def test_a_shutdown_requeues_the_job_and_a_user_stop_does_not(tmp_path, monkeypatch):
+    stash, root, _ = _fake_library(tmp_path, 10)
+    calls = []
+    monkeypatch.setattr(media_exec, "run_command", _canned(calls))
+    # the user stops it: done
+    ctx, _ = _context(stop_after=3)
+    assert await _job(stash, root, tmp_path, workers=1).run(ctx) is None
+    # the container stops: re-queued with a cursor, and the next run carries on
+    ctx, _ = _context(stop_after=3)
+    ctx._queue_manager = _ShuttingDownQueue()
+    assert await _job(stash, root, tmp_path, workers=1).run(ctx) == "fingerprint"
+    ctx, db = _context()
+    assert await _job(stash, root, tmp_path, workers=1).run(ctx) is None
+    assert db.result["audio"] == {"ok": 10}
+
+
 async def test_newest_scenes_first(tmp_path, monkeypatch):
     stash, root, _ = _fake_library(tmp_path, 5)
     calls = []
