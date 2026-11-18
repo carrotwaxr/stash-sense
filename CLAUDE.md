@@ -64,6 +64,10 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/curation_settings.py` - #125 exclusion list and disfavored formats, read from the plugin's settings in Stash; fail-closed guard used by jobs, review and scene endpoints
 - `api/driver_router.py` - Stable driver API v1 for external tools (#126) at `/api/v1/driver`; shapes pinned by `tests/test_driver_api.py`, documented in `docs/driver-api.md`. Breaking changes go to a v2 router
 - `api/content_fingerprint/` - Content index (#129): pure package (stdlib + numpy, no sidecar imports) for audio fingerprints, keyframe signatures, the inverted index, matcher and import check; also runs standalone (`python -m content_fingerprint.cli`). `api/jobs/content_fingerprint_job.py` wraps it as the `content_fingerprint` job; store is `DATA_DIR/content_fp.db`. User docs: `docs/features/content-index.md`
+- `api/duplicates/` - Duplicate detection v2 (#130): keeper rules, sprite tiles, audio check, health check, verdict and pair class, candidate sources, set grouping
+- `api/review/duplicates.py` - The `scene_duplicates` review type: keeper suggestion, merge plan, mislabel choice, batch eligibility
+- `api/analyzers/scene_duplicates.py` - The `scene_duplicates` job: verifies candidates and upserts one recommendation per set in place (driver feed never sees a delete). User docs: `docs/features/duplicate-detection.md`
+- `docs/research/dupes-keeper-regression.md` - The keeper vs the owner's recorded picks (90.3% of 680 non-tie pairs); rerun when `duplicates/keeper.py` changes
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client
