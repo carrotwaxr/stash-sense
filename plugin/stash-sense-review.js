@@ -129,10 +129,24 @@
 
   // ==================== Card ====================
 
+  // Effective detail is in pixels; megapixels read better on a card.
+  function mp(px) {
+    const v = Number(px);
+    return Number.isFinite(v) ? `${(v / 1e6).toFixed(v < 1e6 ? 2 : 1)} MP` : '?';
+  }
+
+  function fmtItem(x) {
+    if (x && typeof x === 'object') {
+      if ('group_id' in x) return `group ${x.group_id}${x.scene_index != null ? ` #${x.scene_index}` : ''}`;
+      return JSON.stringify(x);
+    }
+    return String(x);
+  }
+
   function fmtValue(v) {
     if (v === null || v === undefined || v === '') return '<em>empty</em>';
-    if (Array.isArray(v)) return v.length ? esc(v.join(', ')) : '<em>none</em>';
-    return esc(v);
+    if (Array.isArray(v)) return v.length ? esc(v.map(fmtItem).join(', ')) : '<em>none</em>';
+    return esc(fmtItem(v));
   }
 
   const FLAG_LABELS = {
@@ -293,7 +307,7 @@
     if (flag === 'below_studio') {
       const sh = e.sharpness;
       const num = (v) => (v == null ? '?' : esc(Number(v).toFixed(2)));
-      return `<div class="ss-review-dup-meta">detail ${num(e.eff)} against a peer median of ${num(e.peer_median)}
+      return `<div class="ss-review-dup-meta">effective detail ${mp(e.eff)} against a peer median of ${mp(e.peer_median)}
         (${esc(e.group || 'unknown group')}, ${esc(e.peers != null ? e.peers : '?')} peers)</div>
         <div class="ss-review-dup-meta">${esc(fmtPct(e.share_better))} of peers are better${e.score != null ? `, score ${num(e.score)}` : ''}</div>
         ${sh ? `<div class="ss-review-dup-meta">sharpness: blur ${num(sh.blur)}, block ${num(sh.block)}</div>` : ''}`;
