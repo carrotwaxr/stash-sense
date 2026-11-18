@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from collections import Counter
 from typing import Optional
 
@@ -38,6 +39,9 @@ STORE_NAME = "quality.db"
 PROBE_WORKERS = 2
 FLAGS = ("broken", "rip", "below_studio", "format")
 QUALITY_VERSION = 1
+CONTROL_SAMPLE = 20      # unflagged scenes kept open for review in report-only mode, to estimate recall
+FORMAT_CONFIDENCE = 0.5
+STALE_REASON = "no quality flag on the current file"
 PER_PAGE = 500
 LOW_DETAIL_TEXT = "effective detail well below the studio's release"
 
@@ -247,6 +251,56 @@ class SceneQualityAnalyzer(BaseAnalyzer):
             })
         return out
 
+    def _confidence(self, details: dict) -> float:
+        flags = details["flags"]
+        scores = [1.0 if f == "broken" else FORMAT_CONFIDENCE if f == "format" else float(ev.get("score") or 0.0)
+                  for f, ev in flags.items()]
+        return round(max(scores), 3)
+
+    def _persist(self, rows: list[dict], details: dict[str, dict], settings) -> None:
+        """Upsert one rec per flagged scene, retire the open ones that no longer have a flag, and top up the
+        control sample."""
+        stats = self.stats
+        scene_ids = {r["scene_id"] for r in rows}
+        pending = {r.target_id: r for r in self.rec_db.get_recommendations(
+            status="pending", type=TYPE_ID, target_type=TARGET_TYPE, limit=1_000_000_000)}
+        for sid, d in details.items():
+            if not d["flags"]:
+                continue
+            if self.is_dismissed(TARGET_TYPE, sid):
+                stats["dismissed"] += 1
+                continue
+            _, how = self.rec_db.upsert_recommendation(
+                type=TYPE_ID, target_type=TARGET_TYPE, target_id=sid, details=d,
+                confidence=self._confidence(d), source_analysis_id=self.run_id)
+            stats[how] += 1
+        if self.is_stop_requested():
+            return
+        for sid, rec in pending.items():
+            if sid in scene_ids and not details[sid]["flags"] and not (rec.details or {}).get("control"):
+                self.rec_db.resolve_recommendation(rec.id, "stale", {"reason": STALE_REASON})
+                stats["stale"] += 1
+        if settings.quality_report_only:
+            self._control_sample(details, pending)
+
+    def _control_sample(self, details: dict[str, dict], pending: dict) -> None:
+        """Keep CONTROL_SAMPLE unflagged scenes open as control cards. Only scenes that never had a quality rec
+        qualify, so the sample is not biased toward scenes the job once flagged."""
+        open_controls = sum(1 for r in pending.values() if (r.details or {}).get("control"))
+        want = CONTROL_SAMPLE - open_controls
+        if want <= 0:
+            return
+        known = {r.target_id for r in self.rec_db.get_recommendations(
+            type=TYPE_ID, target_type=TARGET_TYPE, limit=1_000_000_000)}
+        eligible = sorted((sid for sid, d in details.items() if not d["flags"] and sid not in known), key=str)
+        for sid in random.Random(self.run_id).sample(eligible, min(want, len(eligible))):
+            d = dict(details[sid], control=True)
+            _, how = self.rec_db.upsert_recommendation(
+                type=TYPE_ID, target_type=TARGET_TYPE, target_id=sid, details=d, confidence=0.0,
+                source_analysis_id=self.run_id)
+            if how == "created":
+                self.stats["controls"] += 1
+
     # ---------------- run ----------------
 
     async def run(self, incremental: bool = True) -> AnalysisResult:
@@ -261,6 +315,7 @@ class SceneQualityAnalyzer(BaseAnalyzer):
         try:
             rows = await self.collect(excl, qstore, content)
             details = await self.assemble(rows, excl.settings, qstore)
+            self._persist(rows, details, excl.settings)
         finally:
             qstore.close()
             if content is not None:
@@ -270,11 +325,16 @@ class SceneQualityAnalyzer(BaseAnalyzer):
         checks = {k: stats[k] for k in ("cached", "probed", "deep_checked", "missing", "unmapped", "excluded",
                                         "no_file", "no_oshash", "sharpness_measured")}
         flags = {f: self.raised[f] for f in FLAGS}
+        written = {k: stats[k] for k in ("created", "updated", "unchanged", "reopened", "skipped", "dismissed",
+                                         "stale", "controls")}
         logger.warning(
             "scene_quality: %d files checked; cheap cached %d, probed %d, deep-checked %d, missing %d, unmapped %d, "
             "excluded %d, no file %d, no oshash %d, sharpness measured %d; flags: broken %d, rip %d, below studio %d, "
-            "format %d%s",
-            len(rows), *checks.values(), *flags.values(), " (stopped)" if self.is_stop_requested() else "")
-        return AnalysisResult(items_processed=len(rows), recommendations_created=0,
-                              extra={"checks": checks, "flags": flags, "flagged_scenes": sum(
-                                  1 for d in details.values() if d["flags"])})
+            "format %d; created %d, updated %d, unchanged %d, reopened %d, kept %d, dismissed %d, stale %d, "
+            "controls %d%s",
+            len(rows), *checks.values(), *flags.values(), *written.values(),
+            " (stopped)" if self.is_stop_requested() else "")
+        return AnalysisResult(items_processed=len(rows), recommendations_created=stats["created"],
+                              extra={"checks": checks, "flags": flags, "written": written,
+                                     "controls": stats["controls"],
+                                     "flagged_scenes": sum(1 for d in details.values() if d["flags"])})

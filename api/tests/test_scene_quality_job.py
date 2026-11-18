@@ -6,7 +6,7 @@ import pytest
 
 import curation_settings
 import media_library
-from analyzers.scene_quality import SceneQualityAnalyzer
+from analyzers.scene_quality import CONTROL_SAMPLE, SceneQualityAnalyzer
 from content_fingerprint.store import ContentFpStore
 from curation_settings import CurationSettings, Exclusion
 from duplicates import health
@@ -50,7 +50,7 @@ def library(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def exclusion(monkeypatch):
-    state = {"settings": CurationSettings(), "scene_ids": frozenset()}
+    state = {"settings": CurationSettings(quality_report_only=False), "scene_ids": frozenset()}
 
     async def current(stash, **kw):
         return Exclusion(state["settings"], state["scene_ids"], 0.0)
@@ -233,6 +233,109 @@ async def test_run_returns_counts(stash, db, checks, tmp_path):
     checks.cheap[path] = "suspect"
     result = await SceneQualityAnalyzer(stash, db).run()
     assert result.items_processed == 2
-    assert result.recommendations_created == 0
+    assert result.recommendations_created == 1
     assert result.extra["flags"]["broken"] == 1
     assert result.extra["checks"]["probed"] == 2
+
+
+# ---------------- run(): upserts, stale resolution, control sample, registration ----------------
+
+TYPE = "scene_quality"
+
+
+def recs(db, status=None):
+    return db.get_recommendations(status=status, type=TYPE, target_type="scene", limit=1000)
+
+
+async def run(stash, db, stop=False):
+    analyzer = SceneQualityAnalyzer(stash, db)
+    if stop:
+        analyzer.request_stop()
+    return analyzer, await analyzer.run()
+
+
+async def test_one_rec_per_flagged_scene_upserted_in_place(stash, db, checks, tmp_path):
+    sid, path = add_scene(stash, tmp_path, "bad")
+    add_scene(stash, tmp_path, "fine")
+    checks.cheap[path] = "suspect"
+    first, result = await run(stash, db)
+    assert first.stats["created"] == 1 and result.recommendations_created == 1
+    (rec,) = recs(db)
+    assert rec.target_id == sid and rec.confidence == 1.0
+    assert set(rec.details["flags"]) == {"broken"}
+
+    second, _ = await run(stash, db)
+    assert second.stats["unchanged"] == 1 and second.stats["updated"] == 0
+    assert [r.id for r in recs(db)] == [rec.id]
+
+    stash.files[stash.scenes[sid]["file_ids"][0]]["bit_rate"] = 123
+    third, _ = await run(stash, db)
+    assert third.stats["updated"] == 1 and third.stats["created"] == 0
+    (again,) = recs(db)
+    assert again.id == rec.id and again.details["file"]["bit_rate"] == 123
+
+
+async def test_unflagged_pending_rec_resolved_stale_only_when_finished(stash, db, checks, tmp_path):
+    sid, path = add_scene(stash, tmp_path, "bad")
+    checks.cheap[path] = "suspect"
+    await run(stash, db)
+    checks.cheap[path] = "ok"
+    stash.files[stash.scenes[sid]["file_ids"][0]]["fingerprints"][0]["value"] = "h-new"    # a new file: re-probed
+    await run(stash, db, stop=True)
+    assert recs(db)[0].status == "pending"      # a stopped run retires nothing
+    analyzer, _ = await run(stash, db)
+    (rec,) = recs(db)
+    assert (rec.status, rec.resolution_action) == ("resolved", "stale")
+    assert rec.resolution_details == {"reason": "no quality flag on the current file"}
+    assert analyzer.stats["stale"] == 1
+
+
+async def test_dismissed_scene_untouched(stash, db, checks, tmp_path):
+    _, path = add_scene(stash, tmp_path, "bad")
+    checks.cheap[path] = "suspect"
+    await run(stash, db)
+    (rec,) = recs(db)
+    db.dismiss_recommendation(rec.id, "no")
+    analyzer, _ = await run(stash, db)
+    assert analyzer.stats["dismissed"] == 1 and analyzer.stats["created"] == 0
+    assert recs(db)[0].status == "dismissed"
+
+
+async def test_control_sample_in_report_only(stash, db, exclusion, tmp_path):
+    exclusion["settings"] = CurationSettings(quality_report_only=True)
+    for i in range(50):
+        add_scene(stash, tmp_path, f"clean{i}")
+    first, result = await run(stash, db)
+    controls = recs(db)
+    assert len(controls) == CONTROL_SAMPLE == 20
+    assert first.stats["controls"] == 20 and result.extra["controls"] == 20
+    for r in controls:
+        assert r.details["control"] is True and r.details["flags"] == {} and "scores" in r.details
+        assert r.confidence == 0.0
+    ids = sorted(r.id for r in controls)
+
+    second, _ = await run(stash, db)
+    assert second.stats["controls"] == 0
+    assert sorted(r.id for r in recs(db)) == ids
+    assert all(r.status == "pending" for r in recs(db))      # never resolved stale
+
+    # a resolved control is not open any more: the next run draws a replacement from the unsampled scenes
+    db.resolve_recommendation(controls[0].id, "applied", {})
+    third, _ = await run(stash, db)
+    assert third.stats["controls"] == 1
+    assert len(recs(db)) == 21
+
+
+async def test_no_control_sample_when_report_only_off(stash, db, exclusion, tmp_path):
+    exclusion["settings"] = CurationSettings(quality_report_only=False)
+    for i in range(5):
+        add_scene(stash, tmp_path, f"clean{i}")
+    await run(stash, db)
+    assert recs(db) == []
+
+
+def test_job_registered_hidden():
+    from job_models import JOB_REGISTRY
+    from recommendations_router import ANALYZERS
+    assert JOB_REGISTRY["scene_quality"].production_ready is False
+    assert ANALYZERS["scene_quality"] is SceneQualityAnalyzer
