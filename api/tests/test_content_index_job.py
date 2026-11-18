@@ -357,6 +357,21 @@ async def test_newest_scenes_first(tmp_path, monkeypatch):
     assert order == ["f4.mp4", "f3.mp4", "f2.mp4", "f1.mp4", "f0.mp4"]
 
 
+def test_a_large_backlog_is_spread_and_a_small_run_is_newest_first():
+    from jobs.content_fingerprint_job import LibraryFile, work_order
+    # files added in folder batches, as an ingest writes them (on unRAID: one disk per batch)
+    todo = [(LibraryFile(f"h{i}", i, f"/data/batch{i // 50}/f{i}.mp4", added=f"2026-01-01T{i // 50:02d}:{i % 50:02d}"),)
+            for i in range(300)]
+    small = work_order(todo[:40], spread_above=200)
+    assert [t[0].oshash for t in small] == [f"h{i}" for i in range(39, -1, -1)]
+    big = work_order(todo, spread_above=200)
+    assert sorted(t[0].oshash for t in big) == sorted(t[0].oshash for t in todo)
+    # any four consecutive picks (four workers) come from several batches, not one
+    folders = [os.path.dirname(t[0].path) for t in big]
+    windows = [len(set(folders[i:i + 4])) for i in range(len(folders) - 3)]
+    assert sum(windows) / len(windows) >= 3
+
+
 async def test_ffmpeg_runs_under_the_cpu_knobs(tmp_path, monkeypatch):
     stash, root, _ = _fake_library(tmp_path, 2)
     calls = []

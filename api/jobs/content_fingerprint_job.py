@@ -1,7 +1,7 @@
 """The content index (#129) as a queue job: fingerprint every file's audio and keyframes, then find shared audio.
 
 Phase 1, fingerprinting. Every file of every scene, one row per content (oshash + size), files without a fingerprint
-first and the most recently added scenes first. ffmpeg runs through JobContext.run_media_command, so the
+first: the most recently added scenes first, or in hash order for a large backlog (see SPREAD_ABOVE). ffmpeg runs through JobContext.run_media_command, so the
 media_job_nice / media_job_threads settings (#124) apply. Progress lives in the store itself: a finished file has a row,
 so a stopped or restarted job repeats no finished file.
 
@@ -18,6 +18,7 @@ out of the matching. The exclusion list is read fresh at the start and the job f
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
@@ -46,6 +47,12 @@ FILE_TIMEOUT_S = 3600
 MISSING_ABORT = 50       # this many files in a row missing from the mount: the mount or the path map is wrong
 ERROR_ABORT = 20         # this many unexpected errors in a row (ffmpeg missing, database broken): stop the run
 QUERY_BATCH = 25
+# A backlog bigger than this (the first pass over a library) is taken in hash order instead of newest first. Newest
+# first clusters a run on one disk: unRAID fills one disk at a time, so files added together sit together, and
+# several workers on one spinning disk seek against each other (2 workers measured 43 MB/s on one disk). Hash order
+# scatters concurrent workers across the disks in proportion to each disk's share of the library. The container
+# can't see which disk holds a file (/mnt/user is one FUSE mount), so this is the proxy.
+SPREAD_ABOVE = 200
 
 
 @dataclass
@@ -80,6 +87,14 @@ async def library_files(stash, per_page: int = 500) -> list[LibraryFile]:
             break
         page += 1
     return list(seen.values())
+
+
+def work_order(todo: list, spread_above: int = SPREAD_ABOVE) -> list:
+    """Newest scene first for an incremental run; hash order for a backlog (see SPREAD_ABOVE).
+    Items are tuples whose first element is a LibraryFile."""
+    if len(todo) <= spread_above:
+        return sorted(todo, key=lambda t: t[0].added, reverse=True)
+    return sorted(todo, key=lambda t: hashlib.sha1(t[0].oshash.encode()).digest())
 
 
 def _data_dir() -> str:
@@ -197,7 +212,7 @@ class ContentFingerprintJob(BaseJob):
             need_a, need_v = fid not in audio_done, fid not in video_done
             if need_a or need_v:
                 todo.append((f, fid, need_a, need_v))
-        todo.sort(key=lambda t: t[0].added, reverse=True)
+        todo = work_order(todo)
         stats = {"to_do": len(todo), "done": 0, "missing": 0, "timed_out": 0, "errors": 0}
         result["fingerprint"] = stats
         await context.report_progress(0, len(todo))
