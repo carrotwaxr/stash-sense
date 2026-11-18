@@ -28,11 +28,11 @@ def _make(rng):
     return sg.Signals(
         t=t,
         y=rng.integers(0, 256, n),
-        sat=np.round(rng.uniform(0, 200, n), 1),
-        ydif=np.round(rng.uniform(0, 200, n), 1),
-        scd=np.round(rng.uniform(0, 200, n), 1),
+        sat=rng.integers(0, 256, n) / 4.0,
+        ydif=rng.integers(0, 256, n) / 4.0,
+        scd=rng.integers(0, 256, n) / 2.0,
         au_t=au_t,
-        rms=np.round(rng.uniform(-120, 0, 240), 1),
+        rms=rng.integers(-120, 1, 240).astype(np.float64),
         sil=np.array([[10.5, 12.0], [30.25, 31.5]]),
         duration=100.0,
         covered=[[0.0, 60.0], [70.0, 100.0]],
@@ -54,13 +54,59 @@ def test_encode_decode_roundtrip():
     assert [list(c) for c in d.covered] == [list(c) for c in s.covered]
 
 
+def test_encode_clips_and_rounds():
+    s = _make(np.random.default_rng(3))
+    s.sat[0], s.ydif[0], s.scd[0], s.rms[0] = 200.0, 70.0, 300.0, 5.0
+    s.sat[1], s.ydif[1], s.scd[1], s.rms[1] = 1.1, 0.9, 0.3, -23.6
+    s.rms[2] = -200.0
+    d = sg.decode(sg.encode(s))
+    assert (d.sat[0], d.ydif[0], d.scd[0], d.rms[0]) == (63.75, 63.75, 127.5, 0.0)
+    assert (d.sat[1], d.ydif[1], d.scd[1], d.rms[1]) == (1.0, 1.0, 0.5, -24.0)
+    assert d.rms[2] == -120.0
+
+
+def test_irregular_and_empty_times_roundtrip():
+    s = _make(np.random.default_rng(4))
+    s.t = np.array([0.0, 0.17, 100000.0] + [100000.0 + i for i in range(1, 598)])
+    s.au_t = np.array([5.0] + [5.0 + 0.25 * i for i in range(1, 240)])
+    d = sg.decode(sg.encode(s))
+    assert np.array_equal(d.t, s.t) and np.array_equal(d.au_t, s.au_t)
+    z = np.zeros(0)
+    e = sg.Signals(
+        t=z,
+        y=z,
+        sat=z,
+        ydif=z,
+        scd=z,
+        au_t=z,
+        rms=z,
+        sil=np.zeros((0, 2)),
+        duration=0.0,
+        covered=[],
+    )
+    d = sg.decode(sg.encode(e))
+    assert d.t.size == 0 and d.au_t.size == 0 and d.sil.shape == (0, 2)
+    one = sg.decode(
+        sg.encode(
+            sg.Signals(**{**e.__dict__, "t": np.array([0.0]), "y": np.array([5])})
+        )
+    )
+    assert list(one.t) == [0.0]
+
+
 def test_to_dict_matches_curator_shape():
     s = _make(np.random.default_rng(2))
     d = sg.to_dict(s)
     assert set(d) == {"fr", "au", "sil", "covered"}
     assert len(d["fr"]) == 600 and len(d["au"]) == 240
     row = d["fr"][5]
-    assert row == [float(s.t[5]), int(s.y[5]), float(s.sat[5]), float(s.ydif[5]), float(s.scd[5])]
+    assert row == [
+        float(s.t[5]),
+        int(s.y[5]),
+        float(s.sat[5]),
+        float(s.ydif[5]),
+        float(s.scd[5]),
+    ]
     assert isinstance(row[1], int)
     assert d["au"][3] == [float(s.au_t[3]), float(s.rms[3])]
     assert d["sil"] == [[10.5, 12.0], [30.25, 31.5]]
@@ -93,7 +139,9 @@ def test_parse_audio():
     au, sil = sg.parse_audio(stdout, stderr, 100.0)
     assert au == [[0.0, -120.0], [0.25, -23.5]]
     assert sil == [[10.5, 12.0], [90.25, 100.0]]
-    _, sil2 = sg.parse_audio("", stderr.splitlines()[0] + "\n" + stderr.splitlines()[1], 100.0)
+    _, sil2 = sg.parse_audio(
+        "", stderr.splitlines()[0] + "\n" + stderr.splitlines()[1], 100.0
+    )
     assert sil2 == [[10.5, 12.0]]
 
 
@@ -102,5 +150,8 @@ def test_commands_use_nostdin():
     a = sg.audio_command("/x/a.mp4")
     for c in (v, a):
         assert c[0] == "ffmpeg" and "-nostdin" in c
-    assert v[v.index("-vf") + 1] == "fps=6,scale=160:-2,scdet=t=100,signalstats,metadata=print:file=-"
+    assert (
+        v[v.index("-vf") + 1]
+        == "fps=6,scale=160:-2,scdet=t=100,signalstats,metadata=print:file=-"
+    )
     assert "silencedetect=n=-35dB:d=0.3" in a[a.index("-af") + 1]
