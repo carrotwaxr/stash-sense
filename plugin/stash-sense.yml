@@ -27,6 +27,26 @@ settings:
     displayName: Maximum Results
     description: Maximum number of matches to show per detected face
     type: STRING
+  excludeTagIds:
+    displayName: Never touch - tag IDs
+    description: Comma-separated Stash tag IDs. Scenes with these tags (or child tags) are skipped by every curation tool. Easiest to edit in Stash Sense > Settings > Curation.
+    type: STRING
+  excludeGroupIds:
+    displayName: Never touch - group IDs
+    description: Comma-separated Stash group IDs (sub-groups included). Easiest to edit in Stash Sense > Settings > Curation.
+    type: STRING
+  excludeStudioIds:
+    displayName: Never touch - studio IDs
+    description: Comma-separated Stash studio IDs (child studios included). Easiest to edit in Stash Sense > Settings > Curation.
+    type: STRING
+  disfavoredVideoCodecs:
+    displayName: Disfavored video codecs
+    description: Comma-separated lowercase codec names (e.g. hevc). Used only as tie-breakers when suggesting which file to keep. Easiest to edit in Stash Sense > Settings > Curation.
+    type: STRING
+  disfavoredContainers:
+    displayName: Disfavored containers
+    description: Comma-separated lowercase container names (e.g. wmv). Used only as tie-breakers when suggesting which file to keep. Easiest to edit in Stash Sense > Settings > Curation.
+    type: STRING
 
 exec:
   - python

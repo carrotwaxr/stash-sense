@@ -86,6 +86,13 @@ class SceneFingerprintMatchAnalyzer(BaseAnalyzer):
                 if updated_at and (latest_updated is None or updated_at > latest_updated):
                     latest_updated = updated_at
 
+                # #125: an excluded scene's fingerprints are never sent to stash-box.
+                if self.exclusion is None or self.exclusion.is_excluded(scene["id"]):
+                    if self.exclusion is None:
+                        raise RuntimeError("load the exclusion list before matching scene fingerprints")
+                    self.excluded_skipped += 1
+                    continue
+
                 # Skip scenes already linked to this endpoint
                 linked_endpoints = {
                     sid["endpoint"] for sid in (scene.get("stash_ids") or [])

@@ -70,6 +70,8 @@ def client(db, settings, unfinished, media, monkeypatch):
         memory_total_mb=8192, memory_available_mb=4096, storage_free_mb=1000, tier="cpu",
     ))
     monkeypatch.setattr(rec_mod, "rec_db", db)
+    from tests.fake_stash import FakeStash
+    monkeypatch.setattr(rec_mod, "stash_client", FakeStash())  # listings read the exclusion list
     mgr = QueueManager(db)
     mgr.seed_default_schedules()
     init_queue_router(mgr)

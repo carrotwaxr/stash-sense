@@ -21,6 +21,7 @@ from review.service import (
     Stale,
 )
 from review.store import ReviewStore
+from review.types import ReviewType
 from stash_client_unified import StashClientUnified
 from tests.fake_stash import FakeStash, FakeStashError
 
@@ -387,7 +388,7 @@ def test_v9_database_migrates_to_review_tables(tmp_path):
 
 # ---------------- review findings ----------------
 
-class _RetitleType:
+class _RetitleType(ReviewType):
     """Test type: rec details name a scene and a title; two recs may share a scene."""
     type_id = "test_retitle"
     display_name = "Retitle"

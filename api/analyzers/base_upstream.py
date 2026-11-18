@@ -308,6 +308,12 @@ class BaseUpstreamAnalyzer(BaseAnalyzer):
                 skipped += 1
                 continue
 
+            # #125: excluded scenes are not looked up upstream at all.
+            if self.entity_type == "scene" and self.exclusion is not None and self.exclusion.is_excluded(local_id):
+                self.excluded_skipped += 1
+                skipped += 1
+                continue
+
             try:
                 up = await self._get_upstream_entity(sbc, stash_box_id)
             except Exception as e:

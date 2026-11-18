@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Collection, Optional, Iterator, Any
 
+from curation_settings import scene_exclusion_sql
+
 
 SCHEMA_VERSION = 10
 
@@ -591,8 +593,13 @@ class RecommendationsDB:
         limit: int = 100,
         offset: int = 0,
         exclude_types: Optional[Collection[str]] = None,
+        exclude_scene_ids: Optional[Collection[str]] = None,
     ) -> list[Recommendation]:
-        """Get recommendations with optional filtering."""
+        """Get recommendations with optional filtering.
+
+        exclude_scene_ids drops recommendations that name any of those scenes
+        (the #125 exclusion list).
+        """
         query = "SELECT * FROM recommendations WHERE 1=1"
         params = []
 
@@ -608,6 +615,10 @@ class RecommendationsDB:
         if exclude_types:
             query += f" AND type NOT IN ({','.join('?' * len(exclude_types))})"
             params.extend(exclude_types)
+        if exclude_scene_ids:
+            cond, cond_params = scene_exclusion_sql(exclude_scene_ids)
+            query += f" AND {cond}"
+            params.extend(cond_params)
 
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -616,7 +627,9 @@ class RecommendationsDB:
             rows = conn.execute(query, params).fetchall()
             return [self._row_to_recommendation(row) for row in rows]
 
-    def count_recommendations(self, status=None, type=None, target_type=None, exclude_types=None) -> int:
+    def count_recommendations(
+        self, status=None, type=None, target_type=None, exclude_types=None, exclude_scene_ids=None
+    ) -> int:
         """Count recommendations with optional filtering (for pagination totals)."""
         query = "SELECT COUNT(*) FROM recommendations WHERE 1=1"
         params = []
@@ -632,6 +645,10 @@ class RecommendationsDB:
         if exclude_types:
             query += f" AND type NOT IN ({','.join('?' * len(exclude_types))})"
             params.extend(exclude_types)
+        if exclude_scene_ids:
+            cond, cond_params = scene_exclusion_sql(exclude_scene_ids)
+            query += f" AND {cond}"
+            params.extend(cond_params)
         with self._connection() as conn:
             return conn.execute(query, params).fetchone()[0]
 
@@ -656,11 +673,16 @@ class RecommendationsDB:
                 return self._row_to_recommendation(row)
         return None
 
-    def get_recommendation_counts(self) -> dict[str, dict[str, int]]:
-        """Get counts by type and status."""
+    def get_recommendation_counts(
+        self, exclude_scene_ids: Optional[Collection[str]] = None
+    ) -> dict[str, dict[str, int]]:
+        """Get counts by type and status, leaving out recommendations that name exclude_scene_ids."""
+        cond, params = scene_exclusion_sql(exclude_scene_ids or ())
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT type, status, COUNT(*) as count FROM recommendations GROUP BY type, status"
+                f"SELECT type, status, COUNT(*) as count FROM recommendations WHERE {cond} "
+                "GROUP BY type, status",
+                params,
             ).fetchall()
 
             counts = {}

@@ -36,3 +36,28 @@ def event_loop_policy():
     """Use default event loop policy."""
     import asyncio
     return asyncio.DefaultEventLoopPolicy()
+
+
+class _StaticExclusion:
+    def __init__(self, value):
+        self.value = value
+
+    def invalidate(self):
+        pass
+
+    async def get(self, stash, *, max_age=None, allow_stale=False):
+        return self.value
+
+
+@pytest.fixture(autouse=True)
+def _empty_exclusion_list(monkeypatch):
+    """Existing tests run with an empty #125 exclusion list.
+
+    The real code fails closed when the list hasn't been loaded; tests of
+    the exclusion list itself install a real ExclusionCache over FakeStash.
+    """
+    import curation_settings
+    from analyzers.base import BaseAnalyzer
+
+    monkeypatch.setattr(curation_settings, "_cache", _StaticExclusion(curation_settings.EMPTY))
+    monkeypatch.setattr(BaseAnalyzer, "exclusion", curation_settings.EMPTY)

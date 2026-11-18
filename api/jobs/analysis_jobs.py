@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import curation_settings
 from base_job import BaseJob, JobContext
 from recommendations_router import ANALYZERS, get_rec_db, get_stash_client
 
@@ -44,7 +45,26 @@ class AnalysisJob(BaseJob):
             analyzer.request_stop()
 
         try:
-            result = await analyzer.run(incremental=True)
+            # Fresh read: a run never works from an exclusion list older than its start.
+            analyzer.exclusion = await curation_settings.current(stash, max_age=0)
+            # Incremental runs skip excluded scenes and still move their watermark past
+            # them. When the last run excluded scenes that are now allowed, run in full
+            # once so those scenes are analyzed.
+            seen_key = f"_analysis_excluded_scenes:{self._type_id}"
+            previously = set(db.get_user_setting(seen_key) or [])
+            released = previously - analyzer.exclusion.scene_ids
+            if released:
+                logger.warning(
+                    "Analysis job %s: %d scene(s) left the exclusion list; running in full",
+                    self._type_id, len(released),
+                )
+            result = await analyzer.run(incremental=not released)
+            db.set_user_setting(seen_key, sorted(analyzer.exclusion.scene_ids))
+            if getattr(analyzer, "excluded_skipped", 0):
+                logger.warning(
+                    "Analysis job %s skipped %d recommendation(s) naming excluded scenes",
+                    self._type_id, analyzer.excluded_skipped,
+                )
 
             db.complete_analysis_run(run_id, result.recommendations_created)
             await context.report_progress(result.items_processed, result.items_processed)

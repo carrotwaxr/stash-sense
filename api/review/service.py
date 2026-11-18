@@ -12,7 +12,9 @@ import asyncio
 import logging
 from typing import Optional
 
+import curation_settings
 import features
+from curation_settings import SceneExcluded
 from recommendations_db import Recommendation, RecommendationsDB
 
 from .executor import ApplyFailed, PlanRejected, apply_plan
@@ -74,7 +76,20 @@ class Failed(ReviewError):
     status, code = 502, "apply_failed"
 
 
+class Excluded(ReviewError):
+    status, code = 403, "scene_excluded"
+
+
 logger = logging.getLogger(__name__)
+
+
+def _plan_scene_ids(plan: Plan) -> set[str]:
+    """Every scene a plan writes: field changes, primary file, and the scenes of deleted files."""
+    ids = {c.entity_id for c in plan.field_changes}
+    ids |= {f.scene_id for f in plan.delete_files}
+    if plan.primary_file:
+        ids.add(plan.primary_file.scene_id)
+    return {str(i) for i in ids if i is not None}
 
 
 def _files_payload(preview: Preview) -> list[dict]:
@@ -108,13 +123,28 @@ class ReviewService:
             raise NotFound(f"Recommendation {rec_id} not found")
         return rec, self._type(rec.type)
 
+    async def _refresh_exclusion(self) -> None:
+        """Read the #125 list fresh; writes call this first so later checks in the
+        same request use a list no older than the request."""
+        await curation_settings.current(self.stash, max_age=0)
+
+    async def _check_exclusion(self, scene_ids) -> None:
+        """Refuse scenes on the #125 exclusion list (ExclusionUnavailable propagates: fail closed)."""
+        hit = (await curation_settings.current(self.stash)).excluded(scene_ids)
+        if hit:
+            raise Excluded(str(SceneExcluded(hit)), scene_ids=sorted(hit))
+
     async def _build(self, rec: Recommendation, rtype: ReviewType, option: dict | None) -> Preview:
+        await self._check_exclusion(rtype.scene_ids(rec))
         try:
-            return await rtype.preview(rec, option, self.stash)
+            preview = await rtype.preview(rec, option, self.stash)
         except TargetMissing as e:
             raise NotFound(str(e)) from e
         except InvalidOption as e:
             raise Rejected(str(e)) from e
+        # The plan may write scenes the recommendation doesn't name; check those too.
+        await self._check_exclusion(_plan_scene_ids(preview.plan))
+        return preview
 
     # ---------------- single item ----------------
 
@@ -136,6 +166,7 @@ class ReviewService:
         confirm_delete: list[str] | None = None,
     ) -> dict:
         rec, rtype = self._rec(rec_id)
+        await self._refresh_exclusion()
         async with self._apply_lock:
             rec = self.rec_db.get_recommendation(rec_id)
             if rec.status != "pending":
@@ -206,7 +237,10 @@ class ReviewService:
 
     async def batch_preview(self, type_id: str, limit: int = 200) -> dict:
         rtype = self._type(type_id)
-        recs = self.rec_db.get_recommendations(status="pending", type=type_id, limit=limit)
+        excluded = (await curation_settings.current(self.stash)).scene_ids
+        recs = self.rec_db.get_recommendations(
+            status="pending", type=type_id, limit=limit, exclude_scene_ids=excluded,
+        )
         items, skipped = [], []
         for rec in recs:
             try:
@@ -245,6 +279,7 @@ class ReviewService:
         """Apply items with the type's default option. Refuses the whole batch if any item
         is not high-confidence; per-item staleness is reported and the rest proceed."""
         rtype = self._type(type_id)
+        await self._refresh_exclusion()
         async with self._apply_lock:
             built: list[tuple[Recommendation, dict]] = []
             ineligible: list[dict] = []
@@ -301,6 +336,7 @@ class ReviewService:
     # ---------------- revert ----------------
 
     async def revert(self, entry_id: int, *, force: bool = False) -> dict:
+        await self._refresh_exclusion()
         async with self._apply_lock:
             entry = self.store.get(entry_id)
             if entry is None:
@@ -310,6 +346,10 @@ class ReviewService:
             if entry["reverted_by"]:
                 raise NotRevertible(f"Entry {entry_id} was already reverted by {entry['reverted_by']}")
             plan = Plan.from_dict(entry["plan"])
+            await self._check_exclusion(
+                _plan_scene_ids(plan)
+                | ({entry["target_id"]} if entry.get("target_type") == "scene" else set())
+            )
             if entry["status"] == "failed":
                 # Only the scenes whose update step ran were written.
                 written = {st["scene_id"] for st in (entry.get("result") or {}).get("steps", [])

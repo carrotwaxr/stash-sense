@@ -78,6 +78,8 @@ def main():
         result = handle_settings(mode, args, sidecar_url)
         if result is None:
             result = {"error": f"Unknown settings mode: {mode}"}
+    elif mode in ("curation_settings", "curation_refresh"):
+        result = handle_curation(mode, sidecar_url)
     elif mode.startswith("queue_"):
         result = handle_queue(mode, args, sidecar_url)
     elif mode == "review":
@@ -841,6 +843,17 @@ def handle_recommendations(mode, args, sidecar_url):
         return fp_stop(sidecar_url)
 
     return None
+
+
+# ==================== Curation Settings Proxy ====================
+
+def handle_curation(mode, sidecar_url):
+    """Shared curation settings (exclusion list, disfavored formats)."""
+    if mode == "curation_settings":
+        return sidecar_get(sidecar_url, "/curation/settings")
+    if mode == "curation_refresh":
+        return sidecar_post(sidecar_url, "/curation/refresh")
+    return {"error": f"Unknown curation mode: {mode}"}
 
 
 # ==================== Settings API Proxy ====================

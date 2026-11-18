@@ -384,6 +384,7 @@ class StashClientUnified:
                 basename
                 size
                 duration
+                format
                 video_codec
                 audio_codec
                 width
@@ -634,6 +635,22 @@ class StashClientUnified:
                 return ""
             raise
         return data["configuration"]["general"].get("deleteTrashPath") or ""
+
+    async def get_plugin_configuration(self, plugin_id: str) -> dict:
+        """A plugin's settings map from Stash ({} when it has none)."""
+        data = await self._execute("query { configuration { plugins } }")
+        plugins = data["configuration"].get("plugins") or {}
+        return plugins.get(plugin_id) or {}
+
+    async def find_scene_ids(self, scene_filter: dict) -> list[str]:
+        """Ids of every scene matching scene_filter."""
+        query = """
+        query SceneIds($scene_filter: SceneFilterType) {
+          findScenes(scene_filter: $scene_filter, filter: { per_page: -1 }) { scenes { id } }
+        }
+        """
+        data = await self._execute(query, {"scene_filter": scene_filter})
+        return [s["id"] for s in data["findScenes"]["scenes"]]
 
     # ==================== Files ====================
 

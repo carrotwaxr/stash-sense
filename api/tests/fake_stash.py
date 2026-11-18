@@ -5,6 +5,8 @@ Modelled on Stash v0.32 (internal/api/resolver_mutation_file.go, scene update):
 - sceneUpdate rejects unknown fields and a primary_file_id that isn't on the scene
 - deleteFiles is all-or-nothing and refuses any file that is a scene's primary
 - with deleteTrashPath set, deleted files move to trash; otherwise they are gone
+- configurePlugin replaces the plugin's whole settings map (config.SetPluginConfiguration)
+- findScenes' hierarchical tags/groups/studios criteria with depth -1 match descendants
 
 It implements the StashClientUnified methods the review code calls, with
 the same names and return shapes (test_review_framework checks the names).
@@ -33,6 +35,11 @@ class FakeStash:
         self.scenes: dict[str, dict] = {}
         self.files: dict[str, dict] = {}
         self.tags: dict[str, str] = {}
+        # child id -> parent ids, per hierarchy ("tags", "groups", "studios")
+        self.parents: dict[str, dict[str, set[str]]] = {"tags": {}, "groups": {}, "studios": {}}
+        self.groups: dict[str, str] = {}
+        self.studios: dict[str, str] = {}
+        self.plugin_config: dict[str, dict] = {}
         self.trash_path = trash_path
         self.deleted: list[dict] = []  # {"path", "destination"}
         self.writes = 0
@@ -45,10 +52,26 @@ class FakeStash:
         self._next_id += 1
         return str(self._next_id)
 
-    def add_tag(self, name: str) -> str:
+    def add_tag(self, name: str, parent: Optional[str] = None) -> str:
         tid = self._id()
         self.tags[tid] = name
+        if parent:
+            self.parents["tags"].setdefault(tid, set()).add(parent)
         return tid
+
+    def add_group(self, name: str, parent: Optional[str] = None) -> str:
+        gid = self._id()
+        self.groups[gid] = name
+        if parent:
+            self.parents["groups"].setdefault(gid, set()).add(parent)
+        return gid
+
+    def add_studio(self, name: str, parent: Optional[str] = None) -> str:
+        sid = self._id()
+        self.studios[sid] = name
+        if parent:  # a studio has one parent in Stash
+            self.parents["studios"][sid] = {parent}
+        return sid
 
     def add_file(self, path: str, size: int, *, duration: float = 600.0, oshash: Optional[str] = None,
                  md5: Optional[str] = None, codec: str = "h264", width: int = 1920, height: int = 1080) -> str:
@@ -70,7 +93,8 @@ class FakeStash:
         self.scenes[sid] = {
             "id": sid, "title": title, "details": "", "date": None, "code": "", "director": "",
             "urls": [], "organized": False, "rating100": None, "studio_id": None,
-            "performer_ids": [], "tag_ids": list(tag_ids), "file_ids": list(file_ids), **fields,
+            "performer_ids": [], "tag_ids": list(tag_ids), "group_ids": [],
+            "file_ids": list(file_ids), **fields,
         }
         return sid
 
@@ -105,6 +129,44 @@ class FakeStash:
 
     async def get_delete_trash_path(self) -> str:
         return self.trash_path
+
+    async def get_performer_scenes(self, performer_id: str) -> list[dict]:
+        return [self._render(s) for s in sorted(self.scenes.values(), key=lambda s: int(s["id"]))
+                if str(performer_id) in s["performer_ids"]]
+
+    async def get_plugin_configuration(self, plugin_id: str) -> dict:
+        self._maybe_fail("get_plugin_configuration")
+        return copy.deepcopy(self.plugin_config.get(plugin_id) or {})
+
+    async def configure_plugin(self, plugin_id: str, values: dict) -> dict:
+        """Stash's configurePlugin: the input replaces the whole map."""
+        self.plugin_config[plugin_id] = copy.deepcopy(values)
+        return copy.deepcopy(values)
+
+    def _with_descendants(self, kind: str, ids: set[str], depth: int) -> set[str]:
+        out, frontier, level = set(ids), set(ids), 0
+        while frontier and (depth < 0 or level < depth):
+            frontier = {c for c, ps in self.parents[kind].items() if ps & frontier} - out
+            out |= frontier
+            level += 1
+        return out
+
+    async def find_scene_ids(self, scene_filter: dict) -> list[str]:
+        self._maybe_fail("find_scene_ids")
+        if len(scene_filter) != 1:
+            raise FakeStashError(f"fake findScenes models one criterion, got {sorted(scene_filter)}")
+        (field, crit), = scene_filter.items()
+        if field not in ("tags", "groups", "studios") or crit.get("modifier") != "INCLUDES":
+            raise FakeStashError(f"fake findScenes does not model {field} {crit.get('modifier')}")
+        wanted = self._with_descendants(field, {str(v) for v in crit["value"]}, crit.get("depth") or 0)
+
+        def scene_values(s):
+            if field == "studios":
+                return {s["studio_id"]} if s["studio_id"] else set()
+            return set(s["tag_ids" if field == "tags" else "group_ids"])
+
+        return [s["id"] for s in sorted(self.scenes.values(), key=lambda s: int(s["id"]))
+                if scene_values(s) & wanted]
 
     # ---------------- writes ----------------
 

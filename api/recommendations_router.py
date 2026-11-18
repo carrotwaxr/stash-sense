@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 import face_config
+import curation_settings
+from curation_settings import rec_scene_ids
 from features import HiddenFeatureError, hidden_job_types, hidden_recommendation_types
 from media_library import MediaNotWritableError
 from recommendations_db import RecommendationsDB
@@ -52,6 +54,24 @@ def get_stash_client() -> StashClientUnified:
     if stash_client is None:
         raise HTTPException(status_code=503, detail="Stash connection not configured. Set STASH_URL env var.")
     return stash_client
+
+
+async def listing_exclusion() -> curation_settings.Exclusion:
+    """The #125 exclusion list for read-only listings: cached, and the last good
+    list if Stash is briefly unreadable. Raises ExclusionUnavailable (503) when
+    there has never been one."""
+    return await curation_settings.current(get_stash_client(), allow_stale=True)
+
+
+async def require_scenes_allowed(*scene_ids) -> None:
+    """Refuse (403 via SceneExcluded) when any scene is on the exclusion list.
+
+    Reads the list fresh: a write must not rely on a list cached before the
+    user's last change. ExclusionUnavailable (503) when Stash can't be read.
+    """
+    ids = [s for s in scene_ids if s is not None]
+    if ids:
+        (await curation_settings.current(get_stash_client(), max_age=0)).require_not_excluded(ids)
 
 
 # --- Entity name cache for alias dedup ---
@@ -328,6 +348,7 @@ async def list_recommendations(
     hidden = hidden_recommendation_types()
     if type in hidden:
         return RecommendationListResponse(recommendations=[], total=0)
+    excluded = (await listing_exclusion()).scene_ids
     recs = db.get_recommendations(
         status=status,
         type=type,
@@ -335,6 +356,7 @@ async def list_recommendations(
         limit=limit,
         offset=offset,
         exclude_types=hidden,
+        exclude_scene_ids=excluded,
     )
     return RecommendationListResponse(
         recommendations=[
@@ -353,6 +375,7 @@ async def list_recommendations(
         ],
         total=db.count_recommendations(
             status=status, type=type, target_type=target_type, exclude_types=hidden,
+            exclude_scene_ids=excluded,
         ),
     )
 
@@ -362,7 +385,11 @@ async def get_recommendation_counts():
     """Get recommendation counts by type and status."""
     db = get_rec_db()
     hidden = hidden_recommendation_types()
-    counts = {t: c for t, c in db.get_recommendation_counts().items() if t not in hidden}
+    excluded = (await listing_exclusion()).scene_ids
+    counts = {
+        t: c for t, c in db.get_recommendation_counts(exclude_scene_ids=excluded).items()
+        if t not in hidden
+    }
     total_pending = sum(
         type_counts.get("pending", 0)
         for type_counts in counts.values()
@@ -377,6 +404,7 @@ async def get_recommendation(rec_id: int):
     rec = db.get_recommendation(rec_id)
     if not rec or rec.type in hidden_recommendation_types():
         raise HTTPException(status_code=404, detail="Recommendation not found")
+    await require_scenes_allowed(*rec_scene_ids(rec.target_type, rec.target_id, rec.details))
     return RecommendationResponse(
         id=rec.id,
         type=rec.type,
@@ -551,6 +579,9 @@ class MergePerformersRequest(BaseModel):
 async def merge_performers(request: MergePerformersRequest):
     """Execute a performer merge. Deletes source performers after merge."""
     stash = get_stash_client()
+    # The merge rewrites the performers of every scene the sources appear in (#125).
+    source_scenes = [s["id"] for sid in request.source_ids for s in await stash.get_performer_scenes(sid)]
+    await require_scenes_allowed(*source_scenes)
     try:
         result = await stash.merge_performers(request.source_ids, request.destination_id)
         # Delete orphaned source performers after merge
@@ -575,6 +606,7 @@ class DeleteSceneFilesRequest(BaseModel):
 @router.post("/actions/delete-scene-files")
 async def delete_scene_files(request: DeleteSceneFilesRequest):
     """Delete files from a scene, keeping the specified file."""
+    await require_scenes_allowed(request.scene_id)
     stash = get_stash_client()
     try:
         result = await stash.delete_scene_files(
@@ -597,6 +629,7 @@ class MergeScenesRequest(BaseModel):
 @router.post("/actions/merge-scenes")
 async def merge_scenes(request: MergeScenesRequest):
     """Execute a scene merge via Stash's sceneMerge mutation."""
+    await require_scenes_allowed(request.destination_id, *request.source_ids)
     stash = get_stash_client()
     try:
         result = await stash.merge_scenes(request.source_ids, request.destination_id)
@@ -614,6 +647,7 @@ class DeleteSceneRequest(BaseModel):
 @router.post("/actions/delete-scene")
 async def delete_scene(request: DeleteSceneRequest):
     """Delete a scene from Stash."""
+    await require_scenes_allowed(request.scene_id)
     stash = get_stash_client()
     try:
         result = await stash.destroy_scene(request.scene_id, delete_file=request.delete_file)
@@ -625,6 +659,7 @@ async def delete_scene(request: DeleteSceneRequest):
 @router.get("/scene/{scene_id}")
 async def get_scene_detail(scene_id: str):
     """Get scene details for the duplicate scenes detail view."""
+    await require_scenes_allowed(scene_id)
     stash = get_stash_client()
     try:
         scene = await stash.get_scene_by_id(scene_id)
@@ -1472,6 +1507,7 @@ async def link_entity_action(request: LinkEntityRequest):
 @router.post("/actions/update-scene")
 async def update_scene_fields(request: UpdateSceneRequest):
     """Apply selected upstream changes to a scene."""
+    await require_scenes_allowed(request.scene_id)
     stash = get_stash_client()
     result = await _apply_scene_update(
         stash,
@@ -1590,6 +1626,7 @@ async def _accept_fingerprint_match(
 @router.post("/actions/accept-fingerprint-match", response_model=SuccessResponse)
 async def accept_fingerprint_match(request: AcceptFingerprintMatchRequest):
     """Accept a scene fingerprint match — links the stash_id to the local scene."""
+    await require_scenes_allowed(request.scene_id)
     stash = get_stash_client()
     db = get_rec_db()
     await _accept_fingerprint_match(
@@ -1610,8 +1647,10 @@ async def _accept_all_fingerprint_matches(
     stash, db, endpoint: Optional[str] = None,
 ) -> int:
     """Accept all high-confidence fingerprint matches. Returns count accepted."""
+    excluded = (await curation_settings.current(stash, max_age=0)).scene_ids
     recs = db.get_recommendations(
         status="pending", type="scene_fingerprint_match", limit=10000,
+        exclude_scene_ids=excluded,
     )
 
     accepted = 0

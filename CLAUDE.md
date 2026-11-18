@@ -61,6 +61,7 @@ Translation is handled in `recommendations_router.py:update_performer_fields()`.
 - `api/analyzers/upstream_performer.py` - Upstream change detection analyzer
 - `api/analyzers/upstream_scene.py` - Upstream scene change detection analyzer
 - `api/analyzers/base_upstream.py` - Base class for upstream analyzers with logic versioning
+- `api/curation_settings.py` - #125 exclusion list and disfavored formats, read from the plugin's settings in Stash; fail-closed guard used by jobs, review and scene endpoints
 - `api/review/` - Review framework (#127): plans, executor (the only writer), apply log, labels; `review_router.py` serves `/review/*`
 - `plugin/stash-sense-review.js` - Generic review cards, delete confirm, batch accept, apply log UI
 - `api/stash_client_unified.py` - Stash GraphQL client

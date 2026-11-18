@@ -7,6 +7,8 @@ to choose which file(s) to keep and delete the rest.
 Ported from: stash-plugins/scripts/scene-file-deduper/
 """
 
+import curation_settings
+
 from .base import BaseAnalyzer, AnalysisResult
 
 
@@ -34,7 +36,8 @@ def get_file_quality_score(file: dict) -> int:
     """
     Calculate a quality score for a file.
 
-    Higher is better. Considers resolution, codec, bitrate.
+    Higher is better. Considers resolution and bitrate. Codec preference is
+    taste, not fact (#125): the user's disfavored formats break ties instead.
     """
     score = 0
 
@@ -47,13 +50,6 @@ def get_file_quality_score(file: dict) -> int:
     # Bitrate bonus
     bitrate = file.get("bit_rate") or 0
     score += bitrate // 1000000  # Points per Mbps
-
-    # Codec bonuses (prefer modern codecs)
-    codec = (file.get("video_codec") or "").lower()
-    if "hevc" in codec or "h265" in codec or "x265" in codec:
-        score += 100
-    elif "h264" in codec or "avc" in codec or "x264" in codec:
-        score += 50
 
     return score
 
@@ -77,6 +73,7 @@ class DuplicateSceneFilesAnalyzer(BaseAnalyzer):
         """
         # Fetch all scenes with more than one file
         scenes = await self.stash.get_multi_file_scenes()
+        prefs = self.exclusion.settings if self.exclusion else curation_settings.CurationSettings()
 
         created = 0
         for scene in scenes:
@@ -98,6 +95,8 @@ class DuplicateSceneFilesAnalyzer(BaseAnalyzer):
                     "duration_formatted": format_duration(f.get("duration")),
                     "video_codec": f.get("video_codec"),
                     "audio_codec": f.get("audio_codec"),
+                    "format": f.get("format"),
+                    "disfavored": prefs.is_disfavored(f),
                     "width": f.get("width"),
                     "height": f.get("height"),
                     "resolution": f"{f.get('width', '?')}x{f.get('height', '?')}",
@@ -106,8 +105,8 @@ class DuplicateSceneFilesAnalyzer(BaseAnalyzer):
                     "quality_score": score,
                 })
 
-            # Sort by quality score descending (best first)
-            scored_files.sort(key=lambda x: x["quality_score"], reverse=True)
+            # Best first; on a tie, a file in a disfavored format goes after one that isn't.
+            scored_files.sort(key=lambda x: (-x["quality_score"], x["disfavored"]))
 
             # Mark suggested keeper
             for i, f in enumerate(scored_files):

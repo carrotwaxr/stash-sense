@@ -10,6 +10,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional
 
+from curation_settings import rec_scene_ids
+
 from .plan import Preview
 
 if TYPE_CHECKING:
@@ -39,8 +41,13 @@ class ReviewType(ABC):
         """
 
     def scene_ids(self, rec: Recommendation) -> set[str]:
-        """Scenes the recommendation touches (the exclusion list from #125 checks these)."""
-        return {rec.target_id} if rec.target_type == "scene" else set()
+        """Scenes the recommendation touches (the #125 exclusion list checks these).
+
+        Override when a type names scenes outside target_id and the details
+        keys curation_settings.rec_scene_ids knows; the listing filter in SQL
+        only sees those, so prefer adding the key there.
+        """
+        return rec_scene_ids(rec.target_type, rec.target_id, rec.details)
 
     def label(self, rec: Recommendation, preview: Preview) -> dict | None:
         """A labeled example when the user chose something other than the suggestion."""

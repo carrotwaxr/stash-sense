@@ -423,6 +423,10 @@ app.include_router(queue_router)
 app.include_router(model_router)
 app.include_router(review_router)
 
+import curation_router  # noqa: E402
+
+curation_router.install(app)
+
 
 if __name__ == "__main__":
     import uvicorn
