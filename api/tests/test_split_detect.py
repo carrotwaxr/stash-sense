@@ -132,3 +132,69 @@ def test_features_at_reports_black_silence_and_dip():
     assert f["blk_min"] == 5
     assert f["sil_len"] == 3.0
     assert f["dip_ratio"] == pytest.approx(0.05)
+
+
+# --- DVD menu tails (task 4) ---
+
+MENU_BASELINE = (
+    4  # 4 of the 8 fixture records with keep_until match within 5 s on the first run
+)
+
+
+def _menu_file(menu_y, hard_cut):
+    """300 s of moving picture, 3 s black, then 240 s of a static picture at `menu_y`."""
+    fr = []
+    black_start, black_end, end = 300.0, 303.0, 543.0
+    for i in range(int(end * FPS)):
+        t = round(i / FPS, 3)
+        if t < black_start:
+            fr.append([t, 100, 20.0, 5.0, 0.0])
+        elif t < black_end:
+            fr.append([t, 5, 0.0, 0.0, 0.0])
+        else:
+            y = menu_y
+            if menu_y < 80 and 310 <= t < 310.2:
+                y = 70  # one highlighted frame so the dark menu has a first bright frame
+            scd = 60.0 if hard_cut and t < black_end + 0.7 else 0.0
+            fr.append([t, y, 20.0, 0.5, scd])
+    return fr
+
+
+def test_menu_tail_dark():
+    got = detect.menu_keep_until(_menu_file(40, hard_cut=False))
+    assert got["keep_until"] == pytest.approx(300.0, abs=0.2)
+    assert got["black_start"] == pytest.approx(300.0, abs=0.2)
+    assert "dark" in got["kind"]
+
+
+def test_menu_tail_bright():
+    fr = _menu_file(120, hard_cut=True)
+    first = 303.5  # the detector skips the 0.5 s after the black's last frame
+    got = detect.menu_keep_until(fr)
+    assert got["kind"] == "bright menu"
+    assert got["menu_start"] == pytest.approx(first, abs=0.2)
+    assert got["keep_until"] == pytest.approx(first - 3.0, abs=0.2)
+
+
+def test_no_menu_tail():
+    fr = _frames(600, blacks=[(300, 3, 5)])
+    for f in fr:
+        f[3] = 20.0  # moving picture throughout
+    assert detect.menu_keep_until(fr) is None
+
+
+def _menu_matches():
+    have = [r for r in _records() if r["keep_until"] is not None]
+    hit = 0
+    for r in have:
+        s = sg.decode((FIXTURE / f"{r['id']}.npz").read_bytes())
+        got = detect.menu_keep_until(sg.to_dict(s)["fr"])
+        if got and abs(got["keep_until"] - r["keep_until"]) <= 5:
+            hit += 1
+    return len(have), hit
+
+
+def test_fixture_keep_until():
+    total, hit = _menu_matches()
+    print("keep_until records", total, "matches", hit)
+    assert hit >= MENU_BASELINE

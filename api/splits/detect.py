@@ -257,3 +257,128 @@ def plan_cuts(cands, profile, total, min_seg_s=MIN_SEG_S):
         out.append(c)
     left = [c for c in cands if not is_strong(c, profile) and c["len"] >= 0.3]
     return out, left
+
+
+# --- DVD menu tails ---
+
+MENU_MIN_TAIL_S = (
+    180  # a trailing static picture must run at least this long to count as a menu loop
+)
+MENU_YDIF_MAX = 1.0  # "quiet" frame: frame difference below this ...
+MENU_SCD_MAX = 3.0  # ... and scene-change score below this
+MENU_BREAK_TOL = 0.01  # share of the tail that may be non-quiet frames
+MENU_SHORT_TAIL_S = 45  # shortest tail accepted through the black-run anchor
+MENU_BLACK_S = 2.0  # the black that opens the menu is at least this long
+MENU_DARK_Y = 80  # median luma of the first 60 s of the menu below this: a dark menu
+MENU_BRIGHT_Y = 60  # first frame above this after the black is the menu's first picture
+MENU_HARD_CUT_SCD = 50  # a scene change this strong into the menu is a hard cut
+MENU_HARD_CUT_LEAD_S = (
+    3.0  # the content ends this long before a hard cut into a bright menu
+)
+
+
+def menu_tail(
+    fr,
+    min_len_s=MENU_MIN_TAIL_S,
+    ydif_max=MENU_YDIF_MAX,
+    scd_max=MENU_SCD_MAX,
+    tol=MENU_BREAK_TOL,
+):
+    """Start (s) of a DVD title-menu loop that ends the file, else None.
+
+    Owner 2026-10-24, scene 24566 (a multi-title DVD file): the picture is static and repeats, and
+    20+ min of it was discarded. The tail is the longest trailing run where YDIF < `ydif_max` and
+    scd < `scd_max`; up to `tol` of its frames may break the run.
+    """
+    n = len(fr)
+    if n < 10:
+        return None
+    quiet = [f[3] < ydif_max and f[4] < scd_max for f in fr]
+    bad = 0
+    start = n
+    for i in range(n - 1, -1, -1):
+        if not quiet[i]:
+            bad += 1
+            if bad > max(1, tol * (n - i)):
+                break
+        else:
+            start = i
+    # tighten: first frame of the trailing quiet run
+    i = start
+    while i < n and not quiet[i]:
+        i += 1
+    t0 = fr[i][0] if i < n else None
+    if t0 is not None and fr[-1][0] - t0 >= min_len_s:
+        return round(t0, 1)
+    return None
+
+
+def menu_keep_until(fr, min_tail_s=MENU_SHORT_TAIL_S):
+    """End of the real content when a DVD menu loop closes the file.
+
+    Returns {"keep_until", "kind", "black_start", "menu_start"} or None.
+
+    Anchor: the file ends in a quiet tail (`menu_tail`: frame difference ~0, no scene changes)
+    that opens with a black run of 2 s or more (the quiet tail starts inside or right after the
+    black). For a short tail (`min_tail_s` or more) the anchor is the last black run of 2 s or
+    more after which every frame stays quiet (YDIF < 6 over 5 s blocks, no scene change of 10 or
+    more after the opening cut). Scene 26702's quiet tail is a bright still with no black before
+    it: not matched.
+
+    keep_until: a dark menu (median Y < 80 in its first 60 s, scene 24566) cuts at the black
+    START (owner: 8268.23). A bright menu (scenes 27170, 27175) cuts at the first bright frame
+    (Y > 60) after the black, minus 3 s when it is a hard cut with scene change >= 50 (27170:
+    4244.8 - 3 = 4241.8 vs owner 4241.83; 27175: 5213.3 vs 5212.9).
+    """
+    if not fr:
+        return None
+    end = fr[-1][0]
+    runs = dark_runs(fr)
+    anchor = None
+    t0 = menu_tail(fr)
+    if t0 is not None:
+        found = [
+            r
+            for r in runs
+            if r[2] >= MENU_BLACK_S
+            and (r[0] - 3 <= t0 <= r[1] + 3 or 0 <= t0 - r[1] <= 5)
+        ]
+        anchor = found[0] if found else None
+    if anchor is None:
+        # Only the last long-enough black run is tried.
+        for r in reversed(runs):
+            if r[2] < MENU_BLACK_S or end - r[1] < min_tail_s:
+                continue
+            after = [f for f in fr if f[0] > r[1] + 0.5]
+            late = [f for f in after if f[0] > r[1] + 15]
+            if len(after) < 30 or any(f[4] >= 10 for f in late):
+                continue
+            blocks = [
+                statistics.mean(f[3] for f in after if b <= f[0] < b + 5)
+                for b in range(int(r[1]) + 15, int(end) - 5, 5)
+                if any(b <= f[0] < b + 5 for f in after)
+            ]
+            if blocks and max(blocks) < 6:
+                anchor = r
+            break
+    if anchor is None:
+        return None
+    after = [f for f in fr if f[0] > anchor[1] + 0.5]
+    first = next((f for f in after if f[1] > MENU_BRIGHT_Y), None)
+    if first is None:
+        return None
+    menu_y = statistics.median(f[1] for f in after if f[0] <= anchor[1] + 60)
+    if menu_y < MENU_DARK_Y:
+        return {
+            "keep_until": round(anchor[0], 2),
+            "kind": "dark menu: black start",
+            "black_start": round(anchor[0], 2),
+            "menu_start": round(first[0], 1),
+        }
+    lead = MENU_HARD_CUT_LEAD_S if first[4] >= MENU_HARD_CUT_SCD else 0.0
+    return {
+        "keep_until": round(first[0] - lead, 1),
+        "kind": "bright menu",
+        "black_start": round(anchor[0], 2),
+        "menu_start": round(first[0], 1),
+    }
