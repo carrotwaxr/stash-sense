@@ -17,7 +17,17 @@ from typing import Collection, Optional, Iterator, Any
 from curation_settings import scene_exclusion_sql
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
+
+# v11 (#126 driver API): a job's result summary, and the index behind the
+# recommendations change feed (ORDER BY updated_at, id with a keyset cursor).
+def _apply_driver_schema(conn: sqlite3.Connection) -> None:
+    """Idempotent: a re-run (or a database rolled back by hand) keeps working."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(job_queue)")}
+    if "result" not in cols:
+        conn.execute("ALTER TABLE job_queue ADD COLUMN result JSON")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rec_updated ON recommendations(updated_at, id)")
+
 
 # Review framework (#127): one row per apply or revert, and the user's
 # corrections to suggestions. Append-only; reads are by recency or by rec.
@@ -355,6 +365,7 @@ class RecommendationsDB:
             );
         """)
         conn.executescript(REVIEW_TABLES_SQL)
+        _apply_driver_schema(conn)
 
     def _migrate_schema(self, conn: sqlite3.Connection, from_version: int):
         """Migrate schema from older version."""
@@ -531,6 +542,10 @@ class RecommendationsDB:
         if from_version < 10:
             conn.executescript(REVIEW_TABLES_SQL + "UPDATE schema_version SET version = 10;")
 
+        if from_version < 11:
+            _apply_driver_schema(conn)
+            conn.execute("UPDATE schema_version SET version = 11")
+
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
         """Get a database connection with row factory."""
@@ -651,6 +666,57 @@ class RecommendationsDB:
             params.extend(cond_params)
         with self._connection() as conn:
             return conn.execute(query, params).fetchone()[0]
+
+    def get_recommendations_feed(
+        self,
+        *,
+        type: Optional[str] = None,
+        status: Optional[str] = None,
+        since: Optional[str] = None,
+        after: Optional[tuple[str, int]] = None,
+        limit: int = 100,
+        exclude_types: Optional[Collection[str]] = None,
+        exclude_scene_ids: Optional[Collection[str]] = None,
+    ) -> list[Recommendation]:
+        """Recommendations in change order (updated_at, id), oldest first.
+
+        since: an updated_at value ('YYYY-MM-DD HH:MM:SS', UTC); rows at or after it.
+        after: the (updated_at, id) of the last row a caller saw; rows strictly after it.
+        Every status or details change bumps updated_at, so a caller that keeps the
+        last (updated_at, id) sees each later change once. updated_at has one-second
+        resolution and is stamped when a statement runs, not when it commits, so rows
+        from the current and previous second are held back: a cursor never points into
+        a second that can still gain rows below it, unless a write stays uncommitted
+        for over a second. Uses idx_rec_updated.
+
+        Rows deleted outright (duplicate_scenes drops and recreates its pending rows)
+        leave no trace here; callers see a 404 when they read them.
+        """
+        query = "SELECT * FROM recommendations WHERE updated_at < datetime('now', '-1 second')"
+        params: list = []
+        if type:
+            query += " AND type = ?"
+            params.append(type)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if since:
+            query += " AND updated_at >= ?"
+            params.append(since)
+        if after:
+            query += " AND (updated_at > ? OR (updated_at = ? AND id > ?))"
+            params.extend([after[0], after[0], after[1]])
+        if exclude_types:
+            query += f" AND type NOT IN ({','.join('?' * len(exclude_types))})"
+            params.extend(exclude_types)
+        if exclude_scene_ids:
+            cond, cond_params = scene_exclusion_sql(exclude_scene_ids)
+            query += f" AND {cond}"
+            params.extend(cond_params)
+        query += " ORDER BY updated_at ASC, id ASC LIMIT ?"
+        params.append(limit)
+        with self._connection() as conn:
+            return [self._row_to_recommendation(r) for r in conn.execute(query, params).fetchall()]
 
     def get_recommendation_by_target(
         self,
@@ -1911,6 +1977,11 @@ class RecommendationsDB:
                 "UPDATE job_queue SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
                 (job_id,)
             )
+
+    def set_job_result(self, job_id: int, result: dict):
+        """Store a job's result summary (what the driver API reports when it finishes)."""
+        with self._connection() as conn:
+            conn.execute("UPDATE job_queue SET result = ? WHERE id = ?", (json.dumps(result), job_id))
 
     def fail_job(self, job_id: int, error_message: str):
         """Mark a job as failed."""

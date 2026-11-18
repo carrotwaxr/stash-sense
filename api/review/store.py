@@ -108,6 +108,7 @@ class ReviewStore:
         since_id: int | None = None,
         limit: int = 50,
         offset: int = 0,
+        ascending: bool = False,
     ) -> list[dict]:
         q = "SELECT * FROM apply_log WHERE 1=1"
         params: list[Any] = []
@@ -117,7 +118,7 @@ class ReviewStore:
         if since_id is not None:
             q += " AND id > ?"
             params.append(since_id)
-        q += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        q += f" ORDER BY id {'ASC' if ascending else 'DESC'} LIMIT ? OFFSET ?"
         params += [limit, offset]
         with self._conn() as conn:
             return [_row(r) for r in conn.execute(q, params).fetchall()]

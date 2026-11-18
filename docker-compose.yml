@@ -14,6 +14,8 @@ services:
     environment:
       - STASH_URL=${STASH_URL:-http://stash:9999}
       - STASH_API_KEY=${STASH_API_KEY}
+      # Key for the driver API (/api/v1/driver) that external tools call; empty = open
+      - STASH_SENSE_API_KEY=${STASH_SENSE_API_KEY:-}
       - DATA_DIR=/data
       - MEDIA_PATH_MAP=${MEDIA_PATH_MAP:-/data=/media}
       - PUID=${PUID:-1000}

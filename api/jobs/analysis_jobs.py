@@ -31,11 +31,10 @@ class AnalysisJob(BaseJob):
         run_id = db.start_analysis_run(self._type_id)
         logger.warning("Starting analysis job %s (run_id=%d, job_id=%d)", self._type_id, run_id, context.job_id)
 
-        # Bridge progress from analyzer → job queue for frontend polling
+        # Bridge progress from analyzer → job queue for frontend polling. Written
+        # synchronously: a scheduled write could land after the final count below.
         def progress_callback(items_processed: int, items_total: Optional[int]) -> None:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            loop.create_task(context.report_progress(items_processed, items_total))
+            db.update_job_progress(context.job_id, items_processed=items_processed, items_total=items_total)
 
         analyzer = analyzer_class(stash, db, run_id=run_id)
         analyzer._job_progress_callback = progress_callback
@@ -68,6 +67,12 @@ class AnalysisJob(BaseJob):
 
             db.complete_analysis_run(run_id, result.recommendations_created)
             await context.report_progress(result.items_processed, result.items_processed)
+            context.set_result({
+                "analysis_run_id": run_id,
+                "items_processed": result.items_processed,
+                "recommendations_created": result.recommendations_created,
+                "excluded_skipped": int(getattr(analyzer, "excluded_skipped", 0) or 0),
+            })
             logger.warning(
                 "Analysis job %s completed (run_id=%d): %d processed, %d recommendations",
                 self._type_id, run_id, result.items_processed, result.recommendations_created,

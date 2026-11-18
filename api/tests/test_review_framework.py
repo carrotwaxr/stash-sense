@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 import features
-from recommendations_db import RecommendationsDB
+from recommendations_db import SCHEMA_VERSION, RecommendationsDB
 from review.demo import DEMO_TAG, DemoReviewAnalyzer
 from review.executor import PlanRejected, apply_plan
 from review.plan import FieldChange, FileRef, Plan, PrimaryFileChange
@@ -383,7 +383,7 @@ def test_v9_database_migrates_to_review_tables(tmp_path):
     with sqlite3.connect(path) as conn:
         names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"apply_log", "review_labels"} <= names
-        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == SCHEMA_VERSION
 
 
 # ---------------- review findings ----------------
