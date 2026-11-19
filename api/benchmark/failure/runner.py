@@ -43,9 +43,11 @@ def write_report(run_dir: Path, params: ClassifyParams, meta: dict, suffix: str 
     return report, summary
 
 
-def init_settings(data_dir: Path) -> Optional[str]:
+def init_settings(data_dir: Path, tier: Optional[str] = None) -> Optional[str]:
     """Load the sidecar's saved settings so the run uses what production uses.
 
+    ``tier`` replaces the detected hardware tier for defaults, so a CPU-only
+    machine can run with production's frame count and detection size.
     Returns an error string when settings can't be loaded (defaults apply).
     """
     try:
@@ -53,8 +55,8 @@ def init_settings(data_dir: Path) -> Optional[str]:
         from recommendations_db import RecommendationsDB
         from settings import init_settings as _init
 
-        tier = init_hardware(str(data_dir)).tier
-        _init(RecommendationsDB(data_dir / "stash_sense.db"), tier)
+        detected = init_hardware(str(data_dir)).tier
+        _init(RecommendationsDB(data_dir / "stash_sense.db"), tier or detected)
         return None
     except Exception as e:  # a missing DB shouldn't block a research run
         return f"{type(e).__name__}: {e}"

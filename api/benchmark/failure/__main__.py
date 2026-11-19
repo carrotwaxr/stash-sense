@@ -81,6 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, help="only the first N scenes (smoke test)")
     p.add_argument("--scenes", help="comma-separated scene ids to run")
     p.add_argument("--num-frames", type=int, help="override the num_frames setting")
+    p.add_argument("--tier", choices=["gpu-high", "gpu-low", "cpu"],
+                   help="settings tier for defaults (default: detected hardware); use gpu-high to match "
+                        "production on a CPU-only machine")
     p.add_argument("--no-probe", action="store_true", help="skip the keyframe probe that splits frame choice from detection")
     p.add_argument("--probe-stream", action="store_true", help="allow the probe to decode over Stash's HTTP stream")
     p.add_argument("--probe-max-frames", type=int, default=400)
@@ -146,7 +149,7 @@ async def _run(args) -> int:
     from benchmark.failure.runner import init_settings, resolve_run_params, run
 
     data_dir = Path(os.environ.get("DATA_DIR", "./data"))
-    settings_error = init_settings(data_dir)
+    settings_error = init_settings(data_dir, tier=args.tier)
     if settings_error:
         print(f"Settings not loaded ({settings_error}); using face_config defaults")
     params = resolve_run_params(num_frames=args.num_frames, **_matching_overrides(args))
