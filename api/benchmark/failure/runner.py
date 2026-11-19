@@ -43,7 +43,7 @@ def write_report(run_dir: Path, params: ClassifyParams, meta: dict, suffix: str 
     return report, summary
 
 
-def init_settings(data_dir: Path, tier: Optional[str] = None) -> Optional[str]:
+def init_settings(data_dir: Path, tier: str | None = None) -> Optional[str]:
     """Load the sidecar's saved settings so the run uses what production uses.
 
     ``tier`` replaces the detected hardware tier for defaults, so a CPU-only

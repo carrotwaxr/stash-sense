@@ -41,6 +41,13 @@ def test_source_params_ignore_unknown_and_default_new_fields():
     assert params.num_frames == 40 and params.matching == "frequency"
 
 
+def test_gallery_settings_carry_over_only_from_gallery_runs():
+    freq = source_params({"run_params": {"matching": "frequency", "gallery_min_margin": 0.5}})
+    gal = source_params({"run_params": {"matching": "gallery", "gallery_min_margin": 0.5}})
+    assert freq.gallery_min_margin == RunParams().gallery_min_margin
+    assert gal.gallery_min_margin == 0.5 and gal.matching == "gallery"
+
+
 def test_gallery_mode_widens_per_face_matches():
     freq = match_config_for(RunParams())
     gal = match_config_for(RunParams(matching="gallery", gallery_candidate_k=12, gallery_candidate_max_distance=0.8))

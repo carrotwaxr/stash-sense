@@ -43,7 +43,8 @@ def _add_classify_args(p: argparse.ArgumentParser) -> None:
 def _add_matching_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--matching", choices=["frequency", "gallery"],
                    help="scene aggregation: frequency (production default) or gallery (#148)")
-    p.add_argument("--max-distance", type=float, help="override max_distance for accepting a match")
+    p.add_argument("--max-distance", type=float, help="frequency: override max_distance for accepting a match")
+    p.add_argument("--gallery-max-distance", type=float, help="gallery: cutoff for a cluster's trimmed-mean distance")
     p.add_argument("--keep-fraction", type=float, help="gallery: share of a cluster's best faces in the score")
     p.add_argument("--min-margin", type=float, help="gallery: required lead over the runner-up")
     p.add_argument("--candidate-k", type=int, help="gallery: per-face matches that nominate candidates")
@@ -55,6 +56,7 @@ def _matching_overrides(args) -> dict:
         "matching": args.matching,
         "max_distance": args.max_distance,
         "gallery_keep_fraction": args.keep_fraction,
+        "gallery_max_distance": args.gallery_max_distance,
         "gallery_min_margin": args.min_margin,
         "gallery_candidate_k": args.candidate_k,
         "gallery_candidate_max_distance": args.candidate_max_distance,

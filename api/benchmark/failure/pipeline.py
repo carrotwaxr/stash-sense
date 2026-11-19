@@ -47,6 +47,7 @@ class RunParams:
     gallery_candidate_k: int = face_config.GALLERY_CANDIDATE_K
     gallery_candidate_max_distance: float = face_config.GALLERY_CANDIDATE_MAX_DISTANCE
     gallery_keep_fraction: float = face_config.GALLERY_KEEP_FRACTION
+    gallery_max_distance: float = face_config.GALLERY_MAX_DISTANCE
     gallery_min_margin: float = face_config.GALLERY_MIN_MARGIN
 
     def to_dict(self) -> dict:
@@ -147,7 +148,7 @@ def production_persons(recognizer, recognised: list[tuple], params: RunParams) -
             recognizer,
             cluster_threshold=params.cluster_threshold,
             top_k=params.top_k,
-            max_distance=params.max_distance,
+            max_distance=params.gallery_max_distance,
             min_margin=params.gallery_min_margin,
             keep_fraction=params.gallery_keep_fraction,
             candidate_k=params.gallery_candidate_k,

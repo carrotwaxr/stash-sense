@@ -27,9 +27,16 @@ REWRITTEN = ("faces", "persons", "aggregation_ms")
 
 
 def source_params(meta: dict) -> RunParams:
-    """The source run's pipeline settings; fields newer than the run take defaults."""
+    """The source run's pipeline settings; fields newer than the run take defaults.
+
+    Gallery settings only carry over from a gallery-mode run: a frequency run
+    records whatever the gallery defaults were then, which never applied.
+    """
     known = RunParams.__dataclass_fields__
-    return RunParams(**{k: v for k, v in (meta.get("run_params") or {}).items() if k in known})
+    src = meta.get("run_params") or {}
+    gallery_run = src.get("matching") == "gallery"
+    return RunParams(**{k: v for k, v in src.items()
+                        if k in known and (gallery_run or not k.startswith("gallery_"))})
 
 
 def replay(

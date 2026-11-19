@@ -989,7 +989,8 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
             _recognizer,
             cluster_threshold=request.cluster_threshold,
             top_k=request.top_k,
-            max_distance=request.max_distance,
+            # request.max_distance is a single-face cutoff; a cluster mean needs its own
+            max_distance=face_config.GALLERY_MAX_DISTANCE,
             min_margin=face_config.GALLERY_MIN_MARGIN,
             keep_fraction=face_config.GALLERY_KEEP_FRACTION,
             candidate_k=face_config.GALLERY_CANDIDATE_K,
