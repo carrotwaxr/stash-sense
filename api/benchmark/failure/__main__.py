@@ -86,8 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dir", type=Path, default=default_detection_dir())
     p.add_argument("--iou", type=float, default=0.5)
     p.add_argument("--det-size", type=int, help="override the detection_size setting")
-    p.add_argument("--channel-order", choices=["rgb", "bgr"], default="rgb",
-                   help="rgb = production today; bgr = what RetinaFace expects")
+    p.add_argument("--channel-order", choices=["rgb", "bgr"], default="bgr",
+                   help="bgr = production (what RetinaFace expects); rgb = production before #147")
     return parser
 
 

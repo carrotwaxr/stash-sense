@@ -409,7 +409,9 @@ class TestChannelOrder:
         img[..., 0] = 200  # red in RGB
         Image.fromarray(img).save(frames, format="PNG")  # lossless so channels survive
 
-    def test_bgr_swaps_channels_before_detect(self, tmp_path):
+    def test_rgb_swaps_channels_before_detect(self, tmp_path):
+        # detect is production's: it takes RGB and swaps to BGR itself (#147),
+        # so the default passes frames through and "rgb" pre-swaps them.
         self._dir(tmp_path)
         seen = []
 
@@ -417,8 +419,8 @@ class TestChannelOrder:
             seen.append(int(image[0, 0, 0]))
             return [box(10, 10, 50, 50, score=0.9)]
 
-        rgb = json.loads((score.score(tmp_path, detect=detect).parent / "results.json").read_text())
-        bgr = json.loads((score.score(tmp_path, detect=detect, channel_order="bgr").parent / "results.json").read_text())
+        bgr = json.loads((score.score(tmp_path, detect=detect).parent / "results.json").read_text())
+        rgb = json.loads((score.score(tmp_path, detect=detect, channel_order="rgb").parent / "results.json").read_text())
         assert seen == [200, 0]
         assert rgb["channel_order"] == "rgb" and bgr["channel_order"] == "bgr"
 
