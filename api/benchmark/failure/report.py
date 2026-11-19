@@ -89,8 +89,17 @@ def summarise(records: list[dict], params: ClassifyParams = ClassifyParams(), me
         alt = Counter(o.reason for r in ok for o in classify_scene(r, p) if not o.found)
         sensitivity[str(t)] = {r: alt.get(r, 0) for r in REASONS}
 
+    agg_ms = [r["aggregation_ms"] for r in ok if r.get("aggregation_ms") is not None]
+    elapsed = [r["elapsed_sec"] for r in ok if r.get("elapsed_sec") is not None]
+    timing = {
+        "median_aggregation_ms": median(agg_ms) if agg_ms else None,
+        "max_aggregation_ms": max(agg_ms) if agg_ms else None,
+        "median_scene_sec": median(elapsed) if elapsed else None,
+    }
+
     return {
         "meta": meta or {},
+        "timing": timing,
         "classify_params": params.to_dict(),
         "scenes": {"total": len(records), "ok": len(ok), "errors": len(errors)},
         "totals": {
@@ -191,6 +200,14 @@ def render_markdown(summary: dict) -> str:
               "| Threshold | " + " | ".join(REASONS) + " |", "|---:|" + "---:|" * len(REASONS)]
     for th, counts in summary["attribution_sensitivity"].items():
         lines.append(f"| {th} | " + " | ".join(str(counts[r]) for r in REASONS) + " |")
+
+    tm = summary.get("timing") or {}
+    if tm.get("median_aggregation_ms") is not None:
+        lines += ["", "## Timing", "",
+                  f"Scene aggregation: median {tm['median_aggregation_ms']:.1f} ms, "
+                  f"max {tm['max_aggregation_ms']:.1f} ms per scene."
+                  + (f" Whole scene (frames, detection, matching): median {tm['median_scene_sec']:.1f} s."
+                     if tm.get("median_scene_sec") is not None else "")]
 
     lines += ["", "## Settings", "", "```", f"pipeline: {m.get('run_params')}", f"classify: {cp}", "```"]
     if summary["errors"]:

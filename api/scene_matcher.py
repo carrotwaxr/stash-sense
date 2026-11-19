@@ -5,6 +5,7 @@ Provides algorithms for identifying performers across multiple video frames:
 - Frequency-based matching (frequency_based_matching)
 - Clustered frequency matching (clustered_frequency_matching)
 - Hybrid matching combining cluster and frequency (hybrid_matching)
+- Gallery matching: clusters scored against whole performer galleries (gallery_cluster_matching, #148)
 - Multi-signal re-ranking with body/tattoo signals (_rerank_scene_persons)
 """
 
@@ -13,6 +14,7 @@ from collections import defaultdict
 
 import numpy as np
 
+import face_config
 from recognizer import FaceRecognizer, PerformerMatch, RecognitionResult
 
 logger = logging.getLogger(__name__)
@@ -653,6 +655,160 @@ def clustered_frequency_matching(
     for i, p in enumerate(persons):
         p.person_id = i
 
+    return persons
+
+
+
+def _score_cluster_against_galleries(
+    cluster: list[tuple[int, RecognitionResult]],
+    recognizer: FaceRecognizer,
+    candidate_k: int,
+    keep_fraction: float,
+    facenet_weight: float,
+    arcface_weight: float,
+) -> list[dict]:
+    """Score every candidate performer on all of a cluster's faces.
+
+    Candidates are the union of each face's top ``candidate_k`` matches. Each
+    face is scored by its fused distance to the closest face in the
+    candidate's gallery; the candidate's score is the mean over the best
+    ``keep_fraction`` of the cluster's faces, so profile or blurred faces
+    don't count against the right performer. Sorted best first.
+    """
+    faces = [r for _, r in cluster if r.embedding is not None]
+    if not faces:
+        return []
+    fn = np.stack([np.asarray(r.embedding.facenet, dtype=np.float32) for r in faces])
+    af = np.stack([np.asarray(r.embedding.arcface, dtype=np.float32) for r in faces])
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+    af /= np.maximum(np.linalg.norm(af, axis=1, keepdims=True), 1e-12)
+    keep = max(1, int(np.ceil(keep_fraction * len(faces))))
+
+    candidates: dict[str, PerformerMatch] = {}  # first per-face match seen, for name and image
+    for r in faces:
+        for m in r.matches[:candidate_k]:
+            candidates.setdefault(m.universal_id, m)
+
+    scored = []
+    for uid, seen in candidates.items():
+        gallery = recognizer.gallery_vectors(uid)
+        if gallery is None:
+            continue
+        g_fn, g_af = gallery
+        fn_d = 1.0 - fn @ g_fn.T  # (faces, gallery faces)
+        af_d = 1.0 - af @ g_af.T
+        fused = facenet_weight * fn_d + arcface_weight * af_d
+        nearest = fused.argmin(axis=1)
+        rows = np.arange(len(faces))
+        per_face = fused[rows, nearest]
+        best = np.argsort(per_face, kind="stable")[:keep]
+        scored.append({
+            "universal_id": uid,
+            "stashdb_id": uid.split(":", 1)[1] if ":" in uid else uid,
+            "distance": float(per_face[best].mean()),
+            "facenet_distance": float(fn_d[rows, nearest][best].mean()),
+            "arcface_distance": float(af_d[rows, nearest][best].mean()),
+            "faces_kept": int(keep),
+            "seen": seen,
+        })
+    scored.sort(key=lambda c: c["distance"])
+    return scored
+
+
+def gallery_cluster_matching(
+    all_results: list[tuple[int, RecognitionResult]],
+    recognizer: FaceRecognizer,
+    cluster_threshold: float = 0.6,
+    top_k: int = 3,
+    max_distance: float = 0.5,
+    min_margin: float = 0.02,
+    keep_fraction: float = 0.5,
+    candidate_k: int = 10,
+    facenet_weight: float | None = None,
+    arcface_weight: float | None = None,
+    scene_performer_stashdb_ids: list[str] | None = None,
+    tagged_boost: float = 0.03,
+    _match_to_response=None,
+    _distance_to_confidence=None,
+) -> list:
+    """Cluster faces, then score each cluster against whole performer galleries (#148).
+
+    ``clustered_frequency_matching`` lets each face vote with its own top
+    matches and scores a performer by their single best face, so one lucky
+    face beats twenty that mildly agree. Here every face in the cluster is
+    compared with every candidate's DB faces, the candidate's score is a
+    trimmed mean over the cluster (see ``_score_cluster_against_galleries``),
+    and a match needs ``min_margin`` over the runner-up as well as
+    ``max_distance``. A cluster without a confident winner keeps its
+    candidates in ``all_matches`` with ``best_match`` None.
+
+    Clusters are handled largest first and a performer goes to one cluster only.
+    """
+    if _match_to_response is None:
+        from identification_router import _match_to_response
+    if _distance_to_confidence is None:
+        from identification_router import distance_to_confidence as _distance_to_confidence
+    from identification_router import PersonResult
+
+    if not all_results:
+        return []
+    fw = face_config.FACENET_WEIGHT if facenet_weight is None else facenet_weight
+    aw = face_config.ARCFACE_WEIGHT if arcface_weight is None else arcface_weight
+    tagged_ids = set(scene_performer_stashdb_ids or [])
+
+    clusters = merge_clusters_by_match(
+        cluster_faces_by_person(all_results, recognizer, distance_threshold=cluster_threshold)
+    )
+
+    def to_response(c: dict):
+        seen = c["seen"]  # carries any image the endpoint already fetched
+        match = PerformerMatch(
+            universal_id=c["universal_id"],
+            stashdb_id=c["stashdb_id"],
+            name=seen.name,
+            country=seen.country,
+            image_url=seen.image_url,
+            facenet_distance=c["facenet_distance"],
+            arcface_distance=c["arcface_distance"],
+            combined_score=c["distance"],
+        )
+        return _match_to_response(
+            match,
+            confidence=_distance_to_confidence(c["distance"]),
+            distance=c["distance"],
+            already_tagged=c["stashdb_id"] in tagged_ids,
+        )
+
+    persons = []
+    used_performers: set[str] = set()
+    for cluster in sorted(clusters, key=len, reverse=True):
+        unique_frames = len({frame_idx for frame_idx, _ in cluster})
+        scored = _score_cluster_against_galleries(cluster, recognizer, candidate_k, keep_fraction, fw, aw)
+        for c in scored:
+            # The ranking key; the reported distance stays the measured one
+            c["rank"] = c["distance"] - (tagged_boost if c["stashdb_id"] in tagged_ids else 0.0)
+        available = sorted((c for c in scored if c["stashdb_id"] not in used_performers),
+                           key=lambda c: c["rank"])
+
+        best = available[0] if available else None
+        accepted = (
+            best is not None
+            and best["distance"] <= max_distance
+            and (len(available) < 2 or available[1]["rank"] - best["rank"] >= min_margin)
+        )
+        responses = [to_response(c) for c in available[:top_k]]
+        if accepted:
+            used_performers.add(best["stashdb_id"])
+        persons.append(PersonResult(
+            person_id=len(persons),
+            frame_count=unique_frames,
+            best_match=responses[0] if accepted else None,
+            all_matches=responses,
+        ))
+
+    persons.sort(key=lambda p: (p.best_match is not None, p.frame_count), reverse=True)
+    for i, p in enumerate(persons):
+        p.person_id = i
     return persons
 
 

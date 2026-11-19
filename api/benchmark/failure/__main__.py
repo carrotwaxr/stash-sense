@@ -5,6 +5,7 @@ In the container:
     docker exec stash-sense python -m benchmark.failure build-set
     docker exec stash-sense python -m benchmark.failure run
     docker exec stash-sense python -m benchmark.failure report /data/benchmark/runs/<run_id> --attribution 0.55
+    docker exec stash-sense python -m benchmark.failure replay /data/benchmark/runs/<run_id> --matching gallery
 
 Detection test set:
 
@@ -39,6 +40,27 @@ def _add_classify_args(p: argparse.ArgumentParser) -> None:
                    help="|yaw| in degrees above which a face counts as profile (default 45)")
 
 
+def _add_matching_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--matching", choices=["frequency", "gallery"],
+                   help="scene aggregation: frequency (production default) or gallery (#148)")
+    p.add_argument("--max-distance", type=float, help="override max_distance for accepting a match")
+    p.add_argument("--keep-fraction", type=float, help="gallery: share of a cluster's best faces in the score")
+    p.add_argument("--min-margin", type=float, help="gallery: required lead over the runner-up")
+    p.add_argument("--candidate-k", type=int, help="gallery: per-face matches that nominate candidates")
+    p.add_argument("--candidate-max-distance", type=float, help="gallery: per-face cutoff for nominating")
+
+
+def _matching_overrides(args) -> dict:
+    return {
+        "matching": args.matching,
+        "max_distance": args.max_distance,
+        "gallery_keep_fraction": args.keep_fraction,
+        "gallery_min_margin": args.min_margin,
+        "gallery_candidate_k": args.candidate_k,
+        "gallery_candidate_max_distance": args.candidate_max_distance,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     from benchmark.failure.source import default_detection_dir, default_runs_dir, default_set_path
 
@@ -62,6 +84,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-probe", action="store_true", help="skip the keyframe probe that splits frame choice from detection")
     p.add_argument("--probe-stream", action="store_true", help="allow the probe to decode over Stash's HTTP stream")
     p.add_argument("--probe-max-frames", type=int, default=400)
+    _add_matching_args(p)
+    _add_classify_args(p)
+
+    p = sub.add_parser("replay", help="re-run matching on a run's cached embeddings (no video or GPU)")
+    p.add_argument("run_dir", type=Path)
+    p.add_argument("--runs-dir", type=Path, help="where to write the new run (default: beside the source)")
+    p.add_argument("--scenes", help="comma-separated scene ids to replay")
+    _add_matching_args(p)
     _add_classify_args(p)
 
     p = sub.add_parser("report", help="re-score a run's raw JSON (no GPU needed)")
@@ -119,7 +149,7 @@ async def _run(args) -> int:
     settings_error = init_settings(data_dir)
     if settings_error:
         print(f"Settings not loaded ({settings_error}); using face_config defaults")
-    params = resolve_run_params(num_frames=args.num_frames)
+    params = resolve_run_params(num_frames=args.num_frames, **_matching_overrides(args))
     await run(
         args.set_path, args.runs_dir,
         run_params=params,
@@ -131,6 +161,18 @@ async def _run(args) -> int:
         scene_ids=[s.strip() for s in args.scenes.split(",")] if args.scenes else None,
         resume=args.resume,
         settings_error=settings_error,
+    )
+    return 0
+
+
+def _replay(args) -> int:
+    from benchmark.failure.replay import replay
+
+    replay(
+        args.run_dir, args.runs_dir,
+        overrides=_matching_overrides(args),
+        classify_params=_classify_params(args),
+        scene_ids=[s.strip() for s in args.scenes.split(",")] if args.scenes else None,
     )
     return 0
 
@@ -186,6 +228,8 @@ def main(argv=None) -> int:
         return asyncio.run(_run(args))
     if args.command == "report":
         return _report(args)
+    if args.command == "replay":
+        return _replay(args)
     if args.command == "detect-sample":
         return _detect_sample(args)
     if args.command == "label":

@@ -32,6 +32,7 @@ from scene_matcher import (
     aggregate_matches,
     frequency_based_matching,
     clustered_frequency_matching,
+    gallery_cluster_matching,
     hybrid_matching,
     recognize_detected_faces,
 )
@@ -211,7 +212,7 @@ class SceneIdentifyRequest(BaseModel):
     cluster_threshold: float = Field(face_config.CLUSTER_THRESHOLD, ge=0.2, le=3.0, description="Distance threshold for face clustering")
 
     # Matching mode: "cluster", "frequency", or "hybrid"
-    matching_mode: str = Field("frequency", description="Matching mode: 'cluster' (cluster faces then match), 'frequency' (count performer appearances), or 'hybrid' (combine both)")
+    matching_mode: str = Field("frequency", description="Matching mode: 'cluster' (cluster faces then match), 'frequency' (count performer appearances), 'hybrid' (combine both), or 'gallery' (score each face cluster against whole performer galleries)")
 
     # Already-tagged performers (StashDB IDs) for boosting
     scene_performer_stashdb_ids: list[str] = Field(default_factory=list, description="StashDB IDs of performers already tagged on this scene")
@@ -878,12 +879,15 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
         print(f"[identify_scene] Errors: {extraction_result.errors[:3]}")
 
     # Configure matching
+    gallery_mode = request.matching_mode == "gallery"
     match_config = MatchingConfig(
         query_k=100,  # Get more candidates for better fusion
         facenet_weight=face_config.FACENET_WEIGHT,
         arcface_weight=face_config.ARCFACE_WEIGHT,
-        max_results=request.top_k * 2,
-        max_distance=request.max_distance,
+        # Gallery mode re-scores candidates on whole galleries, so per-face
+        # matches only nominate them and can reach further
+        max_results=max(request.top_k * 2, face_config.GALLERY_CANDIDATE_K) if gallery_mode else request.top_k * 2,
+        max_distance=max(request.max_distance, face_config.GALLERY_CANDIDATE_MAX_DISTANCE) if gallery_mode else request.max_distance,
     )
 
     # Phase 1: Detect all faces from all frames
@@ -938,7 +942,9 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
             print(f"[identify_scene] Screenshot processing failed: {e}")
 
     # Fetch missing images from StashBox for all detected matches
-    scene_all_matches = [m for _, r in all_results for m in r.matches]
+    # Gallery mode lists more matches per face; fetch for the usual number only
+    per_face = request.top_k * 2
+    scene_all_matches = [m for _, r in all_results for m in r.matches[:per_face]]
     await _fetch_missing_images(scene_all_matches)
 
     # Extract multi-signal data (body + tattoo) from representative frames
@@ -976,6 +982,20 @@ async def identify_scene(request: SceneIdentifyRequest, _=Depends(require_db_ava
             max_distance=request.max_distance,
         )
         print(f"[identify_scene] [{time.time()-t_start:.1f}s] Hybrid matching: {len(persons)} performers in {time.time()-t_match:.1f}s")
+    elif request.matching_mode == "gallery":
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using gallery matching...")
+        persons = gallery_cluster_matching(
+            all_results,
+            _recognizer,
+            cluster_threshold=request.cluster_threshold,
+            top_k=request.top_k,
+            max_distance=request.max_distance,
+            min_margin=face_config.GALLERY_MIN_MARGIN,
+            keep_fraction=face_config.GALLERY_KEEP_FRACTION,
+            candidate_k=face_config.GALLERY_CANDIDATE_K,
+            scene_performer_stashdb_ids=request.scene_performer_stashdb_ids,
+        )
+        print(f"[identify_scene] [{time.time()-t_start:.1f}s] Gallery matching: {len(persons)} persons in {time.time()-t_match:.1f}s")
     elif request.matching_mode == "frequency":
         # Clustered frequency matching: cluster faces first, then identify within clusters
         print(f"[identify_scene] [{time.time()-t_start:.1f}s] Using clustered frequency matching...")

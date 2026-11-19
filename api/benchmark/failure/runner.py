@@ -1,7 +1,8 @@
 """Benchmark run: every scene in the set, raw JSON per scene, then the report.
 
 Raw records land in ``<run_dir>/raw/<scene_id>.json`` as each scene finishes,
-so an interrupted run resumes with ``--resume <run_dir>``.
+so an interrupted run resumes with ``--resume <run_dir>``. Each scene's face
+embeddings go to ``<run_dir>/emb/<scene_id>.npz`` for ``replay``.
 """
 
 import json
@@ -151,7 +152,8 @@ async def run(
             shot = await stash._execute(SCREENSHOT_QUERY, {"id": scene.scene_id})
             screenshot_url = ((shot.get("findScene") or {}).get("paths") or {}).get("screenshot")
             record = await run_scene(scene, recognizer, galleries, run_params,
-                                     stash_url=stash_url, api_key=api_key, screenshot_url=screenshot_url)
+                                     stash_url=stash_url, api_key=api_key, screenshot_url=screenshot_url,
+                                     embeddings_path=run_dir / "emb" / f"{scene.scene_id}.npz")
         except Exception as e:
             record = {"scene_id": scene.scene_id, "stratum": scene.stratum, "status": "error",
                       "error": f"{type(e).__name__}: {e}"}

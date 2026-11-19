@@ -19,6 +19,13 @@ MAX_DISTANCE = 0.5        # Maximum match distance (tuned 2026-02-12 re-eval, pl
 TOP_K = 3                 # Top matches per person
 CLUSTER_THRESHOLD = 0.6   # Cosine distance threshold for face clustering
 
+# Gallery matching (matching_mode="gallery", #148). Starting values, to be
+# tuned on the #139 benchmark: python -m benchmark.failure replay
+GALLERY_CANDIDATE_K = 10              # per-face matches that nominate candidates
+GALLERY_CANDIDATE_MAX_DISTANCE = 0.8  # per-face cutoff for nominating (scoring uses whole galleries)
+GALLERY_KEEP_FRACTION = 0.5           # score = mean over the best half of a cluster's faces
+GALLERY_MIN_MARGIN = 0.02             # winner must beat the runner-up by this much
+
 # Fusion weights (when both models are healthy)
 FACENET_WEIGHT = 0.5      # FaceNet contribution (tuned 2026-02-12 re-eval)
 ARCFACE_WEIGHT = 0.5      # ArcFace contribution (tuned 2026-02-12 re-eval)
