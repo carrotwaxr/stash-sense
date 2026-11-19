@@ -1306,7 +1306,7 @@
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Score the production detector against your labels</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>stash-sense<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>benchmark.failure<span class="w"> </span>detect-score
 </code></pre></div>
-<p>InsightFace's RetinaFace expects BGR input (it calls <code>blobFromImage(..., swapRB=True)</code>), but the sidecar and the trainer both feed it RGB. Embeddings aren't affected, because the aligned crops come from the same RGB image on both sides, but detection recall might be. Run <code>detect-score</code> once as-is and once with <code>--channel-order bgr</code> to measure it.</p>
+<p>InsightFace's RetinaFace expects BGR input (it calls <code>blobFromImage(..., swapRB=True)</code>). Until #147 the sidecar and the trainer fed it RGB. On this set, RGB gave 72.2% recall and 99.2% precision, and BGR gave 75.3% and 97.8%. Both now feed it BGR and still align crops from the RGB image, so embeddings are unchanged. <code>detect-score</code> scores production (BGR) by default; <code>--channel-order rgb</code> reproduces the old input.</p>
 <p>Labeling policy: box every human face where at least one eye is visible, any size, any angle. Accept a frame with no boxes if it has no faces. The score reports recall by face size (&lt; 40, 40-79, 80+ px), precision, and "usable recall" (detected and large enough to pass the production size filter).</p>
 <h2 id="outputs">Outputs</h2>
 <p><code>/data/benchmark/runs/&lt;run_id&gt;/</code>:</p>
