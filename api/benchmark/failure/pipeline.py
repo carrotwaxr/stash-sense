@@ -1,9 +1,11 @@
 """Run one benchmark scene through the production identification pipeline.
 
-Steps match ``POST /identify/scene`` in frequency mode: even frame sampling,
+Steps match ``POST /identify/scene`` in the chosen matching mode: even frame sampling,
 RetinaFace detection, size filter, batch embedding + index match
 (``recognize_detected_faces``), the upscaled screenshot, then
-``clustered_frequency_matching``. Two deliberate differences:
+the scene aggregation (``clustered_frequency_matching``, or
+``gallery_cluster_matching`` when ``matching="gallery"``, #148). Two
+deliberate differences:
 
 * No tagged-performer boost: the plugin sends the scene's tagged performers,
   which here *are* the answer key.
@@ -15,7 +17,10 @@ they never reach the matcher.
 
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Optional
+
+import numpy as np
 
 import face_config
 
@@ -38,6 +43,12 @@ class RunParams:
     detection_size: int = 640
     max_concurrent_extractions: int = 8
     use_screenshot: bool = True
+    matching: str = "frequency"  # or "gallery" (#148)
+    gallery_candidate_k: int = face_config.GALLERY_CANDIDATE_K
+    gallery_candidate_max_distance: float = face_config.GALLERY_CANDIDATE_MAX_DISTANCE
+    gallery_keep_fraction: float = face_config.GALLERY_KEEP_FRACTION
+    gallery_max_distance: float = face_config.GALLERY_MAX_DISTANCE
+    gallery_min_margin: float = face_config.GALLERY_MIN_MARGIN
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -95,12 +106,17 @@ def expected_record(gallery, name: str) -> dict:
 def match_config_for(params: RunParams):
     from matching import MatchingConfig
     # Same as the endpoint; max_results is wider so the record shows top 5.
+    max_results = max(params.top_k * 2, TOP_N_RECORDED)
+    max_distance = params.max_distance
+    if params.matching == "gallery":
+        max_results = max(max_results, params.gallery_candidate_k)
+        max_distance = max(max_distance, params.gallery_candidate_max_distance)
     return MatchingConfig(
         query_k=100,
         facenet_weight=params.facenet_weight,
         arcface_weight=params.arcface_weight,
-        max_results=max(params.top_k * 2, TOP_N_RECORDED),
-        max_distance=params.max_distance,
+        max_results=max_results,
+        max_distance=max_distance,
     )
 
 
@@ -122,10 +138,26 @@ def recognise_frames(recognizer, frames: list, params: RunParams) -> list[tuple]
 
 
 def production_persons(recognizer, recognised: list[tuple], params: RunParams) -> list:
-    """Scene aggregation exactly as the endpoint runs it (frequency mode)."""
-    from scene_matcher import clustered_frequency_matching
+    """Scene aggregation exactly as the endpoint runs it (frequency or gallery mode)."""
+    from scene_matcher import clustered_frequency_matching, gallery_cluster_matching
 
     eligible = [(fi, r) for fi, _ts, r, el in recognised if el]
+    if params.matching == "gallery":
+        return gallery_cluster_matching(
+            eligible,
+            recognizer,
+            cluster_threshold=params.cluster_threshold,
+            top_k=params.top_k,
+            max_distance=params.gallery_max_distance,
+            min_margin=params.gallery_min_margin,
+            keep_fraction=params.gallery_keep_fraction,
+            candidate_k=params.gallery_candidate_k,
+            facenet_weight=params.facenet_weight,
+            arcface_weight=params.arcface_weight,
+            scene_performer_stashdb_ids=None,
+        )
+    if params.matching != "frequency":
+        raise ValueError(f"unknown matching mode {params.matching!r}")
     return clustered_frequency_matching(
         eligible,
         recognizer,
@@ -137,7 +169,8 @@ def production_persons(recognizer, recognised: list[tuple], params: RunParams) -
 
 
 async def run_scene(scene, recognizer, galleries, params: RunParams, *,
-                    stash_url: str, api_key: str, screenshot_url: Optional[str]) -> dict:
+                    stash_url: str, api_key: str, screenshot_url: Optional[str],
+                    embeddings_path: Path | None = None) -> dict:
     """Process one BenchmarkScene and return its raw JSON record."""
     from benchmark.failure.source import resolve_video_source
     from frame_extractor import FrameExtractionConfig, extract_frames
@@ -183,8 +216,72 @@ async def run_scene(scene, recognizer, galleries, params: RunParams, *,
         if image is not None:
             recognised += recognise_frames(recognizer, [(-1, None, image)], params)
 
-    persons = production_persons(recognizer, recognised, params)
-    record["faces"] = [face_record(fi, ts, r, el, galleries, params) for fi, ts, r, el in recognised]
-    record["persons"] = [person_record(p) for p in persons]
+    if embeddings_path is not None:
+        save_embeddings(embeddings_path, recognised)
+    aggregate(record, recognizer, recognised, galleries, params)
     record["elapsed_sec"] = round(time.time() - t0, 1)
     return record
+
+
+def aggregate(record: dict, recognizer, recognised: list[tuple], galleries: list, params: RunParams) -> None:
+    """Run scene aggregation and fill the record's faces, persons and timing."""
+    import identification_router  # the matchers import it lazily; keep that out of the timing
+
+    t0 = time.perf_counter()
+    persons = production_persons(recognizer, recognised, params)
+    record["aggregation_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    record["faces"] = [face_record(fi, ts, r, el, galleries, params) for fi, ts, r, el in recognised]
+    record["persons"] = [person_record(p) for p in persons]
+
+
+def save_embeddings(path: Path, recognised: list[tuple]) -> None:
+    """Store each recognised face's embeddings, so matching can be replayed without video.
+
+    Rows follow the record's ``faces`` order. Faces without an embedding get
+    zero rows; ``load_embeddings`` drops them.
+    """
+    n = len(recognised)
+    dim = next((len(r.embedding.facenet) for _, _, r, _ in recognised if r.embedding is not None), 512)
+    facenet = np.zeros((n, dim), dtype=np.float32)
+    arcface = np.zeros((n, dim), dtype=np.float32)
+    has = np.zeros(n, dtype=bool)
+    for i, (_, _, r, _) in enumerate(recognised):
+        if r.embedding is not None:
+            facenet[i], arcface[i], has[i] = r.embedding.facenet, r.embedding.arcface, True
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp.npz")
+    np.savez_compressed(
+        tmp,
+        frame=np.array([fi for fi, _, _, _ in recognised], dtype=np.int32),
+        timestamp=np.array([np.nan if ts is None else ts for _, ts, _, _ in recognised], dtype=np.float64),
+        bbox=np.array([[r.face.bbox[k] for k in ("x", "y", "w", "h")] for _, _, r, _ in recognised],
+                      dtype=np.int32).reshape(n, 4),
+        det_score=np.array([r.face.confidence for _, _, r, _ in recognised], dtype=np.float32),
+        yaw=np.array([np.nan if r.face.yaw is None else r.face.yaw for _, _, r, _ in recognised], dtype=np.float32),
+        eligible=np.array([el for _, _, _, el in recognised], dtype=bool),
+        has_embedding=has,
+        facenet=facenet,
+        arcface=arcface,
+    )
+    tmp.replace(path)
+
+
+def load_embeddings(path: Path) -> list[tuple]:
+    """Read ``save_embeddings`` output as (frame, timestamp, DetectedFace, FaceEmbedding, eligible).
+
+    The DetectedFace has no image: replay only needs the box, score and yaw.
+    """
+    from embeddings import DetectedFace, FaceEmbedding
+
+    z = np.load(path)
+    out = []
+    for i in range(len(z["frame"])):
+        if not z["has_embedding"][i]:
+            continue
+        x, y, w, h = (int(v) for v in z["bbox"][i])
+        ts, yaw = float(z["timestamp"][i]), float(z["yaw"][i])
+        face = DetectedFace(image=None, bbox={"x": x, "y": y, "w": w, "h": h},
+                            confidence=float(z["det_score"][i]), yaw=None if np.isnan(yaw) else yaw)
+        out.append((int(z["frame"][i]), None if np.isnan(ts) else ts, face,
+                    FaceEmbedding(facenet=z["facenet"][i], arcface=z["arcface"][i]), bool(z["eligible"][i])))
+    return out

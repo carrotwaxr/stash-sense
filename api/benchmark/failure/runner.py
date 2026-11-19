@@ -1,7 +1,8 @@
 """Benchmark run: every scene in the set, raw JSON per scene, then the report.
 
 Raw records land in ``<run_dir>/raw/<scene_id>.json`` as each scene finishes,
-so an interrupted run resumes with ``--resume <run_dir>``.
+so an interrupted run resumes with ``--resume <run_dir>``. Each scene's face
+embeddings go to ``<run_dir>/emb/<scene_id>.npz`` for ``replay``.
 """
 
 import json
@@ -42,9 +43,11 @@ def write_report(run_dir: Path, params: ClassifyParams, meta: dict, suffix: str 
     return report, summary
 
 
-def init_settings(data_dir: Path) -> Optional[str]:
+def init_settings(data_dir: Path, tier: str | None = None) -> Optional[str]:
     """Load the sidecar's saved settings so the run uses what production uses.
 
+    ``tier`` replaces the detected hardware tier for defaults, so a CPU-only
+    machine can run with production's frame count and detection size.
     Returns an error string when settings can't be loaded (defaults apply).
     """
     try:
@@ -52,8 +55,8 @@ def init_settings(data_dir: Path) -> Optional[str]:
         from recommendations_db import RecommendationsDB
         from settings import init_settings as _init
 
-        tier = init_hardware(str(data_dir)).tier
-        _init(RecommendationsDB(data_dir / "stash_sense.db"), tier)
+        detected = init_hardware(str(data_dir)).tier
+        _init(RecommendationsDB(data_dir / "stash_sense.db"), tier or detected)
         return None
     except Exception as e:  # a missing DB shouldn't block a research run
         return f"{type(e).__name__}: {e}"
@@ -151,7 +154,8 @@ async def run(
             shot = await stash._execute(SCREENSHOT_QUERY, {"id": scene.scene_id})
             screenshot_url = ((shot.get("findScene") or {}).get("paths") or {}).get("screenshot")
             record = await run_scene(scene, recognizer, galleries, run_params,
-                                     stash_url=stash_url, api_key=api_key, screenshot_url=screenshot_url)
+                                     stash_url=stash_url, api_key=api_key, screenshot_url=screenshot_url,
+                                     embeddings_path=run_dir / "emb" / f"{scene.scene_id}.npz")
         except Exception as e:
             record = {"scene_id": scene.scene_id, "stratum": scene.stratum, "status": "error",
                       "error": f"{type(e).__name__}: {e}"}

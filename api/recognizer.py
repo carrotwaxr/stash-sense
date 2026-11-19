@@ -3,6 +3,7 @@
 Matches detected faces against the pre-built performer database.
 """
 import json
+from collections import OrderedDict
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
@@ -35,6 +36,12 @@ class RecognitionResult:
     face: DetectedFace
     matches: list[PerformerMatch]  # Sorted by combined_score (best first)
     embedding: Optional["FaceEmbedding"] = None  # Stored for clustering (avoids recomputation)
+
+
+def _l2_rows(m: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(m, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return m / norms
 
 
 class FaceRecognizer:
@@ -99,6 +106,39 @@ class FaceRecognizer:
         if db_config.sqlite_db_path and db_config.sqlite_db_path.exists():
             print(f"Loading SQLite database from {db_config.sqlite_db_path}...")
             self.db_reader = PerformerDatabaseReader(str(db_config.sqlite_db_path))
+
+        # Gallery matching (#148): universal_id -> face slots, built on first use
+        self._face_slots = None
+        self._gallery_cache = OrderedDict()
+
+    GALLERY_CACHE_SIZE = 5000  # performers; a few faces each, ~4 KB per face per model
+
+    def gallery_vectors(self, universal_id: str) -> "tuple[np.ndarray, np.ndarray] | None":
+        """A performer's DB faces as L2-normalised (FaceNet, ArcFace) matrices.
+
+        Uses the same faces production matching can see: slots that are None
+        in faces.json are left out. Returns None when the performer has no
+        visible faces. Recently used galleries are cached.
+        """
+        cache = self._gallery_cache
+        if universal_id in cache:
+            cache.move_to_end(universal_id)
+            return cache[universal_id]
+        if self._face_slots is None:
+            slots: dict[str, list[int]] = {}
+            for i, uid in enumerate(self.faces):
+                if uid is not None:
+                    slots.setdefault(uid, []).append(i)
+            self._face_slots = slots
+        ids = self._face_slots.get(universal_id)
+        vectors = None
+        if ids:
+            vectors = tuple(_l2_rows(np.asarray(index.get_vectors(ids), dtype=np.float32))
+                            for index in (self.facenet_index, self.arcface_index))
+        cache[universal_id] = vectors
+        if len(cache) > self.GALLERY_CACHE_SIZE:
+            cache.popitem(last=False)
+        return vectors
 
     def _get_performer_info(self, universal_id: str) -> dict:
         """Get performer info from universal ID."""
