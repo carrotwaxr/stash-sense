@@ -48,3 +48,39 @@ class TestAnalysisJob:
             job = AnalysisJob("duplicate_performer")
             result = await job.run(ctx)
         assert result is None
+
+
+class _StopAwareAnalyzer:
+    """Records whether it saw a stop that arrived after it started."""
+
+    def __init__(self, *_args, **_kwargs):
+        from analyzers.base import BaseAnalyzer
+        self._stop_requested = False
+        self._stop_check = None
+        self.is_stop_requested = BaseAnalyzer.is_stop_requested.__get__(self)
+        self.request_stop = BaseAnalyzer.request_stop.__get__(self)
+        self.saw_stop = None
+        self.context = None
+
+    async def run(self, incremental=True):
+        assert not self.is_stop_requested()
+        self.context.request_stop()          # the user presses Stop mid-run
+        self.saw_stop = self.is_stop_requested()
+        return MagicMock(recommendations_created=0, items_processed=1, extra=None)
+
+
+@pytest.mark.asyncio
+async def test_stop_requested_mid_run_reaches_the_analyzer():
+    db = MagicMock()
+    db.get_user_setting.return_value = []
+    ctx = JobContext(job_id=1, db=db, queue_manager=None)
+    analyzer = _StopAwareAnalyzer()
+    analyzer.context = ctx
+    excl = MagicMock(scene_ids=set())
+    with patch('jobs.analysis_jobs.ANALYZERS') as reg, \
+         patch('jobs.analysis_jobs.get_rec_db', return_value=db), \
+         patch('jobs.analysis_jobs.get_stash_client', return_value=MagicMock()), \
+         patch('jobs.analysis_jobs.curation_settings.current', AsyncMock(return_value=excl)):
+        reg.get.return_value = MagicMock(return_value=analyzer)
+        await AnalysisJob("scene_duplicates").run(ctx)
+    assert analyzer.saw_stop is True

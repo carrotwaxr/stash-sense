@@ -58,6 +58,8 @@ class BaseAnalyzer(ABC):
         self.run_id = run_id
         self._items_total: Optional[int] = None
         self._stop_requested = False
+        # Set by AnalysisJob to the job context's flag, so a stop that arrives mid-run is seen (#178)
+        self._stop_check: Callable[[], bool] | None = None
         self._job_progress_callback: Optional[Callable[[int, Optional[int]], None]] = None
         self.excluded_skipped = 0
 
@@ -81,8 +83,8 @@ class BaseAnalyzer(ABC):
         self._stop_requested = True
 
     def is_stop_requested(self) -> bool:
-        """Check whether a stop has been requested."""
-        return self._stop_requested
+        """Check whether a stop has been requested, here or on the running job."""
+        return self._stop_requested or bool(self._stop_check and self._stop_check())
 
     @abstractmethod
     async def run(self, incremental: bool = True) -> AnalysisResult:

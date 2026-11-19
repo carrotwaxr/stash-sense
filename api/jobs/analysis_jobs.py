@@ -39,7 +39,9 @@ class AnalysisJob(BaseJob):
         analyzer = analyzer_class(stash, db, run_id=run_id)
         analyzer._job_progress_callback = progress_callback
 
-        # Wire stop signal from job context to analyzer
+        # Wire stop signal from job context to analyzer, including stops that
+        # arrive while it runs (#178)
+        analyzer._stop_check = context.is_stop_requested
         if context.is_stop_requested():
             analyzer.request_stop()
 
