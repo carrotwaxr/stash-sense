@@ -156,7 +156,10 @@ class FaceEmbeddingGenerator:
         Returns:
             List of DetectedFace objects
         """
-        results = self.face_analyzer.get(image)
+        # RetinaFace expects BGR (it calls blobFromImage with swapRB=True), so
+        # the detector gets a BGR copy. Alignment below stays on the RGB image,
+        # so crops and embeddings are unchanged; only detection improves (#147).
+        results = self.face_analyzer.get(np.ascontiguousarray(image[:, :, ::-1]))
 
         faces = []
         for face in results:

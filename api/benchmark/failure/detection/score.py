@@ -71,7 +71,8 @@ def build_production_detector(det_size: int, min_confidence: float):
     ctx_id). The property would read det_size from settings instead, so the
     analyzer is injected into ``_face_analyzer`` before first use.
 
-    Returns ``detect(rgb_image) -> [{x, y, w, h, score}]``.
+    Returns ``detect(rgb_image) -> [{x, y, w, h, score}]``; detect_faces
+    hands the analyzer BGR.
     """
     import os
 
@@ -116,14 +117,15 @@ def score(
     min_confidence: float = face_config.MIN_FACE_CONFIDENCE,
     min_face_size: int = face_config.MIN_FACE_SIZE,
     iou_threshold: float = 0.5,
-    channel_order: str = "rgb",
+    channel_order: str = "bgr",
 ) -> Path:
     """Run the detector on reviewed frames; write report.md + results.json.
 
-    ``channel_order`` is what the detector is fed. "rgb" is production as it
-    runs today; "bgr" is what InsightFace's RetinaFace expects (it calls
-    blobFromImage with swapRB=True). Scoring both shows whether the swap
-    costs recall.
+    ``channel_order`` is what RetinaFace is fed. ``detect`` takes RGB frames
+    and, like production's detect_faces since #147, hands the detector BGR,
+    which is what InsightFace expects (blobFromImage with swapRB=True). So
+    "bgr" is production; "rgb" pre-swaps the frame so the detector sees RGB,
+    which is how production ran before #147.
 
     Returns the report.md path under ``out_dir/scores/<UTC timestamp>/``.
     """
@@ -141,11 +143,11 @@ def score(
         raise ValueError(f"channel_order must be 'rgb' or 'bgr', not {channel_order!r}")
     if detect is None:
         detect = build_production_detector(det_size, min_confidence)
-    if channel_order == "bgr":
-        rgb_detect = detect
+    if channel_order == "rgb":
+        production_detect = detect
 
         def detect(image):
-            return rgb_detect(np.ascontiguousarray(image[:, :, ::-1]))
+            return production_detect(np.ascontiguousarray(image[:, :, ::-1]))
 
     n_labels = n_preds = n_matched = n_usable = 0
     by_size = {k: {"labels": 0, "matched": 0, "usable": 0} for k in SIZE_BUCKETS}

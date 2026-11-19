@@ -89,7 +89,7 @@ cd api && python -m benchmark.failure label --dir <copy>    # http://localhost:8
 docker exec stash-sense python -m benchmark.failure detect-score
 ```
 
-InsightFace's RetinaFace expects BGR input (it calls `blobFromImage(..., swapRB=True)`), but the sidecar and the trainer both feed it RGB. Embeddings aren't affected, because the aligned crops come from the same RGB image on both sides, but detection recall might be. Run `detect-score` once as-is and once with `--channel-order bgr` to measure it.
+InsightFace's RetinaFace expects BGR input (it calls `blobFromImage(..., swapRB=True)`). Until #147 the sidecar and the trainer fed it RGB. On this set, RGB gave 72.2% recall and 99.2% precision, and BGR gave 75.3% and 97.8%. Both now feed it BGR and still align crops from the RGB image, so embeddings are unchanged. `detect-score` scores production (BGR) by default; `--channel-order rgb` reproduces the old input.
 
 Labeling policy: box every human face where at least one eye is visible, any size, any angle. Accept a frame with no boxes if it has no faces. The score reports recall by face size (< 40, 40-79, 80+ px), precision, and "usable recall" (detected and large enough to pass the production size filter).
 
